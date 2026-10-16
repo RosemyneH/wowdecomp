@@ -168,8 +168,8 @@ int32_t CGxDeviceVulkan::DeviceSetFormat(const CGxFormat& format) {
         CGxDevice::Log("CGxDeviceVulkan::DeviceSetFormat(): swapchain recreation failed");
     }
 
-    this->ISceneAbort();
-    this->m_vk.DestroySurface();
+    // ʕ •ᴥ•ʔ✿ A new window needs a new instance. The loader drops the old device and then aborts in vkCreateSwapchainKHR ✿ ʕ •ᴥ•ʔ
+    this->IDestroyVulkan();
     this->m_format = format;
 
     CGxFormat createFormat = format;
