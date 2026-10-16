@@ -191,6 +191,9 @@ HANDLE SCreateThread(uint32_t dwStackSize, uint32_t (STORMAPI* lpStartAddress)(v
     S_Thread::s_threadCrit.Leave();
 
     THREADLAUNCH* launch = static_cast<THREADLAUNCH*>(SMemAlloc(sizeof(THREADLAUNCH), __FILE__, __LINE__, SMEM_FLAG_ZEROMEMORY));
+    if (!launch) {
+        return nullptr;
+    }
     launch->threadProc = lpStartAddress;
     launch->param = lpParameter;
     launch->threadH = SSyncCreate(SSYNC_THREAD, 0, 1, 1);
