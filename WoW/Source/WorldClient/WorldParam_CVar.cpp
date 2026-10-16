@@ -455,6 +455,20 @@ bool CWorldParam::ExtendedViewCallback(CVar* var, const char* oldValue, const ch
         return false;
     }
 
+    const bool full = SStrToInt(value) != 0;
+
+    if (CWorldParam::cvar_distanceFog) {
+        CWorldParam::cvar_distanceFog->Set(full ? "0" : "1", true, true, false, true);
+    }
+
+    if (CWorldParam::cvar_extendedHorizonZClip) {
+        CWorldParam::cvar_extendedHorizonZClip->Set(full ? "1" : "0", true, true, false, true);
+    }
+
+    if (CWorldParam::cvar_horizonFarClip) {
+        CWorldParam::cvar_horizonFarClip->Set(full ? "48" : "4", true, true, false, true);
+    }
+
     if (CWorldParam::cvar_farClip) {
         World::SetFarClip(CWorldParam::cvar_farClip->m_floatValue);
     }
@@ -735,4 +749,8 @@ void CWorldParam::Initialize() {
     }
 
     CWorldParamSlider::ApplyDistanceFogFromCVar();
+
+    if (CWorldParam::cvar_extendedView && CWorldParam::cvar_extendedView->m_intValue) {
+        CWorldParam::ExtendedViewCallback(CWorldParam::cvar_extendedView, nullptr, "1", nullptr);
+    }
 }

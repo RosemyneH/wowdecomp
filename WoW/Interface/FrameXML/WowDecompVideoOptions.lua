@@ -1,43 +1,3 @@
-local function WowDecomp_ApplyUIFont(fontString, preferHighlight)
-    if not fontString then
-        return;
-    end
-
-    local fontGlobal;
-    if preferHighlight and GameFontHighlightSmall then
-        fontGlobal = GameFontHighlightSmall;
-    elseif GameFontNormalSmall then
-        fontGlobal = GameFontNormalSmall;
-    elseif GameFontHighlightSmall then
-        fontGlobal = GameFontHighlightSmall;
-    end
-
-    if fontGlobal then
-        fontString:SetFontObject(fontGlobal);
-        return;
-    end
-
-    local samples = {
-        VideoOptionsEffectsPanelSubText,
-        VideoOptionsEffectsPanelTitle,
-    };
-    local viewText = VideoOptionsEffectsPanelViewDistance and _G[VideoOptionsEffectsPanelViewDistance:GetName() .. "Text"];
-    if viewText then
-        tinsert(samples, viewText);
-    end
-
-    for _, sample in ipairs(samples) do
-        if sample and sample.GetFont then
-            local path, height, flags = sample:GetFont();
-            if path and height and fontString:SetFont(path, height, flags) then
-                return;
-            end
-        end
-    end
-
-    fontString:SetFont("Fonts\\FRIZQT__.TTF", 10);
-end
-
 local function WowDecomp_PlaytestCheckboxValue(checkButton)
     if not checkButton then
         return false;
@@ -100,6 +60,12 @@ local function WowDecomp_UpdateFarclipSlider()
         EffectsPanelOptions.farclip.maxValue = maxValue;
         EffectsPanelOptions.farclip.valueStep = step;
     end
+
+    if WowDecomp_PlaytestCheckboxValue(VideoOptionsEffectsPanelFullView) then
+        BlizzardOptionsPanel_Slider_Disable(slider);
+    else
+        BlizzardOptionsPanel_Slider_Enable(slider);
+    end
 end
 
 local function WowDecomp_UpdateGroundRadiusSlider()
@@ -119,33 +85,9 @@ local function WowDecomp_UpdateGroundRadiusSlider()
     EffectsPanelOptions.groundEffectDist.valueStep = step;
 end
 
-local function WowDecomp_UpdateHorizonSlider()
-    local slider = VideoOptionsEffectsPanelHorizonZScale;
-    if not slider or not EffectsPanelOptions or not EffectsPanelOptions.horizonFarclipScale then
-        return;
-    end
-
-    local minValue = BlizzardOptionsPanel_GetCVarMinSafe("horizonFarclipScale") or 3;
-    local maxValue = BlizzardOptionsPanel_GetCVarMaxSafe("horizonFarclipScale") or 6;
-    local step = (maxValue - minValue) / 9;
-
-    slider:SetMinMaxValues(minValue, maxValue);
-    slider:SetValueStep(step);
-    EffectsPanelOptions.horizonFarclipScale.minValue = minValue;
-    EffectsPanelOptions.horizonFarclipScale.maxValue = maxValue;
-    EffectsPanelOptions.horizonFarclipScale.valueStep = step;
-
-    if WowDecomp_PlaytestCheckboxValue(VideoOptionsEffectsPanelExtendedHorizonZClip) then
-        BlizzardOptionsPanel_Slider_Enable(slider);
-    else
-        BlizzardOptionsPanel_Slider_Disable(slider);
-    end
-end
-
 local function WowDecomp_OnPlaytestCVarChanged()
     WowDecomp_UpdateFarclipSlider();
     WowDecomp_UpdateGroundRadiusSlider();
-    WowDecomp_UpdateHorizonSlider();
 end
 
 local function WowDecomp_RegisterCheckbox(parent, name, label, cvar, anchor, x, y, refresh)
@@ -180,12 +122,20 @@ local function WowDecomp_RegisterCheckbox(parent, name, label, cvar, anchor, x, 
     return button;
 end
 
-local function WowDecomp_ReanchorShadersBelow(anchor)
+local function WowDecomp_ShiftShadersDown()
     local shaders = VideoOptionsEffectsPanelShaders;
-    if shaders and anchor then
-        shaders:ClearAllPoints();
-        shaders:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 14, -10);
+    if not shaders or shaders.wowDecompShifted then
+        return;
     end
+
+    local point, relativeTo, relativePoint, x, y = shaders:GetPoint(1);
+    if not point then
+        return;
+    end
+
+    shaders.wowDecompShifted = true;
+    shaders:ClearAllPoints();
+    shaders:SetPoint(point, relativeTo, relativePoint, x or 0, (y or 0) - 22);
 end
 
 local function WowDecomp_InstallEffectsPanelPlaytest(panel)
@@ -200,71 +150,22 @@ local function WowDecomp_InstallEffectsPanelPlaytest(panel)
     end
 
     panel.wowDecompPlaytestInstalled = true;
+    EffectsPanelOptions.extendedView = { text = "Full view" };
 
-    EffectsPanelOptions.extendedView = { text = "Extended view (up to 30k)" };
-    EffectsPanelOptions.extendedHorizonZClip = { text = "Extended horizon Z clip" };
-    EffectsPanelOptions.distanceFog = { text = "Distance fog" };
-    EffectsPanelOptions.horizonFarclipScale = {
-        text = "Horizon Z scale",
-        minValue = 3,
-        maxValue = 6,
-        valueStep = 0.33,
-    };
-
-    local section = CreateFrame("Frame", "VideoOptionsEffectsPanelWowDecompSection", panel);
-    section:SetSize(380, 92);
-    section:SetPoint("TOPLEFT", shadowSlider, "BOTTOMLEFT", -2, -18);
-
-    local header = section:CreateFontString(nil, "OVERLAY");
-    WowDecomp_ApplyUIFont(header, true);
-    header:SetPoint("TOPLEFT", section, "TOPLEFT", 4, -2);
-    header:SetText("Map exploration (playtest)");
-
-    WowDecomp_RegisterCheckbox(
+    local fullView = WowDecomp_RegisterCheckbox(
         panel,
-        "VideoOptionsEffectsPanelExtendedView",
-        "Extended view distance",
+        "VideoOptionsEffectsPanelFullView",
+        "Full view",
         "extendedView",
-        section,
-        8,
-        -22,
+        shadowSlider,
+        0,
+        0,
         WowDecomp_OnPlaytestCVarChanged
     );
-    WowDecomp_RegisterCheckbox(
-        panel,
-        "VideoOptionsEffectsPanelExtendedHorizonZClip",
-        "Extended horizon Z clip",
-        "extendedHorizonZClip",
-        section,
-        8,
-        -46,
-        WowDecomp_OnPlaytestCVarChanged
-    );
-    WowDecomp_RegisterCheckbox(panel, "VideoOptionsEffectsPanelDistanceFog", "Distance fog", "distanceFog", section, 220, -22, nil);
+    fullView:ClearAllPoints();
+    fullView:SetPoint("TOPLEFT", shadowSlider, "BOTTOMLEFT", 0, -6);
 
-    local horizonSlider = CreateFrame("Slider", "VideoOptionsEffectsPanelHorizonZScale", panel, "OptionsSliderTemplate");
-    horizonSlider:SetSize(112, 17);
-    horizonSlider:SetPoint("TOPLEFT", section, "TOPLEFT", 220, -50);
-    horizonSlider.type = CONTROLTYPE_SLIDER;
-    horizonSlider.cvar = "horizonFarclipScale";
-    horizonSlider.SetDisplayValue = horizonSlider.SetValue;
-    horizonSlider.SetValue = function(self, value)
-        self:SetDisplayValue(value);
-        BlizzardOptionsPanel_SetCVarSafe(self.cvar, value);
-    end;
-
-    local horizonText = _G[horizonSlider:GetName() .. "Text"];
-    if horizonText then
-        WowDecomp_ApplyUIFont(horizonText, false);
-        horizonText:SetText("Horizon Z");
-    end
-
-    BlizzardOptionsPanel_RegisterControl(horizonSlider, panel);
-    BlizzardOptionsPanel_SetupDependentControl(VideoOptionsEffectsPanelExtendedHorizonZClip, horizonSlider);
-    horizonSlider:SetScript("OnValueChanged", VideoOptionsEffectsPanelSlider_OnValueChanged);
-    WowDecomp_SetupRegisteredControl(horizonSlider, panel, EffectsPanelOptions.horizonFarclipScale);
-
-    WowDecomp_ReanchorShadersBelow(section);
+    WowDecomp_ShiftShadersDown();
     WowDecomp_OnPlaytestCVarChanged();
 end
 
