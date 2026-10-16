@@ -701,6 +701,11 @@ void NetClient::Disconnect() {
         return;
     }
 
+    void* connectionMem = SMemAlloc(sizeof(WowConnection), __FILE__, __LINE__, 0);
+    if (!connectionMem) {
+        return;
+    }
+
     this->m_serverConnection->SetResponse(nullptr, false);
     this->m_serverConnection->Disconnect();
     this->m_netEventQueue->Clear();
@@ -708,7 +713,7 @@ void NetClient::Disconnect() {
         WowConnection::s_network->Remove(this->m_serverConnection);
     }
     this->m_serverConnection->Release();
-    this->m_serverConnection = new (SMemAlloc(sizeof(WowConnection), __FILE__, __LINE__, 0)) WowConnection(this, nullptr);
+    this->m_serverConnection = new (connectionMem) WowConnection(this, nullptr);
     this->m_netState = NS_INITIALIZED;
 }
 
@@ -886,7 +891,12 @@ void NetClient::HandleRedirectClient(WowConnection* connection, CDataStore* msg)
         return;
     }
 
-    this->m_redirectConnection = new (SMemAlloc(sizeof(WowConnection), __FILE__, __LINE__, 0)) WowConnection(this, nullptr);
+    void* connectionMem = SMemAlloc(sizeof(WowConnection), __FILE__, __LINE__, 0);
+    if (!connectionMem) {
+        return;
+    }
+
+    this->m_redirectConnection = new (connectionMem) WowConnection(this, nullptr);
 
     HMAC<SHA1> hmac;
     SHA1::Digest digest;
