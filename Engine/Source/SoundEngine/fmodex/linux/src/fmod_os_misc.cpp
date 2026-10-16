@@ -257,8 +257,23 @@ FMOD_RESULT FMOD_OS_CriticalSection_Create(FMOD_OS_CRITICALSECTION **crit, bool 
     }
 
     pthread_mutexattr_t attr;
-    pthread_mutexattr_init(&attr);
-    pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+    if (pthread_mutexattr_init(&attr))
+    {
+        if (!memorycrit)
+        {
+            FMOD_Memory_Free(section);
+        }
+        return FMOD_ERR_INVALID_PARAM;
+    }
+    if (pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE))
+    {
+        pthread_mutexattr_destroy(&attr);
+        if (!memorycrit)
+        {
+            FMOD_Memory_Free(section);
+        }
+        return FMOD_ERR_INVALID_PARAM;
+    }
     int initResult = pthread_mutex_init((pthread_mutex_t *)section, &attr);
     pthread_mutexattr_destroy(&attr);
     if (initResult)
