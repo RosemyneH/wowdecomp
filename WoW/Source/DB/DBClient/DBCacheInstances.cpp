@@ -597,6 +597,11 @@ void DBCache<NameCache, uint64_t, CHashKeyGUID>::ItemAdded(NameCache* item) {
 
     uint32_t hashval = SStrHashHT(item->m_name);
     REVERSEENTRY* entry = this->m_reverse.InternalNewNode(hashval, 0, 0);
+
+    if (!entry) {
+        return;
+    }
+
     entry->m_hashval = hashval;
     entry->m_key.m_str = item->m_name;
     entry->m_record = item;
