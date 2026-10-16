@@ -4770,6 +4770,11 @@ void CGPlayer_C::AddKnownSpell(int32_t spellId, int32_t a2, int32_t a3, int32_t 
 
             if (!line) {
                 line = this->m_tradeSkillLines.InternalNewNode(skillLine->m_id, 0, 0);
+
+                if (!line) {
+                    return;
+                }
+
                 line->m_hashval = skillLine->m_id;
             }
 
@@ -4809,6 +4814,11 @@ void CGPlayer_C::AddKnownSpell(int32_t spellId, int32_t a2, int32_t a3, int32_t 
 
                     if (!proficiencySpell) {
                         proficiencySpell = this->m_proficiencySpells.InternalNewNode(skill, 0, 0);
+
+                        if (!proficiencySpell) {
+                            return;
+                        }
+
                         proficiencySpell->m_hashval = skill;
                     }
 
