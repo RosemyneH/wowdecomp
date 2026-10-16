@@ -650,7 +650,29 @@ bool WowConnection::Connect(const char* address, int32_t timeout) {
             return true;
         }
 
-        this->m_connectPort = SStrToInt(separator + 1);
+        const char* portText = separator + 1;
+
+        for (const char* digit = portText; *digit; ++digit) {
+            if (*digit < '0' || *digit > '9') {
+                this->m_connectAddress = 0;
+                this->m_connectPort = 0;
+                this->SetState(WOWC_ERROR);
+                this->AddRef();
+                this->AcquireResponseRef();
+
+                WowConnectionResponse* response = this->m_response;
+
+                if (response) {
+                    response->WCCantConnect(this, OsGetAsyncTimeMs(), &this->m_peer);
+                }
+
+                this->ReleaseResponseRef();
+                this->Release();
+                return true;
+            }
+        }
+
+        this->m_connectPort = SStrToInt(portText);
 
         uint32_t length = separator - address + 1;
 
