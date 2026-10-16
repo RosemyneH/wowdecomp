@@ -903,6 +903,8 @@ int32_t VkContext::EndFrame() {
     }
 
     frame.prepared = 0;
+    // ʕ •ᴥ•ʔ✿ Reusing this slot must not present the image EndFrame already finished ✿ ʕ •ᴥ•ʔ
+    frame.acquired = 0;
     this->m_frameIndex = (this->m_frameIndex + 1) % FramesInFlight;
 
     return submitted && result == VK_SUCCESS && !this->m_suboptimal;
