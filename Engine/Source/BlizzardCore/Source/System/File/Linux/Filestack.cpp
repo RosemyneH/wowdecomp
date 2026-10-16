@@ -193,6 +193,12 @@ void System_File::GetFileInfoByFile(Blizzard::File::StreamRecord* file) {
 
 bool System_File::Exists(Blizzard::File::Filesystem* fs, System_File::Stacked::FileParms* parms) {
     char path[1024];
+
+    if (parms->m_path && strlen(parms->m_path) >= sizeof(path)) {
+        Blizzard::File::SetLastError(8);
+        return false;
+    }
+
     Blizzard::String::MakeUnivPath(parms->m_path, path, sizeof(path));
 
     struct stat st;
@@ -236,6 +242,12 @@ bool System_File::MakeAbsolutePath(Blizzard::File::Filesystem* fs, System_File::
 bool System_File::Move(Blizzard::File::Filesystem* fs, System_File::Stacked::FileParms* parms) {
     char src[1024];
     char dst[1024];
+
+    if ((parms->m_path && strlen(parms->m_path) >= sizeof(src)) || (parms->m_newpath && strlen(parms->m_newpath) >= sizeof(dst))) {
+        Blizzard::File::SetLastError(8);
+        return false;
+    }
+
     Blizzard::String::MakeUnivPath(parms->m_path, src, sizeof(src));
     Blizzard::String::MakeUnivPath(parms->m_newpath, dst, sizeof(dst));
 
@@ -430,6 +442,11 @@ bool System_File::Flush(Blizzard::File::Filesystem* fs, System_File::Stacked::Fi
 
 bool System_File::GetFileInfo(Blizzard::File::Filesystem* fs, System_File::Stacked::FileParms* parms) {
     if (parms->m_path) {
+        if (strlen(parms->m_path) >= 1024) {
+            Blizzard::File::SetLastError(8);
+            return false;
+        }
+
         struct stat st;
 
         if (stat(parms->m_path, &st)) {
@@ -571,6 +588,12 @@ bool System_File::Copy(Blizzard::File::Filesystem* fs, System_File::Stacked::Fil
     bool overwrite = parms->m_overwrite;
     char src[1024];
     char dst[1024];
+
+    if ((parms->m_path && strlen(parms->m_path) >= sizeof(src)) || (parms->m_newpath && strlen(parms->m_newpath) >= sizeof(dst))) {
+        Blizzard::File::SetLastError(8);
+        return false;
+    }
+
     Blizzard::String::MakeUnivPath(parms->m_path, src, sizeof(src));
     Blizzard::String::MakeUnivPath(parms->m_newpath, dst, sizeof(dst));
 
@@ -669,6 +692,11 @@ bool System_File::Read(Blizzard::File::Filesystem* fs, System_File::Stacked::Fil
 
 bool System_File::RemoveDirectory(Blizzard::File::Filesystem* fs, System_File::Stacked::FileParms* parms) {
     const char* path = parms->m_path;
+
+    if (path && strlen(path) >= 1024) {
+        Blizzard::File::SetLastError(8);
+        return false;
+    }
 
     if (parms->m_recursive) {
         return Blizzard::File::RemoveDirectoryAndContents(path, false);
