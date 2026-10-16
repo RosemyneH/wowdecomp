@@ -30,6 +30,12 @@ void* IOUnitContainer::Alloc(IOUnitContainer* container, uint32_t size, bool* ow
     }
 
     uint8_t* memory = container->m_next;
+
+    if (!memory) {
+        *ownsMemory = false;
+        return nullptr;
+    }
+
     container->m_next = reinterpret_cast<uint8_t*>((reinterpret_cast<uintptr_t>(memory) + size + 3) & ~static_cast<uintptr_t>(3));
     *ownsMemory = container->m_owner;
     container->m_owner = false;
