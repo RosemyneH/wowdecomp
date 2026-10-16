@@ -119,7 +119,24 @@ FMOD_RESULT OutputALSA::init(int selecteddriver, FMOD_INITFLAGS flags, int *outp
         return FMOD_ERR_OUTPUT_INIT;
     }
 
-    unsigned int latency = (unsigned int)((unsigned long long)dspbufferlength * dspnumbuffers * 1000000 / *outputrate);
+    const unsigned long long frames =
+        (unsigned long long)dspbufferlength * (unsigned long long)dspnumbuffers;
+    if (frames > ULLONG_MAX / 1000000ull)
+    {
+        snd_pcm_close(mHandle);
+        mHandle = 0;
+        return FMOD_ERR_OUTPUT_FORMAT;
+    }
+
+    const unsigned long long latencyus = frames * 1000000ull / (unsigned long long)*outputrate;
+    if (latencyus > (unsigned long long)UINT_MAX)
+    {
+        snd_pcm_close(mHandle);
+        mHandle = 0;
+        return FMOD_ERR_OUTPUT_FORMAT;
+    }
+
+    unsigned int latency = (unsigned int)latencyus;
 
     if (snd_pcm_set_params(mHandle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, outputchannels, *outputrate, 1, latency) < 0)
     {
