@@ -1,4 +1,4 @@
-#if defined(WOWDECOMP_LINUX)
+#if defined(WOWDECOMP_UNIX)
 
 #if defined(__APPLE__) && !defined(MSG_NOSIGNAL)
 #define MSG_NOSIGNAL 0
@@ -30,13 +30,14 @@ char* WowConnection::PeerAddrToStr(char* buffer, uint32_t size) {
 
 // OFFSET: 0x00466DE0
 void WowConnection::CloseSocket(int32_t sock) {
-    close(sock);
-
-    if (sock >= 0) {
-        WowConnection::s_idLock.Enter();
-        WowConnection::s_idBits.m_bits.m_data[sock >> 5] &= ~(1 << (sock & 0x1F));
-        WowConnection::s_idLock.Leave();
+    if (sock < 0) {
+        return;
     }
+
+    close(sock);
+    WowConnection::s_idLock.Enter();
+    WowConnection::s_idBits.m_bits.m_data[sock >> 5] &= ~(1 << (sock & 0x1F));
+    WowConnection::s_idLock.Leave();
 }
 
 // OFFSET: 0x00466F00
@@ -47,6 +48,10 @@ void WowConnection::DoStreamReads() {
 
     while (true) {
         do {
+            if (this->m_sock < 0) {
+                return;
+            }
+
             bytes = recv(this->m_sock, buffer, sizeof(buffer), 0);
         } while (bytes < 0 && errno == EINTR);
 
@@ -117,7 +122,7 @@ int32_t WowConnection::SendPacket(CDataStore* msg, int32_t headroom) {
 
     if (size <= 0) {
         result = 2;
-    } else if (this->m_connState == WOWC_CONNECTED) {
+    } else if (this->m_connState == WOWC_CONNECTED && this->m_sock >= 0) {
         if (WowConnection::s_lagTestDelayMin || this->m_sendList.Head()) {
             WowConnection::SENDNODE* node = this->NewSendNodePacket(data, size, false);
 
@@ -247,7 +252,7 @@ int32_t WowConnection::Send(uint8_t* data, int32_t size, bool raw) {
         SARC4ProcessBuffer(data, length, &this->m_sendKey, &this->m_sendKey);
     }
 
-    if (size > 0 && this->m_connState == WOWC_CONNECTED) {
+    if (size > 0 && this->m_connState == WOWC_CONNECTED && this->m_sock >= 0) {
         if (!this->m_sendList.Head()) {
             int32_t sent = send(this->m_sock, data, size, MSG_NOSIGNAL);
 
@@ -391,6 +396,10 @@ void WowConnection::DoMessageReads() {
             bytes = 0;
         } else {
             do {
+                if (this->m_sock < 0) {
+                    return;
+                }
+
                 bytes = recv(this->m_sock, this->m_readBuffer + this->m_readBytes, toRead, 0);
             } while (bytes < 0 && errno == EINTR);
 
@@ -464,6 +473,10 @@ void WowConnection::DoMessageReads() {
 
 // OFFSET: 0x00468390
 void WowConnection::CheckConnect() {
+    if (this->m_sock < 0) {
+        return;
+    }
+
     int32_t error;
     socklen_t length = sizeof(error);
 
@@ -492,11 +505,19 @@ void WowConnection::CheckConnect() {
 
         WowConnectionResponse* response = this->m_response;
         this->m_lock.Leave();
+        this->m_lock.Enter();
+
+        if (this->m_sock < 0) {
+            this->ReleaseResponseRef();
+            this->Release();
+            return;
+        }
 
         socklen_t nameLength = sizeof(this->m_peer.peerAddr);
         getpeername(this->m_sock, reinterpret_cast<sockaddr*>(&this->m_peer.peerAddr), &nameLength);
         nameLength = sizeof(this->m_peer.selfAddr);
         getsockname(this->m_sock, reinterpret_cast<sockaddr*>(&this->m_peer.selfAddr), &nameLength);
+        this->m_lock.Leave();
 
         if (response) {
             response->WCConnected(this, nullptr, OsGetAsyncTimeMs(), &this->m_peer);
@@ -511,6 +532,10 @@ void WowConnection::CheckConnect() {
 // OFFSET: 0x00468580
 void WowConnection::CheckAccept() {
     for (int32_t i = 0; i < 1000; i++) {
+        if (this->m_sock < 0) {
+            break;
+        }
+
         NETADDR addr;
         socklen_t addrLength = sizeof(addr);
         int32_t sock = static_cast<int32_t>(accept(this->m_sock, reinterpret_cast<sockaddr*>(&addr), &addrLength));
@@ -586,6 +611,10 @@ void WowConnection::DoWrites() {
             }
 
             if (bytes) {
+                if (this->m_sock < 0) {
+                    break;
+                }
+
                 int32_t sent = send(this->m_sock, node->m_data + node->m_offset, bytes, MSG_NOSIGNAL);
 
                 if (sent != static_cast<int32_t>(bytes)) {
