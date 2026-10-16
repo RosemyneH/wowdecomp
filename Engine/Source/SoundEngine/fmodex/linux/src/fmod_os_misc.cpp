@@ -369,7 +369,10 @@ FMOD_RESULT FMOD_OS_Semaphore_Signal(FMOD_OS_SEMAPHORE *sema, bool interrupt)
         return FMOD_ERR_INVALID_PARAM;
     }
 
-    sem_post((sem_t *)sema);
+    if (sem_post((sem_t *)sema))
+    {
+        return FMOD_ERR_INVALID_PARAM;
+    }
 
     return FMOD_OK;
 }
