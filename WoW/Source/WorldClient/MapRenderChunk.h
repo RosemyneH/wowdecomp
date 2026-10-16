@@ -90,6 +90,7 @@ class CMapRenderChunk {
     static void Initialize();
     static void SetDirty();
     static void UpdatePools();
+    static int32_t DetailChunkRadius();
     static void SetVertexFormat(EGxVertexBufferFormat format);
     static void PurgeChunkBufBlocks();
     static CMapChunkBuf* AllocBuf(int32_t a1, CMapRenderChunk* renderChunk);

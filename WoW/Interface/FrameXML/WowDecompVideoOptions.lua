@@ -201,7 +201,7 @@ local function WowDecomp_InstallEffectsPanelPlaytest(panel)
 
     panel.wowDecompPlaytestInstalled = true;
 
-    EffectsPanelOptions.extendedView = { text = "Extended view (up to 10k)" };
+    EffectsPanelOptions.extendedView = { text = "Extended view (up to 30k)" };
     EffectsPanelOptions.extendedHorizonZClip = { text = "Extended horizon Z clip" };
     EffectsPanelOptions.distanceFog = { text = "Distance fog" };
     EffectsPanelOptions.horizonFarclipScale = {

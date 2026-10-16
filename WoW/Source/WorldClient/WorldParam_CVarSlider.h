@@ -7,7 +7,7 @@ class CWorldParamSlider {
     public:
     static constexpr float kFarclipMin = 177.0f;
     static constexpr float kFarclipMaxRetail = 1277.0f;
-    static constexpr float kFarclipMaxExtended = 10000.0f;
+    static constexpr float kFarclipMaxExtended = 30000.0f;
     static constexpr float kHorizonFarclipScaleMin = 3.0f;
     static constexpr float kHorizonFarclipScaleMaxRetail = 6.0f;
     static constexpr float kHorizonFarclipScaleMaxExtended = 48.0f;

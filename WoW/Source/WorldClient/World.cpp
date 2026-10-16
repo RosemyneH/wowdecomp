@@ -1208,8 +1208,8 @@ void World::PrepareAreaOfInterest(const C3Vector& position) {
         streamDistance = distance;
     }
 
-    // ʕ •ᴥ•ʔ✿ Full-detail tiles stop at the horizon near plane. The WDL is the rest of the continent ✿ ʕ •ᴥ•ʔ
-    float detailFar = 160.0f * 33.333332f;
+    // ʕ •ᴥ•ʔ✿ Full-detail tiles follow the resident terrain ring. The WDL is whatever is still past it ✿ ʕ •ᴥ•ʔ
+    float detailFar = static_cast<float>(CMapRenderChunk::DetailChunkRadius()) * 33.333332f;
 
     if (streamDistance > detailFar) {
         streamDistance = detailFar;
@@ -2067,8 +2067,8 @@ void CWorldScene::BuildHorizonProjection(C44Matrix* projection) {
     CGCamera* camera = CGWorldFrame::GetActiveCamera();
     float farZ = camera->m_farZ;
     float fov = camera->FOV();
-    // ʕ •ᴥ•ʔ✿ Full detail stops at 160 chunks. The horizon starts there and reaches the far side of the continent ✿ ʕ •ᴥ•ʔ
-    float detailFar = 160.0f * 33.333332f;
+    // ʕ •ᴥ•ʔ✿ Horizon starts where the resident terrain ring ends and reaches the far side of the continent ✿ ʕ •ᴥ•ʔ
+    float detailFar = static_cast<float>(CMapRenderChunk::DetailChunkRadius()) * 33.333332f;
     float horizonNear = detailFar - 400.0f;
     float horizonFar = World::s_horizonFarClipScale * World::s_farClip;
 
