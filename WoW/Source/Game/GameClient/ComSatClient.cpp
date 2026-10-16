@@ -1041,6 +1041,11 @@ bool VoiceSessionRosterUpdate(uint64_t session, uint16_t networkId, int32_t type
         added++;
     }
 
+    if (index >= 32) {
+        s_comsatDeviceLock.Leave();
+        return addedAll;
+    }
+
     COMSATDATA* data = &s_comsatData[index];
     data->m_members[0].m_guid.m_guid = self;
     data->m_members[0].m_flags = selfFlags;
