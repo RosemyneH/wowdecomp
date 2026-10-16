@@ -72,8 +72,19 @@ int32_t ProcessFile(const char* filename, _PROCESSING* processing, CMDDEF** next
     long size = ftell(file);
     fseek(file, 0, SEEK_SET);
 
-    char* data = static_cast<char*>(SMemAlloc(size + 1, __FILE__, __LINE__, 0));
-    size_t bytesread = fread(data, 1, size, file);
+    if (size < 0) {
+        fclose(file);
+        return 0;
+    }
+
+    char* data = static_cast<char*>(SMemAlloc(static_cast<size_t>(size) + 1, __FILE__, __LINE__, 0));
+
+    if (!data) {
+        fclose(file);
+        return 0;
+    }
+
+    size_t bytesread = fread(data, 1, static_cast<size_t>(size), file);
     fclose(file);
     data[bytesread] = 0;
 
