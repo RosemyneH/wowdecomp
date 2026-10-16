@@ -1052,6 +1052,12 @@ void BattlenetLogin::QueueEvent(BN_EVENT_ID id, void* data, int32_t size) {
     this->m_eventLock.Enter();
 
     BN_EVENT* event = this->m_events[this->m_eventIndex].NewNode(2, 0, 0);
+
+    if (!event) {
+        this->m_eventLock.Leave();
+        return;
+    }
+
     event->m_data = data;
     event->m_id = id;
     event->m_size = size;
