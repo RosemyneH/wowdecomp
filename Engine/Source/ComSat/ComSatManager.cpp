@@ -164,7 +164,8 @@ bool ComSat::Manager::IsSessionMuted(uint8_t localTalker, uint64_t session) {
 // OFFSET: 0x0087FC70
 uint8_t ComSat::Manager::GetLocalTalkerIndex(uint64_t talker) {
     for (uint32_t i = 0; i < this->m_maxLocalPlayers; i++) {
-        if (this->m_localTalkers[i]->m_guid == talker) {
+        LocalTalker* local = this->m_localTalkers[i];
+        if (local && local->m_guid == talker) {
             return i;
         }
     }
@@ -602,7 +603,8 @@ bool ComSat::Manager::SessionAddRemote(uint64_t session, uint64_t talker, uint8_
         return false;
     }
     for (uint32_t i = 0; i < this->m_maxLocalPlayers; i++) {
-        if (this->m_localTalkers[i]->m_guid == talker) {
+        LocalTalker* local = this->m_localTalkers[i];
+        if (local && local->m_guid == talker) {
             return false;
         }
     }
