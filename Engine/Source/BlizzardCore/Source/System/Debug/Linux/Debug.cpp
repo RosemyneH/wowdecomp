@@ -5,6 +5,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#if defined(__APPLE__)
+#include <sys/sysctl.h>
+#include <unistd.h>
+#endif
 #include "Engine/Source/BlizzardCore/Source/System/Debug/Debug.h"
 #include "Engine/Source/BlizzardCore/Source/System/File/File.h"
 #include "Engine/Source/BlizzardCore/Source/System/Process/Process.h"
@@ -15,6 +19,17 @@
 static bool s_continueAfterAssert;
 
 static bool IsDebuggerAttached() {
+#if defined(__APPLE__)
+    int mib[] = { CTL_KERN, KERN_PROC, KERN_PROC_PID, static_cast<int>(getpid()) };
+    kinfo_proc info{};
+    size_t size = sizeof(info);
+
+    if (sysctl(mib, 4, &info, &size, nullptr, 0) != 0) {
+        return false;
+    }
+
+    return (info.kp_proc.p_flag & P_TRACED) != 0;
+#else
     FILE* status = fopen("/proc/self/status", "r");
 
     if (!status) {
@@ -34,6 +49,7 @@ static bool IsDebuggerAttached() {
     fclose(status);
 
     return attached;
+#endif
 }
 
 void Blizzard::Debug::Breakpoint() {
