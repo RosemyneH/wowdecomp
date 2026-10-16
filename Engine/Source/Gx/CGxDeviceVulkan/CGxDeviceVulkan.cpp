@@ -1042,7 +1042,9 @@ VkPipeline CGxDeviceVulkan::IPipeline(const VkPipelineKey& key) {
     info.renderPass = this->m_vk.m_passes[key.pass ? VkContext::Pass_Offscreen : VkContext::Pass_Load];
 
     VkPipeline pipeline = VK_NULL_HANDLE;
-    vkCreateGraphicsPipelines(this->m_vk.m_device, this->m_pipelineCache, 1, &info, nullptr, &pipeline);
+    if (vkCreateGraphicsPipelines(this->m_vk.m_device, this->m_pipelineCache, 1, &info, nullptr, &pipeline) != VK_SUCCESS) {
+        return VK_NULL_HANDLE;
+    }
     this->m_pipelines[key] = pipeline;
 
     return pipeline;
