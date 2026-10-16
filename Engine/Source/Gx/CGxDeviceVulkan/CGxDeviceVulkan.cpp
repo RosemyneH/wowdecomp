@@ -2032,8 +2032,14 @@ void CGxDeviceVulkan::DeviceReadPixels(CiRect& rect, TSGrowableArray<CImVector>&
     rect.maxX = std::min(rect.maxX, static_cast<int32_t>(this->m_vk.m_extent.width));
     rect.maxY = std::min(rect.maxY, static_cast<int32_t>(this->m_vk.m_extent.height));
 
-    uint32_t width = rect.maxX > rect.minX ? rect.maxX - rect.minX : 0;
-    uint32_t height = rect.maxY > rect.minY ? rect.maxY - rect.minY : 0;
+    uint32_t width = rect.maxX > rect.minX ? static_cast<uint32_t>(rect.maxX - rect.minX) : 0;
+    uint32_t height = rect.maxY > rect.minY ? static_cast<uint32_t>(rect.maxY - rect.minY) : 0;
+
+    if (height != 0 && width > UINT32_MAX / height) {
+        pixels.SetCount(0);
+        return;
+    }
+
     uint32_t count = width * height;
     pixels.SetCount(count);
 
