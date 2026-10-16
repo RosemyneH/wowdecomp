@@ -179,10 +179,18 @@ bool OsUrlDownload::DownloadString(const char* url, OsURLDownloadCallback callba
         return false;
     }
 
+    uint32_t portNumber = 0;
+
     for (unsigned char digit : port) {
         if (digit < '0' || digit > '9') {
             return false;
         }
+
+        if (portNumber > 6553 || (portNumber == 6553 && digit > '5')) {
+            return false;
+        }
+
+        portNumber = portNumber * 10u + static_cast<uint32_t>(digit - '0');
     }
 
     OsUrlDownload* download = new OsUrlDownload();
