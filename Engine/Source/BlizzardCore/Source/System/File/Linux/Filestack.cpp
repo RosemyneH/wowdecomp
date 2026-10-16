@@ -402,6 +402,11 @@ bool System_File::GetWorkingDirectory(Blizzard::File::Filesystem* fs, System_Fil
         buffer[0] = '\0';
     }
 
+    if (strlen(buffer) >= static_cast<size_t>(parms->m_cwdbuflen)) {
+        Blizzard::File::SetLastError(8);
+        return false;
+    }
+
     FromNativeName(parms->m_cwdbuf, parms->m_cwdbuflen, buffer);
 
     return true;
