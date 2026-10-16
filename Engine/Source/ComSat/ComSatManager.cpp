@@ -667,8 +667,17 @@ ComSat::Manager::Manager(ComSat::Sound::Manager& soundManager, ComSat::Network::
     this->m_localTalkers = nullptr;
     this->m_callback = nullptr;
     this->m_localTalkers = static_cast<LocalTalker**>(this->m_allocator->Alloc(sizeof(LocalTalker*) * this->m_maxLocalPlayers));
+    if (!this->m_localTalkers) {
+        soundManager.SetCallback(this);
+        return;
+    }
     for (uint32_t i = 0; i < this->m_maxLocalPlayers; i++) {
-        this->m_localTalkers[i] = new (this->m_allocator->Alloc(sizeof(LocalTalker))) LocalTalker(*this->m_allocator);
+        void* memory = this->m_allocator->Alloc(sizeof(LocalTalker));
+        if (!memory) {
+            this->m_localTalkers[i] = nullptr;
+            continue;
+        }
+        this->m_localTalkers[i] = new (memory) LocalTalker(*this->m_allocator);
     }
     soundManager.SetCallback(this);
 }
@@ -676,10 +685,12 @@ ComSat::Manager::Manager(ComSat::Sound::Manager& soundManager, ComSat::Network::
 // VERIFY: 27b35473 manual
 // OFFSET: [0x00881150, 0x00881250]
 ComSat::Manager::~Manager() {
-    for (uint32_t i = 0; i < this->m_maxLocalPlayers; i++) {
-        if (this->m_localTalkers[i]) {
-            ComSat::Delete(*this->m_allocator, this->m_localTalkers[i]);
-            this->m_localTalkers[i] = nullptr;
+    if (this->m_localTalkers) {
+        for (uint32_t i = 0; i < this->m_maxLocalPlayers; i++) {
+            if (this->m_localTalkers[i]) {
+                ComSat::Delete(*this->m_allocator, this->m_localTalkers[i]);
+                this->m_localTalkers[i] = nullptr;
+            }
         }
     }
     if (this->m_localTalkers) {
