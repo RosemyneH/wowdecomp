@@ -1998,6 +1998,14 @@ int32_t CGxDeviceVulkan::TexStretch(CGxTex* dest, const CiRect* destRect, const 
 void CGxDeviceVulkan::DeviceReadPixels(CiRect& rect, TSGrowableArray<CImVector>& pixels) {
     this->ClampRectToWindow(rect);
 
+    if (rect.minX < 0) {
+        rect.minX = 0;
+    }
+
+    if (rect.minY < 0) {
+        rect.minY = 0;
+    }
+
     rect.maxX = std::min(rect.maxX, static_cast<int32_t>(this->m_vk.m_extent.width));
     rect.maxY = std::min(rect.maxY, static_cast<int32_t>(this->m_vk.m_extent.height));
 
