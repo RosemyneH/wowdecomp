@@ -355,7 +355,9 @@ VkRenderPass VkContext::CreateRenderPass(VkFormat color, VkAttachmentLoadOp load
     info.pDependencies = dependencies;
 
     VkRenderPass pass = VK_NULL_HANDLE;
-    vkCreateRenderPass(this->m_device, &info, nullptr, &pass);
+    if (vkCreateRenderPass(this->m_device, &info, nullptr, &pass) != VK_SUCCESS) {
+        return VK_NULL_HANDLE;
+    }
     return pass;
 }
 
@@ -449,12 +451,26 @@ int32_t VkContext::CreateSwapchain(uint32_t width, uint32_t height, int32_t vsyn
         for (uint32_t pass = Pass_Clear; pass <= Pass_Load; pass++) {
             if (this->m_passes[pass]) {
                 vkDestroyRenderPass(this->m_device, this->m_passes[pass], nullptr);
+                this->m_passes[pass] = VK_NULL_HANDLE;
             }
         }
 
+        VkFormat previousColor = this->m_colorFormat;
         this->m_colorFormat = surfaceFormat.format;
         this->m_passes[Pass_Clear] = this->CreateRenderPass(this->m_colorFormat, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_UNDEFINED);
+        if (!this->m_passes[Pass_Clear]) {
+            this->m_colorFormat = previousColor;
+            this->DestroySwapchain();
+            return 0;
+        }
         this->m_passes[Pass_Load] = this->CreateRenderPass(this->m_colorFormat, VK_ATTACHMENT_LOAD_OP_LOAD, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        if (!this->m_passes[Pass_Load]) {
+            vkDestroyRenderPass(this->m_device, this->m_passes[Pass_Clear], nullptr);
+            this->m_passes[Pass_Clear] = VK_NULL_HANDLE;
+            this->m_colorFormat = previousColor;
+            this->DestroySwapchain();
+            return 0;
+        }
     }
 
     uint32_t count = 0;
