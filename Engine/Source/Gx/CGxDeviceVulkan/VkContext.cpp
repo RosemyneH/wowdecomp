@@ -883,8 +883,10 @@ int32_t VkContext::EndFrame() {
 
 void VkContext::AbandonFrame() {
     VkFrame& frame = this->Frame();
-    this->Submit(0);
-    vkWaitForFences(this->m_device, 1, &frame.fence, VK_TRUE, UINT64_MAX);
+    int32_t submitted = this->Submit(0);
+    // ʕ •ᴥ•ʔ✿ A failed submit can leave the reset fence unsignaled when the signaled replacement cannot be created ✿ ʕ •ᴥ•ʔ
+    uint64_t timeout = submitted ? UINT64_MAX : 100 * 1000000ull;
+    vkWaitForFences(this->m_device, 1, &frame.fence, VK_TRUE, timeout);
     // ʕ ◕ᴥ◕ ʔ✿ The next BeginFrame must reset rings/pools and must not wait on an unpresented image ✿ ʕ ◕ᴥ◕ ʔ
     frame.prepared = 0;
     frame.acquired = 0;
