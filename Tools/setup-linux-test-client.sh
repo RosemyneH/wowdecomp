@@ -19,6 +19,10 @@ usage() {
 }
 
 default_game_src() {
+    if [[ -d "${HOME}/Games/WoW335/Data" ]]; then
+        echo "${HOME}/Games/WoW335"
+        return
+    fi
     if [[ "$VANILLA" -eq 1 && -d "${HOME}/Games/client/Data" ]]; then
         echo "${HOME}/Games/client"
         return
@@ -73,14 +77,14 @@ if [[ ! -d "$GAME_SRC/Data" ]]; then
     usage
 fi
 
-if [[ ! -x "$ROOT/bin/Linux/WowClient64" ]]; then
-    echo "Build WowClient first: cmake --build build/linux-clean --target WowClient -j8" >&2
-    exit 1
-fi
-
 mkdir -p "$PLAY_DIR" "$ROOT/bin/Linux"
 
-cp -fl "$ROOT/bin/Linux/WowClient64" "$PLAY_DIR/WowClient64" 2>/dev/null || cp -f "$ROOT/bin/Linux/WowClient64" "$PLAY_DIR/WowClient64"
+if [[ -x "$ROOT/bin/Linux/WowClient64" ]]; then
+    cp -fl "$ROOT/bin/Linux/WowClient64" "$PLAY_DIR/WowClient64" 2>/dev/null || cp -f "$ROOT/bin/Linux/WowClient64" "$PLAY_DIR/WowClient64"
+else
+    echo "WowClient64 is not built yet. Data scope will still be prepared." >&2
+    echo "Build: cmake --build build/linux-dev --target WowClient -j\$(nproc)" >&2
+fi
 rm -f "$PLAY_DIR/Wow64"
 if [[ -f "$ROOT/bin/Linux/Wow64" ]]; then
     cp -fl "$ROOT/bin/Linux/Wow64" "$PLAY_DIR/Wow64" 2>/dev/null || cp -f "$ROOT/bin/Linux/Wow64" "$PLAY_DIR/Wow64"
@@ -132,7 +136,12 @@ else
 fi
 
 if [[ "$VANILLA" -eq 1 ]]; then
-    rm -f "$PLAY_DIR/Interface" "$PLAY_DIR/Cache" "$PLAY_DIR/Logs"
+    # ʕ •ᴥ•ʔ✿ Drop full-install symlinks only; a real Interface dir holds the dev WasmAddOns scope ✿ ʕ •ᴥ•ʔ
+    for name in Interface Cache Logs; do
+        if [[ -L "$PLAY_DIR/$name" ]]; then
+            rm -f "$PLAY_DIR/$name"
+        fi
+    done
     mkdir -p "$PLAY_DIR/Cache/WDB" "$PLAY_DIR/Logs" "$PLAY_DIR/Interface/FrameXML"
     rm -rf "$PLAY_DIR/WasmAddOns"
 else
