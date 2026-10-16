@@ -1558,7 +1558,7 @@ void CGxDeviceVulkan::ITexCreate(CGxTex* texId) {
         info.usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     }
 
-    VkTexture* texture = new VkTexture();
+    VkTexture* texture = new VkTexture{};
 
     if (!this->m_vk.CreateImage(info, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D, TexSwizzle(texId->m_format), texture->image)) {
         delete texture;
@@ -1570,7 +1570,13 @@ void CGxDeviceVulkan::ITexCreate(CGxTex* texId) {
     texture->levels = info.mipLevels;
     texture->renderTarget = renderTarget;
 
-    VkContext::Barrier(this->m_vk.UploadCmd(), texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    if (renderTarget) {
+        texture->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        VkContext::Barrier(this->m_vk.UploadCmd(), texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    } else {
+        texture->layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        VkContext::Barrier(this->m_vk.UploadCmd(), texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    }
 
     texId->m_apiSpecificData = texture;
     texId->m_needsCreation = 0;
@@ -1592,7 +1598,7 @@ void CGxDeviceVulkan::ITexUpload(CGxTex* texId) {
     int32_t compressed = texId->m_dataFormat >= GxTex_Dxt1 && texId->m_dataFormat <= GxTex_Dxt5;
     int32_t destCompressed = texId->m_format >= GxTex_Dxt1 && texId->m_format <= GxTex_Dxt5;
 
-    VkContext::Barrier(cmd, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    VkContext::Barrier(cmd, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, texture->layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
     uint32_t mipWidth = width;
     uint32_t mipHeight = height;
@@ -1659,6 +1665,7 @@ void CGxDeviceVulkan::ITexUpload(CGxTex* texId) {
     }
 
     VkContext::Barrier(cmd, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    texture->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
     texels = nullptr;
     texId->m_userFunc(GxTex_Unlock, texId->m_width, texId->m_height, 0, 0, texId->m_userArg, texelStrideInBytes, texels);
@@ -1880,9 +1887,10 @@ int32_t CGxDeviceVulkan::IBlitFromBackBuffer(CGxTex* dest, const VkOffset3D* des
     VkImage backBuffer = this->m_vk.m_swapImages[this->m_vk.m_imageIndex];
 
     VkContext::Barrier(cmd, backBuffer, VK_IMAGE_ASPECT_COLOR_BIT, 1, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-    VkContext::Barrier(cmd, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    VkContext::Barrier(cmd, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, texture->layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     vkCmdBlitImage(cmd, backBuffer, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, texture->image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, filter);
     VkContext::Barrier(cmd, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    texture->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     VkContext::Barrier(cmd, backBuffer, VK_IMAGE_ASPECT_COLOR_BIT, 1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
     return 1;

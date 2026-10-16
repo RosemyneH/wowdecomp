@@ -15,6 +15,7 @@ struct VkTexture {
     int32_t renderTarget;
     VkFramebuffer framebuffer;
     uint32_t depthGeneration;
+    VkImageLayout layout;
 };
 
 struct VkDrawUniforms {

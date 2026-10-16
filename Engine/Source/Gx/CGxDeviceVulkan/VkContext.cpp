@@ -1132,9 +1132,84 @@ void VkContext::Collect(VkFrame& frame) {
 }
 
 void VkContext::Barrier(VkCommandBuffer cmd, VkImage image, VkImageAspectFlags aspect, uint32_t levels, VkImageLayout oldLayout, VkImageLayout newLayout) {
+    if (oldLayout == newLayout) {
+        return;
+    }
+
+    VkPipelineStageFlags srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    VkPipelineStageFlags dstStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    VkAccessFlags srcAccess = 0;
+    VkAccessFlags dstAccess = 0;
+
+    switch (oldLayout) {
+        case VK_IMAGE_LAYOUT_UNDEFINED:
+            break;
+
+        case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+            srcStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            srcAccess = VK_ACCESS_SHADER_READ_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+            srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            srcAccess = VK_ACCESS_TRANSFER_WRITE_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+            srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            srcAccess = VK_ACCESS_TRANSFER_READ_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
+            srcStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            srcAccess = VK_ACCESS_MEMORY_READ_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+            srcStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            srcAccess = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            break;
+
+        default:
+            srcStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+            srcAccess = VK_ACCESS_MEMORY_WRITE_BIT;
+            break;
+    }
+
+    switch (newLayout) {
+        case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+            dstStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            dstAccess = VK_ACCESS_SHADER_READ_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+            dstStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            dstAccess = VK_ACCESS_TRANSFER_WRITE_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+            dstStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            dstAccess = VK_ACCESS_TRANSFER_READ_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
+            dstStage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+            dstStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            dstAccess = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            break;
+
+        default:
+            dstStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+            dstAccess = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+            break;
+    }
+
     VkImageMemoryBarrier barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
-    barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
-    barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+    barrier.srcAccessMask = srcAccess;
+    barrier.dstAccessMask = dstAccess;
     barrier.oldLayout = oldLayout;
     barrier.newLayout = newLayout;
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -1142,5 +1217,5 @@ void VkContext::Barrier(VkCommandBuffer cmd, VkImage image, VkImageAspectFlags a
     barrier.image = image;
     barrier.subresourceRange = { aspect, 0, levels, 0, VK_REMAINING_ARRAY_LAYERS };
 
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+    vkCmdPipelineBarrier(cmd, srcStage, dstStage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 }
