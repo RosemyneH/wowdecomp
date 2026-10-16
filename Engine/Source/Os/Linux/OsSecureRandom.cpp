@@ -1,4 +1,5 @@
 #include <atomic>
+#include <cerrno>
 #include <cstdint>
 #include <cstring>
 #include <ctime>
@@ -74,6 +75,10 @@ void OsSecureRandom(uint8_t* buffer, uint32_t size) {
 
     while (filled < size) {
         ssize_t result = getrandom(buffer + filled, size - filled, 0);
+
+        if (result < 0 && errno == EINTR) {
+            continue;
+        }
 
         if (result <= 0) {
             IOsSecureRandom(buffer, size);

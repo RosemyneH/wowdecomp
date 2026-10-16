@@ -1,4 +1,5 @@
 #include <atomic>
+#include <cerrno>
 #include <cstdint>
 #include <cstring>
 #include <ctime>
@@ -72,12 +73,20 @@ void IOsSecureRandom(uint8_t* buffer, uint32_t size) {
 
 // OFFSET: 0x0086D640
 void OsSecureRandom(uint8_t* buffer, uint32_t size) {
-    for (uint32_t filled = 0; filled < size; filled += 256) {
+    uint32_t filled = 0;
+
+    while (filled < size) {
         uint32_t count = size - filled > 256 ? 256 : size - filled;
 
         if (getentropy(buffer + filled, count)) {
+            if (errno == EINTR) {
+                continue;
+            }
+
             IOsSecureRandom(buffer, size);
             return;
         }
+
+        filled += count;
     }
 }
