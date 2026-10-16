@@ -64,53 +64,57 @@ static void OsUrlDownloadThread(OsUrlDownload* download, std::string host, std::
         download->m_errorCode = errno == EAGAIN || errno == ETIMEDOUT ? HTTPError::Timeout : HTTPError::Failed;
     } else {
         std::string request = "GET " + path + " HTTP/1.0\r\nHost: " + host + "\r\nUser-Agent: Blizzard Web Client\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n";
-        send(sock, request.data(), request.size(), 0);
+        ssize_t sent = send(sock, request.data(), request.size(), 0);
 
-        char data[16384];
-        std::string header;
-        size_t bodyOffset = std::string::npos;
+        if (sent < 0 || static_cast<size_t>(sent) != request.size()) {
+            download->m_errorCode = HTTPError::Failed;
+        } else {
+            char data[16384];
+            std::string header;
+            size_t bodyOffset = std::string::npos;
 
-        while (!download->m_done) {
-            ssize_t received = recv(sock, data, sizeof(data), 0);
+            while (!download->m_done) {
+                ssize_t received = recv(sock, data, sizeof(data), 0);
 
-            if (received < 0) {
-                download->m_errorCode = errno == EAGAIN || errno == EWOULDBLOCK ? HTTPError::Timeout : HTTPError::Failed;
-                break;
-            }
-
-            if (!received) {
-                if (bodyOffset == std::string::npos) {
-                    download->m_errorCode = HTTPError::Failed;
-                }
-
-                break;
-            }
-
-            const char* body = data;
-            size_t bodySize = static_cast<size_t>(received);
-
-            if (bodyOffset == std::string::npos) {
-                header.append(data, bodySize);
-                bodyOffset = header.find("\r\n\r\n");
-
-                if (bodyOffset == std::string::npos) {
-                    continue;
-                }
-
-                size_t space = header.find(' ');
-                download->m_statusCode = space != std::string::npos ? static_cast<uint32_t>(atoi(header.c_str() + space + 1)) : 0;
-
-                if (download->m_statusCode < 200 || download->m_statusCode >= 300) {
-                    download->m_errorCode = download->m_statusCode == 404 ? HTTPError::NotFound : HTTPError::Failed;
+                if (received < 0) {
+                    download->m_errorCode = errno == EAGAIN || errno == EWOULDBLOCK ? HTTPError::Timeout : HTTPError::Failed;
                     break;
                 }
 
-                body = header.data() + bodyOffset + 4;
-                bodySize = header.size() - bodyOffset - 4;
-            }
+                if (!received) {
+                    if (bodyOffset == std::string::npos) {
+                        download->m_errorCode = HTTPError::Failed;
+                    }
 
-            if (bodySize && download->m_callback && !download->m_callback(download->m_param, body, static_cast<uint32_t>(bodySize), false, HTTPError::NoError)) {
-                download->m_done = true;
+                    break;
+                }
+
+                const char* body = data;
+                size_t bodySize = static_cast<size_t>(received);
+
+                if (bodyOffset == std::string::npos) {
+                    header.append(data, bodySize);
+                    bodyOffset = header.find("\r\n\r\n");
+
+                    if (bodyOffset == std::string::npos) {
+                        continue;
+                    }
+
+                    size_t space = header.find(' ');
+                    download->m_statusCode = space != std::string::npos ? static_cast<uint32_t>(atoi(header.c_str() + space + 1)) : 0;
+
+                    if (download->m_statusCode < 200 || download->m_statusCode >= 300) {
+                        download->m_errorCode = download->m_statusCode == 404 ? HTTPError::NotFound : HTTPError::Failed;
+                        break;
+                    }
+
+                    body = header.data() + bodyOffset + 4;
+                    bodySize = header.size() - bodyOffset - 4;
+                }
+
+                if (bodySize && download->m_callback && !download->m_callback(download->m_param, body, static_cast<uint32_t>(bodySize), false, HTTPError::NoError)) {
+                    download->m_done = true;
+                }
             }
         }
 
