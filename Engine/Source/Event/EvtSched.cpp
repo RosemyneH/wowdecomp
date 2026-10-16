@@ -231,17 +231,21 @@ void IEvtSchedulerDestroy() {
     if (Event::s_netServer) {
         uint32_t processors = OsGetNumberOfProcessors();
 
-        SThread* shutdownThread = new (SMemAlloc(sizeof(SThread), __FILE__, __LINE__, 0)) SThread;
-        *shutdownThreads.New() = shutdownThread;
+        void* shutdownMem = SMemAlloc(sizeof(SThread), __FILE__, __LINE__, 0);
 
-        while (processors) {
-            processors--;
+        if (shutdownMem) {
+            SThread* shutdownThread = new (shutdownMem) SThread;
+            *shutdownThreads.New() = shutdownThread;
 
-            SThread thread;
+            while (processors) {
+                processors--;
 
-            if (!SThread::Create(WaitPumpingNetwork, &shutdownEvent, **shutdownThreads.Top(), const_cast<char*>("EvtShutdown"), 0)) {
-                delete *shutdownThreads.Top();
-                shutdownThreads.SetCount(shutdownThreads.Count() - 1);
+                SThread thread;
+
+                if (!SThread::Create(WaitPumpingNetwork, &shutdownEvent, **shutdownThreads.Top(), const_cast<char*>("EvtShutdown"), 0)) {
+                    delete *shutdownThreads.Top();
+                    shutdownThreads.SetCount(shutdownThreads.Count() - 1);
+                }
             }
         }
     }
@@ -737,7 +741,13 @@ void IEvtSchedulerInitialize(uint32_t threadCount, int32_t netServer) {
     Event::s_mainThread = InitializeSchedulerThread();
 
     for (uint32_t i = threadCount - 1; i; i--) {
-        SThread* thread = new (SMemAlloc(sizeof(SThread), __FILE__, __LINE__, 0)) SThread;
+        void* threadMem = SMemAlloc(sizeof(SThread), __FILE__, __LINE__, 0);
+
+        if (!threadMem) {
+            continue;
+        }
+
+        SThread* thread = new (threadMem) SThread;
         *Event::s_schedulerThreads.New() = thread;
 
         char name[16];
