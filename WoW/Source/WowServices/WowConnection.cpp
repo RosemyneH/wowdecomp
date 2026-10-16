@@ -495,6 +495,10 @@ int32_t WowConnection::Release() {
 // VERIFY: 5d8f334b auto
 // OFFSET: 0x00468250
 void WowConnection::DoDisconnect() {
+    if (!WowConnection::s_network) {
+        return;
+    }
+
     this->m_lock.Enter();
 
     if (this->m_sock >= 0) {

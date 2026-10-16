@@ -34,6 +34,10 @@ void WowConnection::CloseSocket(int32_t sock) {
 
 // OFFSET: 0x00466F00
 void WowConnection::DoStreamReads() {
+    if (!WowConnection::s_network) {
+        return;
+    }
+
     uint8_t buffer[4096];
     uint32_t startTime = OsGetAsyncTimeMs();
     int32_t bytes;
@@ -103,6 +107,10 @@ WowConnection::WowConnection(int32_t sock, const NETADDR* addr, WowConnectionRes
 
 // OFFSET: 0x004675F0
 int32_t WowConnection::SendPacket(CDataStore* msg, int32_t headroom) {
+    if (!WowConnection::s_network) {
+        return 2;
+    }
+
     int32_t size = msg->m_size;
     void* data;
     msg->GetDataInSitu(data, size);
@@ -228,6 +236,10 @@ int32_t WowConnection::SendPacket(CDataStore* msg, int32_t headroom) {
 
 // OFFSET: 0x00467990
 int32_t WowConnection::Send(uint8_t* data, int32_t size, bool raw) {
+    if (!WowConnection::s_network) {
+        return 2;
+    }
+
     WowConnection::s_sendBytes += size;
 
     int32_t result = 2;
@@ -303,6 +315,10 @@ int32_t WowConnection::Send(uint8_t* data, int32_t size, bool raw) {
 
 // OFFSET: 0x00467BA0
 void WowConnection::DoMessageReads() {
+    if (!WowConnection::s_network) {
+        return;
+    }
+
     if (!this->m_readBuffer) {
         this->m_readBuffer = static_cast<uint8_t*>(SMemAlloc(1024, __FILE__, __LINE__, 0));
         this->m_readBufferSize = 1024;
@@ -465,6 +481,10 @@ void WowConnection::DoMessageReads() {
 
 // OFFSET: 0x00468390
 void WowConnection::CheckConnect() {
+    if (!WowConnection::s_network) {
+        return;
+    }
+
     if (this->m_sock < 0) {
         return;
     }
@@ -523,6 +543,10 @@ void WowConnection::CheckConnect() {
 
 // OFFSET: 0x00468580
 void WowConnection::CheckAccept() {
+    if (!WowConnection::s_network) {
+        return;
+    }
+
     for (int32_t i = 0; i < 1000; i++) {
         if (this->m_sock < 0) {
             break;
@@ -575,6 +599,10 @@ void WowConnection::CheckAccept() {
 
 // OFFSET: 0x00468790
 void WowConnection::DoWrites() {
+    if (!WowConnection::s_network) {
+        return;
+    }
+
     this->AddRef();
     this->m_lock.Enter();
 
@@ -686,6 +714,10 @@ void WowConnection::DoWrites() {
 
 // OFFSET: 0x00468BA0
 void WowConnection::StartConnect() {
+    if (!WowConnection::s_network) {
+        return;
+    }
+
     if (this->m_sock >= 0) {
         if (this->m_netLink.IsLinked()) {
             WowConnection::s_network->Remove(this);
