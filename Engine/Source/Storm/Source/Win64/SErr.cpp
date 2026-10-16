@@ -939,7 +939,11 @@ static LONG WINAPI ExceptionFilterWin32(EXCEPTION_POINTERS* exceptionpointers) {
 
     __try {
         GetExceptionNameWin32(record->ExceptionCode, exceptionname, sizeof(exceptionname));
+#if defined(_M_ARM64)
+        SStrPrintf(buffer, sizeof(buffer), "0x%p (%s) at %p", reinterpret_cast<void*>(static_cast<uintptr_t>(record->ExceptionCode)), exceptionname, record->ExceptionAddress);
+#else
         SStrPrintf(buffer, sizeof(buffer), "0x%p (%s) at %04X:%p", reinterpret_cast<void*>(static_cast<uintptr_t>(record->ExceptionCode)), exceptionname, exceptionpointers->ContextRecord->SegCs, record->ExceptionAddress);
+#endif
 
         if (record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && record->NumberParameters == 2) {
             char format[256];
