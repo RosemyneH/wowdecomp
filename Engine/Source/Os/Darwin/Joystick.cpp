@@ -131,6 +131,9 @@ uint32_t OsJoystickOpen(uint32_t index) {
     }
 
     int32_t axes = SDL_JoystickNumAxes(joystick->m_device);
+    if (axes < 0) {
+        axes = 0;
+    }
     joystick->m_axisMask = (1u << (axes > 8 ? 8 : axes)) - 1;
 
     ResetState(&joystick->m_states[0]);
