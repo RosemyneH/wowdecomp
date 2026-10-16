@@ -806,6 +806,7 @@ void CGxDeviceVulkan::IXformSetViewport() {
     this->m_viewportVk.height = -static_cast<float>(height);
     this->m_viewportVk.minDepth = this->m_viewport.m_z.m_l;
     this->m_viewportVk.maxDepth = this->m_viewport.m_z.m_h;
+
     this->m_viewportDirty = 0;
 }
 
@@ -1208,7 +1209,7 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
     VkDeviceSize offsets[MaxBindings];
 
     for (uint32_t i = 0; i < streamCount; i++) {
-        if (!streamBufs[i] || !streamBufs[i]->m_pool) {
+        if (!streamBufs[i] || !streamBufs[i]->m_pool || !streamBufs[i]->m_valid) {
             return;
         }
 
@@ -1376,7 +1377,7 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
     }
 
     if (count) {
-        if (!this->m_primIndexBuf || !this->m_primIndexBuf->m_pool) {
+        if (!this->m_primIndexBuf || !this->m_primIndexBuf->m_pool || !this->m_primIndexBuf->m_valid) {
             return;
         }
 
