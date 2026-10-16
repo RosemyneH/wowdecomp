@@ -1,7 +1,7 @@
 file(GLOB_RECURSE PRIVATE_SOURCES CONFIGURE_DEPENDS "*.cpp")
 wowdecomp_filter_platform_sources_apple_uses_linux(PRIVATE_SOURCES)
 
-if (NOT WIN32)
+if (NOT WIN32 OR WOWDECOMP_WIN_ARM64)
     list(FILTER PRIVATE_SOURCES EXCLUDE REGEX "/CGxDevice(D3d|D3d9Ex|OpenGL)/")
 endif ()
 
@@ -20,7 +20,7 @@ target_include_directories(Gx
         ${CMAKE_SOURCE_DIR}
 )
 
-if (WIN32)
+if (WIN32 AND NOT WOWDECOMP_WIN_ARM64)
     target_link_libraries(Gx
         PRIVATE
             d3d9

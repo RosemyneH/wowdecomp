@@ -27,6 +27,13 @@ else ()
     set(WOWDECOMP_APPLE_SILICON 0)
 endif ()
 
+if (WIN32 AND CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|aarch64")
+    set(WOWDECOMP_WIN_ARM64 1)
+    add_compile_definitions(WOWDECOMP_WIN_ARM64=1)
+else ()
+    set(WOWDECOMP_WIN_ARM64 0)
+endif ()
+
 function(wowdecomp_is_linux out_var)
     set(${out_var} ${WOWDECOMP_LINUX} PARENT_SCOPE)
 endfunction()
