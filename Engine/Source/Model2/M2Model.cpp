@@ -43,6 +43,455 @@
 #include "WoW/Source/DB/DBClient/DBClient.h"
 #include "WoW/Source/Object/ObjectClient/Types.h"
 
+struct M2VertexUploadGpu {
+    CGxBuf* m_buf;
+    uint32_t m_lastDrawFrame;
+};
+
+struct M2VertexUploadSlot {
+    M2VertexUploadSlot* m_next;
+    M2SkinSection* m_section;
+    uint32_t m_frame;
+    int32_t m_optimized;
+    int32_t m_texCoord;
+    int32_t m_weighted;
+    int32_t m_active;
+    int32_t m_write;
+    uint32_t m_stride;
+    uint32_t m_vertexCount;
+    uint32_t m_visibleSig;
+    uint32_t m_boneCount;
+    uint16_t* m_boneIndex;
+    C44Matrix* m_bones;
+    CGxPool* m_pool;
+    M2VertexUploadGpu m_gpu[2];
+    uint8_t m_live;
+};
+
+struct M2VertexUploadCache {
+    M2VertexUploadSlot* m_slots;
+    M2VertexUploadSlot* m_pending;
+};
+
+static void M2DestroyUploadSlot(M2VertexUploadSlot* slot) {
+    if (g_theGxDevicePtr) {
+        if (slot->m_gpu[0].m_buf) {
+            g_theGxDevicePtr->BufDestroy(slot->m_gpu[0].m_buf);
+        }
+
+        if (slot->m_gpu[1].m_buf) {
+            g_theGxDevicePtr->BufDestroy(slot->m_gpu[1].m_buf);
+        }
+
+        if (slot->m_pool) {
+            g_theGxDevicePtr->PoolDestroy(slot->m_pool);
+        }
+    }
+
+    SMemFree(slot->m_boneIndex, __FILE__, __LINE__, 0);
+    SMemFree(slot->m_bones, __FILE__, __LINE__, 0);
+    SMemFree(slot, __FILE__, __LINE__, 0);
+}
+
+static void M2ReleaseVertexUploads(CM2Model* model) {
+    M2VertexUploadCache* cache = model->m_vertexUploads;
+    model->m_vertexUploads = nullptr;
+
+    if (!cache) {
+        return;
+    }
+
+    M2VertexUploadSlot* slot = cache->m_slots;
+
+    while (slot) {
+        M2VertexUploadSlot* next = slot->m_next;
+        M2DestroyUploadSlot(slot);
+        slot = next;
+    }
+
+    SMemFree(cache, __FILE__, __LINE__, 0);
+}
+
+static int32_t M2NoteBone(uint8_t* seen, uint16_t* boneIndex, uint32_t* count, uint32_t bone, uint32_t limit) {
+    if (bone >= 256 || bone >= limit) {
+        return 0;
+    }
+
+    if (!seen[bone]) {
+        seen[bone] = 1;
+        boneIndex[*count] = static_cast<uint16_t>(bone);
+        *count += 1;
+    }
+
+    return 1;
+}
+
+static int32_t M2NoteSectionBones(CM2Model* model, M2SkinSection* section, int32_t weighted, uint8_t* seen, uint16_t* boneIndex, uint32_t* count, uint32_t limit) {
+    M2Data* data = model->m_shared->m_data;
+
+    if (!weighted && section->m_boneInfluences > 4) {
+        return 0;
+    }
+
+    if (static_cast<uint32_t>(section->m_vertexStart) + section->m_vertexCount > data->m_vertices.m_count) {
+        return 0;
+    }
+
+    M2Vertex* vertex = &data->m_vertices[section->m_vertexStart];
+    M2Vertex* end = vertex + section->m_vertexCount;
+    int32_t oneBone = !weighted && section->m_boneInfluences == 1;
+
+    for (; vertex != end; ++vertex) {
+        if (!M2NoteBone(seen, boneIndex, count, vertex->m_indices.b[0], limit)) {
+            return 0;
+        }
+
+        if (oneBone) {
+            continue;
+        }
+
+        for (uint32_t k = 1; k < 4 && vertex->m_weights.b[k]; ++k) {
+            if (!M2NoteBone(seen, boneIndex, count, vertex->m_indices.b[k], limit)) {
+                return 0;
+            }
+        }
+    }
+
+    return 1;
+}
+
+static int32_t M2SectionVisibleSig(CM2Model* model, M2SkinSection* section, int32_t optimized, uint32_t* sig) {
+    if (!optimized) {
+        *sig = 1;
+        return 1;
+    }
+
+    if (!model->m_optGeo || !model->m_skinSections || !model->m_shared || !model->m_shared->m_skinData) {
+        return 0;
+    }
+
+    M2SkinProfile* skin = model->m_shared->m_skinData;
+    M2BatchRange* range = &model->m_optGeo->m_batchRanges[section->m_skinSectionId];
+    uint32_t hash = 2166136261u;
+
+    for (uint32_t b = range->m_first; b <= range->m_last; ++b) {
+        uint16_t sectionIndex = skin->m_batches[b].m_skinSectionIndex;
+        hash ^= model->m_skinSections[sectionIndex] ? sectionIndex + 1u : 0u;
+        hash *= 16777619u;
+    }
+
+    *sig = hash ? hash : 1u;
+    return 1;
+}
+
+static int32_t M2CollectUploadBones(CM2Model* model, M2SkinSection* section, int32_t optimized, int32_t weighted, uint16_t* boneIndex, uint32_t* boneCount) {
+    uint8_t seen[256];
+    memset(seen, 0, sizeof(seen));
+    *boneCount = 0;
+
+    uint32_t limit = model->m_shared->m_data->m_bones.m_count;
+
+    if (!limit) {
+        return 0;
+    }
+
+    if (!optimized) {
+        return M2NoteSectionBones(model, section, weighted, seen, boneIndex, boneCount, limit) && *boneCount;
+    }
+
+    M2SkinProfile* skin = model->m_shared->m_skinData;
+    M2BatchRange* range = &model->m_optGeo->m_batchRanges[section->m_skinSectionId];
+
+    for (uint32_t b = range->m_first; b <= range->m_last; ++b) {
+        uint16_t sectionIndex = skin->m_batches[b].m_skinSectionIndex;
+
+        if (!model->m_skinSections[sectionIndex]) {
+            continue;
+        }
+
+        if (!M2NoteSectionBones(model, &skin->m_skinSections[sectionIndex], weighted, seen, boneIndex, boneCount, limit)) {
+            return 0;
+        }
+    }
+
+    return *boneCount != 0;
+}
+
+static int32_t M2UploadBonesMatch(CM2Model* model, const M2VertexUploadSlot* slot) {
+    if (!slot->m_live || !slot->m_boneCount || !slot->m_boneIndex || !slot->m_bones || !model->m_boneMatrices) {
+        return 0;
+    }
+
+    uint32_t limit = model->m_shared->m_data->m_bones.m_count;
+    uint32_t bytes = slot->m_boneCount * sizeof(C44Matrix);
+    uint8_t* packed = static_cast<uint8_t*>(alloca(bytes));
+
+    for (uint32_t i = 0; i < slot->m_boneCount; ++i) {
+        uint16_t bone = slot->m_boneIndex[i];
+
+        if (bone >= limit) {
+            return 0;
+        }
+
+        memcpy(packed + i * sizeof(C44Matrix), &model->m_boneMatrices[bone], sizeof(C44Matrix));
+    }
+
+    return memcmp(packed, slot->m_bones, bytes) == 0;
+}
+
+static M2VertexUploadSlot* M2FindUploadSlot(M2VertexUploadCache* cache, M2SkinSection* section, int32_t optimized, int32_t texCoord, int32_t weighted, uint32_t stride) {
+    for (M2VertexUploadSlot* slot = cache->m_slots; slot; slot = slot->m_next) {
+        if (slot->m_section == section && slot->m_optimized == optimized && slot->m_texCoord == texCoord && slot->m_weighted == weighted && slot->m_stride == stride) {
+            return slot;
+        }
+    }
+
+    return nullptr;
+}
+
+static int32_t M2EnsureUploadBones(M2VertexUploadSlot* slot, const uint16_t* boneIndex, uint32_t boneCount) {
+    if (slot->m_boneCount == boneCount && slot->m_boneIndex && slot->m_bones && memcmp(slot->m_boneIndex, boneIndex, boneCount * sizeof(uint16_t)) == 0) {
+        return 1;
+    }
+
+    SMemFree(slot->m_boneIndex, __FILE__, __LINE__, 0);
+    SMemFree(slot->m_bones, __FILE__, __LINE__, 0);
+    slot->m_boneIndex = nullptr;
+    slot->m_bones = nullptr;
+    slot->m_boneCount = 0;
+    slot->m_live = 0;
+    slot->m_boneIndex = static_cast<uint16_t*>(SMemAlloc(boneCount * sizeof(uint16_t), __FILE__, __LINE__, 0));
+    slot->m_bones = static_cast<C44Matrix*>(SMemAlloc(boneCount * sizeof(C44Matrix), __FILE__, __LINE__, 0));
+
+    if (!slot->m_boneIndex || !slot->m_bones) {
+        SMemFree(slot->m_boneIndex, __FILE__, __LINE__, 0);
+        SMemFree(slot->m_bones, __FILE__, __LINE__, 0);
+        slot->m_boneIndex = nullptr;
+        slot->m_bones = nullptr;
+        return 0;
+    }
+
+    memcpy(slot->m_boneIndex, boneIndex, boneCount * sizeof(uint16_t));
+    slot->m_boneCount = boneCount;
+    return 1;
+}
+
+static uint32_t M2UploadFrame(const CM2Model* model) {
+    if (model->m_scene) {
+        return model->m_scene->m_frameStamp;
+    }
+
+    return model->m_frameStamp;
+}
+
+static int32_t M2PickUploadBuf(const M2VertexUploadSlot* slot, uint32_t frame) {
+    int32_t fallback = -1;
+
+    for (int32_t i = 0; i < 2; ++i) {
+        uint32_t drawn = slot->m_gpu[i].m_lastDrawFrame;
+
+        // ʕ •ᴥ•ʔ✿ Two frames in flight, so a buffer drawn last frame is still on the GPU ✿ ʕ •ᴥ•ʔ
+        if (drawn != 0xFFFFFFFF && (frame < drawn || frame - drawn < 2)) {
+            continue;
+        }
+
+        if (i != slot->m_active) {
+            return i;
+        }
+
+        fallback = i;
+    }
+
+    return fallback;
+}
+
+static int32_t M2EnsureUploadBuf(M2VertexUploadSlot* slot, uint32_t stride, uint32_t vertexCount) {
+    if (slot->m_pool && slot->m_gpu[0].m_buf && slot->m_gpu[1].m_buf && slot->m_stride == stride && slot->m_vertexCount == vertexCount) {
+        return 1;
+    }
+
+    if (g_theGxDevicePtr) {
+        if (slot->m_gpu[0].m_buf) {
+            g_theGxDevicePtr->BufDestroy(slot->m_gpu[0].m_buf);
+        }
+
+        if (slot->m_gpu[1].m_buf) {
+            g_theGxDevicePtr->BufDestroy(slot->m_gpu[1].m_buf);
+        }
+
+        if (slot->m_pool) {
+            g_theGxDevicePtr->PoolDestroy(slot->m_pool);
+            slot->m_pool = nullptr;
+        }
+    }
+
+    slot->m_live = 0;
+    slot->m_active = -1;
+    slot->m_gpu[0].m_buf = nullptr;
+    slot->m_gpu[1].m_buf = nullptr;
+    slot->m_gpu[0].m_lastDrawFrame = 0xFFFFFFFF;
+    slot->m_gpu[1].m_lastDrawFrame = 0xFFFFFFFF;
+    uint32_t bytes = stride * vertexCount;
+    slot->m_pool = g_theGxDevicePtr->PoolCreate(GxPoolTarget_Vertex, GxPoolUsage_Static, static_cast<int32_t>(bytes * 2), GxPoolHintBit_Unk1, "M2Skin");
+
+    if (!slot->m_pool) {
+        return 0;
+    }
+
+    slot->m_gpu[0].m_buf = g_theGxDevicePtr->BufCreate(slot->m_pool, stride, vertexCount, 0);
+    slot->m_gpu[1].m_buf = g_theGxDevicePtr->BufCreate(slot->m_pool, stride, vertexCount, bytes);
+
+    if (!slot->m_gpu[0].m_buf || !slot->m_gpu[1].m_buf) {
+        if (slot->m_gpu[0].m_buf && g_theGxDevicePtr) {
+            g_theGxDevicePtr->BufDestroy(slot->m_gpu[0].m_buf);
+        }
+
+        if (slot->m_gpu[1].m_buf && g_theGxDevicePtr) {
+            g_theGxDevicePtr->BufDestroy(slot->m_gpu[1].m_buf);
+        }
+
+        if (g_theGxDevicePtr) {
+            g_theGxDevicePtr->PoolDestroy(slot->m_pool);
+        }
+
+        slot->m_pool = nullptr;
+        return 0;
+    }
+
+    slot->m_stride = stride;
+    slot->m_vertexCount = vertexCount;
+    return 1;
+}
+
+static int32_t M2BeginVertexUpload(CM2Model* model, M2SkinSection* section, int32_t optimized, int32_t texCoord, uint32_t stride, int32_t weighted, EGxVertexBufferFormat format, CGxBuf*& buf, uint8_t*& locked) {
+    buf = nullptr;
+    locked = nullptr;
+
+    if (model->m_vertexUploads) {
+        model->m_vertexUploads->m_pending = nullptr;
+    }
+
+    if (!section || !section->m_vertexCount || !stride || !model->m_boneMatrices || !model->m_shared || !model->m_shared->m_data) {
+        return 0;
+    }
+
+    uint32_t visibleSig = 0;
+
+    if (!M2SectionVisibleSig(model, section, optimized, &visibleSig)) {
+        return 0;
+    }
+
+    M2VertexUploadCache* cache = model->m_vertexUploads;
+    M2VertexUploadSlot* slot = cache ? M2FindUploadSlot(cache, section, optimized, texCoord, weighted, stride) : nullptr;
+
+    CGxBuf* activeBuf = slot && slot->m_active >= 0 ? slot->m_gpu[slot->m_active].m_buf : nullptr;
+
+    if (activeBuf && slot->m_live && slot->m_visibleSig == visibleSig && slot->m_vertexCount == section->m_vertexCount && activeBuf->m_hasData && activeBuf->m_valid && activeBuf->m_pool && activeBuf->m_pool->m_apiSpecific && M2UploadBonesMatch(model, slot)) {
+        // ʕ •ᴥ•ʔ✿ Section, frame, and these bones: memcmp match reuses the buffer. A new frame still skips when the bones match ✿ ʕ •ᴥ•ʔ
+        slot->m_frame = model->m_frameStamp;
+        slot->m_gpu[slot->m_active].m_lastDrawFrame = M2UploadFrame(model);
+        GxPrimVertexPtr(activeBuf, format);
+        return 1;
+    }
+
+    int32_t haveBones = slot && slot->m_boneCount && slot->m_boneIndex && slot->m_visibleSig == visibleSig && slot->m_vertexCount == section->m_vertexCount;
+    uint16_t boneIndex[256];
+    uint32_t boneCount = 0;
+
+    if (!haveBones && !M2CollectUploadBones(model, section, optimized, weighted, boneIndex, &boneCount)) {
+        return 0;
+    }
+
+    if (!cache) {
+        cache = static_cast<M2VertexUploadCache*>(SMemAlloc(sizeof(M2VertexUploadCache), __FILE__, __LINE__, 0));
+
+        if (!cache) {
+            return 0;
+        }
+
+        cache->m_slots = nullptr;
+        cache->m_pending = nullptr;
+        model->m_vertexUploads = cache;
+    }
+
+    if (!slot) {
+        slot = static_cast<M2VertexUploadSlot*>(SMemAlloc(sizeof(M2VertexUploadSlot), __FILE__, __LINE__, 0));
+
+        if (!slot) {
+            return 0;
+        }
+
+        memset(slot, 0, sizeof(*slot));
+        slot->m_section = section;
+        slot->m_optimized = optimized;
+        slot->m_texCoord = texCoord;
+        slot->m_weighted = weighted;
+        slot->m_stride = stride;
+        slot->m_active = -1;
+        slot->m_gpu[0].m_lastDrawFrame = 0xFFFFFFFF;
+        slot->m_gpu[1].m_lastDrawFrame = 0xFFFFFFFF;
+        slot->m_next = cache->m_slots;
+        cache->m_slots = slot;
+    }
+
+    slot->m_visibleSig = visibleSig;
+
+    if (!haveBones && !M2EnsureUploadBones(slot, boneIndex, boneCount)) {
+        return 0;
+    }
+
+    if (!M2EnsureUploadBuf(slot, stride, section->m_vertexCount)) {
+        return 0;
+    }
+
+    int32_t write = M2PickUploadBuf(slot, M2UploadFrame(model));
+
+    if (write < 0) {
+        return 0;
+    }
+
+    if (write == slot->m_active) {
+        slot->m_live = 0;
+    }
+
+    locked = reinterpret_cast<uint8_t*>(g_theGxDevicePtr->BufLock(slot->m_gpu[write].m_buf));
+
+    if (!locked) {
+        return 0;
+    }
+
+    buf = slot->m_gpu[write].m_buf;
+    slot->m_write = write;
+    cache->m_pending = slot;
+    return 0;
+}
+
+static void M2CommitVertexUpload(CM2Model* model) {
+    M2VertexUploadCache* cache = model->m_vertexUploads;
+
+    if (!cache || !cache->m_pending) {
+        return;
+    }
+
+    M2VertexUploadSlot* slot = cache->m_pending;
+    cache->m_pending = nullptr;
+    CGxBuf* written = slot->m_write >= 0 ? slot->m_gpu[slot->m_write].m_buf : nullptr;
+
+    if (!written || !written->m_hasData || !written->m_valid || !slot->m_boneCount || !slot->m_bones || !model->m_boneMatrices) {
+        slot->m_live = 0;
+        return;
+    }
+
+    for (uint32_t i = 0; i < slot->m_boneCount; ++i) {
+        memcpy(&slot->m_bones[i], &model->m_boneMatrices[slot->m_boneIndex[i]], sizeof(C44Matrix));
+    }
+
+    slot->m_active = slot->m_write;
+    slot->m_gpu[slot->m_write].m_lastDrawFrame = M2UploadFrame(model);
+    slot->m_frame = model->m_frameStamp;
+    slot->m_live = 1;
+}
+
 // STATIC: 0x00A45570
 static const uint32_t s_ribbonBlendModes[] = { 0, 1, 2, 10, 3, 4, 5 };
 
@@ -1032,6 +1481,9 @@ void CM2Model::UnoptimizeVisibleGeometry() {
     if (!optGeo) {
         return;
     }
+
+    // ʕ •ᴥ•ʔ✿ Opt sections are about to be freed, so drop uploads that point at them ✿ ʕ •ᴥ•ʔ
+    M2ReleaseVertexUploads(this);
 
     if (optGeo->m_indexBuf) {
         CGxBuf* buf = optGeo->m_indexBuf;
@@ -2698,8 +3150,17 @@ int32_t CM2Model::SetIndices() {
 // VERIFY: d0a96bb9 manual
 // OFFSET: 0x00829160
 int32_t CM2Model::SetVertices(int32_t optimized, M2SkinSection* section, int32_t texCoord) {
-    CGxBuf* buf = g_theGxDevicePtr->BufStream(GxPoolTarget_Vertex, 32, section->m_vertexCount);
-    uint8_t* vertices = reinterpret_cast<uint8_t*>(g_theGxDevicePtr->BufLock(buf));
+    CGxBuf* buf = nullptr;
+    uint8_t* vertices = nullptr;
+
+    if (M2BeginVertexUpload(this, section, optimized, texCoord, 32, 0, GxVBF_PNT, buf, vertices)) {
+        return 1;
+    }
+
+    if (!vertices) {
+        buf = g_theGxDevicePtr->BufStream(GxPoolTarget_Vertex, 32, section->m_vertexCount);
+        vertices = reinterpret_cast<uint8_t*>(g_theGxDevicePtr->BufLock(buf));
+    }
 
     if (!vertices) {
         return 0;
@@ -2709,6 +3170,7 @@ int32_t CM2Model::SetVertices(int32_t optimized, M2SkinSection* section, int32_t
         g_theGxDevicePtr->BufUnlock(buf, 0);
         buf->m_hasData = 1;
         GxPrimVertexPtr(buf, GxVBF_PNT);
+        M2CommitVertexUpload(this);
         return 1;
     }
 
@@ -2732,6 +3194,7 @@ int32_t CM2Model::SetVertices(int32_t optimized, M2SkinSection* section, int32_t
     g_theGxDevicePtr->BufUnlock(buf, 0);
     buf->m_hasData = 1;
     GxPrimVertexPtr(buf, GxVBF_PNT);
+    M2CommitVertexUpload(this);
     return 1;
 }
 
@@ -3874,6 +4337,7 @@ CM2Model::CM2Model() {
     this->m_hitTestNext = nullptr;
     this->m_hitTestOwner = nullptr;
     this->m_hitTestGroup = 0;
+    this->m_vertexUploads = nullptr;
 
     if (!CM2Model::s_transformVertices[0]) {
         CM2Model::s_transformVertices[0] = CM2Model::TransformVertices_cpp;
@@ -4524,8 +4988,21 @@ void CM2Model::AnimateTextureTransformsMT() {
 // VERIFY: bbe25130 manual
 // OFFSET: 0x0082D910
 int32_t CM2Model::SetVerticesMultiSample(int32_t optimized, M2SkinSection* section) {
-    CGxBuf* buf = g_theGxDevicePtr->BufStream(GxPoolTarget_Vertex, sizeof(M2VertexPNT2), section->m_vertexCount);
-    M2VertexPNT2* vertices = reinterpret_cast<M2VertexPNT2*>(g_theGxDevicePtr->BufLock(buf));
+    CGxBuf* buf = nullptr;
+    uint8_t* bytes = nullptr;
+
+    if (M2BeginVertexUpload(this, section, optimized, -1, sizeof(M2VertexPNT2), 1, GxVBF_PNT2, buf, bytes)) {
+        return 1;
+    }
+
+    M2VertexPNT2* vertices = nullptr;
+
+    if (bytes) {
+        vertices = reinterpret_cast<M2VertexPNT2*>(bytes);
+    } else {
+        buf = g_theGxDevicePtr->BufStream(GxPoolTarget_Vertex, sizeof(M2VertexPNT2), section->m_vertexCount);
+        vertices = reinterpret_cast<M2VertexPNT2*>(g_theGxDevicePtr->BufLock(buf));
+    }
 
     if (!vertices) {
         return 0;
@@ -4551,6 +5028,7 @@ int32_t CM2Model::SetVerticesMultiSample(int32_t optimized, M2SkinSection* secti
     g_theGxDevicePtr->BufUnlock(buf, 0);
     buf->m_hasData = 1;
     GxPrimVertexPtr(buf, GxVBF_PNT2);
+    M2CommitVertexUpload(this);
     return 1;
 }
 
@@ -6702,6 +7180,7 @@ CM2Model::~CM2Model() {
         delete call;
     }
 
+    M2ReleaseVertexUploads(this);
     this->UnoptimizeVisibleGeometry();
     SIMD::FreeA16(this->m_boneMatrices);
     SIMD::FreeA16(this->m_textureMatrices);

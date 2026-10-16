@@ -18,6 +18,13 @@ class CShaderEffect;
 class CTexture;
 class SFileImpl;
 
+struct M2RigidSection {
+    CGxPool* m_vertexPool;
+    CGxBuf* m_vertexBuf;
+    CGxPool* m_indexPool;
+    CGxBuf* m_indexBuf;
+};
+
 class TextureComboList {
     public:
     /* 0000 */ uint32_t m_count;
@@ -72,6 +79,10 @@ class CM2Shared {
     /* 0198 */ uint16_t m_billboardBoneCount;
     /* 019C */ uint32_t m_lastUsedTime;
     /* 01A0 */ TSLink<CM2Shared> m_updateLink;
+    // ʕ •ᴥ•ʔ✿ Rigid meshes and the doubled instance-pool capacity. Both die with this model ✿ ʕ •ᴥ•ʔ
+    M2RigidSection* m_rigidSections;
+    uint32_t m_rigidSectionCount;
+    uint32_t m_instanceCapacity;
 
     static void LoadFailedCallback(void* param);
     static void LoadSucceededCallback(void* param);
@@ -89,6 +100,8 @@ class CM2Shared {
     void ConvertTextureCombosToValues();
     void ConvertTextureValuesToCombos();
     void DestroyBuffers();
+    void DestroyRigidMeshes();
+    void FitInstanceBuffers();
     int32_t FinishLoading();
     int32_t FinishLoadingLowPrioritySequence(uint32_t sequenceIndex, uint8_t* buffer, uint32_t size);
     int32_t FinishLoadingLowPrioritySequence(uint32_t sequenceIndex, CAsyncObject* object);
@@ -102,6 +115,7 @@ class CM2Shared {
     CM2SequenceLoad* LoadLowPrioritySequence(uint16_t sequenceIndex);
     int32_t LoadSkinProfile(uint32_t profile);
     void Release();
+    M2RigidSection* RigidSection(uint32_t sectionIndex);
     int32_t SetIndices();
     int32_t SetVertices(uint32_t texCoordIndex);
     void SubstituteSimpleShaders();

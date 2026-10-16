@@ -23,6 +23,7 @@ class CCamera;
 class CFacet;
 struct CGxBuf;
 struct CGxPool;
+struct M2VertexUploadCache;
 class CImVector;
 class CM2Lighting;
 class CM2Model;
@@ -221,6 +222,7 @@ class CM2Model {
     /* 02E4 */ uint32_t m_hitTestGroup;
     /* 02E8 */ uint32_t m_handle;
     /* 02EC */ uint32_t unused_02EC;
+    /* 02F0 */ M2VertexUploadCache* m_vertexUploads;
 
     static void (*s_transformVertices[5])(CM2Model*, M2SkinSection*, uint8_t*, int32_t);
     static TSGrowableArray<M2ModelCallback> s_sequenceCallbacks;

@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <cstring>
 #include <new>
-#include <unordered_map>
 #include <vector>
 #if defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64)
 #include "ThirdParty/sse2neon/sse2neon.h"
@@ -1709,16 +1708,6 @@ struct SkinKey {
     }
 };
 
-struct SkinKeyHash {
-    size_t operator()(const SkinKey& key) const {
-        size_t hash = reinterpret_cast<uintptr_t>(key.model);
-        hash ^= reinterpret_cast<uintptr_t>(key.section) + 0x9e3779b97f4a7c15ull + (hash << 6) + (hash >> 2);
-        hash ^= static_cast<size_t>(key.texCoord) << 1;
-        hash ^= static_cast<size_t>(key.optimized);
-        return hash;
-    }
-};
-
 struct SkinJob {
     CM2Model* model;
     M2SkinSection* section;
@@ -1728,11 +1717,95 @@ struct SkinJob {
     uint32_t bytes;
 };
 
+struct SkinHashEnt {
+    uint32_t stamp;
+    uint32_t job;
+};
+
 static std::vector<SkinJob> s_skinJobs;
 static std::vector<uint8_t> s_skinBytes;
-static std::unordered_map<SkinKey, uint32_t, SkinKeyHash> s_skinLookup;
+// -- ʕ •ᴥ•ʔ✿ Stamp bumps each frame so the bucket storage stays put ✿ ʕ •ᴥ•ʔ
+static std::vector<SkinHashEnt> s_skinHash;
+static uint32_t s_skinStamp = 0;
 static uint32_t s_skinUsed = 0;
 static int32_t s_skinReady = 0;
+
+static size_t SkinKeyHashValue(const SkinKey& key) {
+    size_t hash = reinterpret_cast<uintptr_t>(key.model);
+    hash ^= reinterpret_cast<uintptr_t>(key.section) + 0x9e3779b97f4a7c15ull + (hash << 6) + (hash >> 2);
+    hash ^= static_cast<size_t>(key.texCoord) << 1;
+    hash ^= static_cast<size_t>(key.optimized);
+    return hash;
+}
+
+static void SkinLookupClear() {
+    ++s_skinStamp;
+
+    if (s_skinStamp != 0u) {
+        return;
+    }
+
+    if (!s_skinHash.empty()) {
+        memset(s_skinHash.data(), 0, s_skinHash.size() * sizeof(SkinHashEnt));
+    }
+
+    s_skinStamp = 1u;
+}
+
+static void SkinRehash(size_t buckets) {
+    s_skinHash.assign(buckets, SkinHashEnt{ 0u, 0u });
+    size_t mask = buckets - 1u;
+
+    for (size_t j = 0; j < s_skinJobs.size(); ++j) {
+        SkinKey key = { s_skinJobs[j].model, s_skinJobs[j].section, s_skinJobs[j].texCoord, s_skinJobs[j].optimized };
+        size_t i = SkinKeyHashValue(key) & mask;
+
+        while (s_skinHash[i].stamp == s_skinStamp) {
+            i = (i + 1u) & mask;
+        }
+
+        s_skinHash[i].stamp = s_skinStamp;
+        s_skinHash[i].job = static_cast<uint32_t>(j);
+    }
+}
+
+static uint32_t SkinLookupJob(const SkinKey& key) {
+    if (s_skinHash.empty()) {
+        return 0xffffffffu;
+    }
+
+    size_t mask = s_skinHash.size() - 1u;
+    size_t i = SkinKeyHashValue(key) & mask;
+
+    while (s_skinHash[i].stamp == s_skinStamp) {
+        const SkinJob& slot = s_skinJobs[s_skinHash[i].job];
+        SkinKey slotKey = { slot.model, slot.section, slot.texCoord, slot.optimized };
+
+        if (slotKey == key) {
+            return s_skinHash[i].job;
+        }
+
+        i = (i + 1u) & mask;
+    }
+
+    return 0xffffffffu;
+}
+
+static void SkinLookupAdd(const SkinKey& key, uint32_t job) {
+    if (s_skinHash.size() < (s_skinJobs.size() + 1u) * 2u) {
+        SkinRehash(s_skinHash.empty() ? 16u : s_skinHash.size() * 2u);
+    }
+
+    size_t mask = s_skinHash.size() - 1u;
+    size_t i = SkinKeyHashValue(key) & mask;
+
+    while (s_skinHash[i].stamp == s_skinStamp) {
+        i = (i + 1u) & mask;
+    }
+
+    s_skinHash[i].stamp = s_skinStamp;
+    s_skinHash[i].job = job;
+}
 
 static uint32_t SkinVertexCount(CM2Model* model, M2SkinSection* section, int32_t optimized) {
     if (!optimized) {
@@ -1800,7 +1873,7 @@ void M2SkinPrepare(CM2Scene* scene) {
     Job::Wait();
     s_skinReady = 0;
     s_skinJobs.clear();
-    s_skinLookup.clear();
+    SkinLookupClear();
     s_skinUsed = 0;
 
     if (!scene) {
@@ -1831,7 +1904,7 @@ void M2SkinPrepare(CM2Scene* scene) {
         int32_t texCoord = element->m_type == 2 ? 0 : ((element->m_batch->m_shader & 0x4000) ? 1 : 0);
         SkinKey key = { element->m_model, element->m_skinSection, texCoord, optimized };
 
-        if (s_skinLookup.find(key) != s_skinLookup.end()) {
+        if (SkinLookupJob(key) != 0xffffffffu) {
             continue;
         }
 
@@ -1843,7 +1916,7 @@ void M2SkinPrepare(CM2Scene* scene) {
 
         uint32_t offset = (s_skinUsed + 15u) & ~15u;
         SkinJob job = { element->m_model, element->m_skinSection, texCoord, optimized, offset, verts * 32u };
-        s_skinLookup.emplace(key, static_cast<uint32_t>(s_skinJobs.size()));
+        SkinLookupAdd(key, static_cast<uint32_t>(s_skinJobs.size()));
         s_skinJobs.push_back(job);
         s_skinUsed = offset + job.bytes;
     }
@@ -1873,13 +1946,13 @@ int32_t M2SkinTake(CM2Model* model, M2SkinSection* section, int32_t texCoord, in
     }
 
     SkinKey key = { model, section, texCoord, optimized };
-    auto found = s_skinLookup.find(key);
+    uint32_t jobIndex = SkinLookupJob(key);
 
-    if (found == s_skinLookup.end()) {
+    if (jobIndex == 0xffffffffu) {
         return 0;
     }
 
-    const SkinJob& job = s_skinJobs[found->second];
+    const SkinJob& job = s_skinJobs[jobIndex];
     memcpy(dst, s_skinBytes.data() + job.offset, job.bytes);
     return 1;
 }

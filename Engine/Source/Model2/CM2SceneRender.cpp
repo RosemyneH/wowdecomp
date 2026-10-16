@@ -645,46 +645,84 @@ static int32_t DrawRigidDoodads(M2Data* data, CM2Shared* shared, M2SkinSection* 
         worlds.push_back(elements[indices[n]].m_model->m_boneMatrices[bone]);
     }
 
-    CGxBuf* vertices = g_theGxDevicePtr->BufStream(GxPoolTarget_Vertex, 32, section->m_vertexCount);
-    float* out = reinterpret_cast<float*>(g_theGxDevicePtr->BufLock(vertices));
+    // ʕ •ᴥ•ʔ✿ The rigid mesh is static. Keep it on the shared model and only upload the bone matrices ✿ ʕ •ᴥ•ʔ
+    M2RigidSection* rigid = shared->RigidSection(sectionIndex);
 
-    if (!out) {
-        return 0;
-    }
-
-    for (uint32_t i = 0; i < section->m_vertexCount; ++i) {
-        out[0] = verts[i].m_position.x;
-        out[1] = verts[i].m_position.y;
-        out[2] = verts[i].m_position.z;
-        out[3] = verts[i].m_normal.x;
-        out[4] = verts[i].m_normal.y;
-        out[5] = verts[i].m_normal.z;
-        out[6] = verts[i].m_texcoord[0].x;
-        out[7] = verts[i].m_texcoord[0].y;
-        out += 8;
-    }
-
-    g_theGxDevicePtr->BufUnlock(vertices, 0);
-    vertices->m_hasData = 1;
-    GxPrimVertexPtr(vertices, GxVBF_PNT);
-
-    CGxBuf* indexBuf = g_theGxDevicePtr->BufStream(GxPoolTarget_Index, 2, section->m_indexCount);
-    uint16_t* indexOut = reinterpret_cast<uint16_t*>(g_theGxDevicePtr->BufLock(indexBuf));
-
-    if (!indexOut) {
+    if (!rigid) {
         return 0;
     }
 
     uint32_t indexStart = shared->m_skinData->m_skinSections[sectionIndex].m_indexStart;
     uint16_t bias = static_cast<uint16_t>(-static_cast<int32_t>(section->m_vertexStart));
 
-    for (uint32_t j = 0; j < section->m_indexCount; ++j) {
-        indexOut[j] = static_cast<uint16_t>(bias + shared->m_skinData->m_indices[indexStart + j]);
+    if (!rigid->m_vertexBuf || !rigid->m_vertexBuf->m_hasData || !rigid->m_vertexBuf->m_valid) {
+        if (!rigid->m_vertexBuf) {
+            if (!rigid->m_vertexPool) {
+                rigid->m_vertexPool = g_theGxDevicePtr->PoolCreate(GxPoolTarget_Vertex, GxPoolUsage_Static, 32 * section->m_vertexCount, GxPoolHintBit_Unk0, shared->m_fileNameWithoutPath);
+            }
+
+            if (rigid->m_vertexPool) {
+                rigid->m_vertexBuf = g_theGxDevicePtr->BufCreate(rigid->m_vertexPool, 32, section->m_vertexCount, 0);
+            }
+
+            if (!rigid->m_vertexBuf) {
+                return 0;
+            }
+        }
+
+        float* out = reinterpret_cast<float*>(g_theGxDevicePtr->BufLock(rigid->m_vertexBuf));
+
+        if (!out) {
+            return 0;
+        }
+
+        for (uint32_t i = 0; i < section->m_vertexCount; ++i) {
+            out[0] = verts[i].m_position.x;
+            out[1] = verts[i].m_position.y;
+            out[2] = verts[i].m_position.z;
+            out[3] = verts[i].m_normal.x;
+            out[4] = verts[i].m_normal.y;
+            out[5] = verts[i].m_normal.z;
+            out[6] = verts[i].m_texcoord[0].x;
+            out[7] = verts[i].m_texcoord[0].y;
+            out += 8;
+        }
+
+        g_theGxDevicePtr->BufUnlock(rigid->m_vertexBuf, 0);
+        rigid->m_vertexBuf->m_hasData = 1;
     }
 
-    g_theGxDevicePtr->BufUnlock(indexBuf, 0);
-    indexBuf->m_hasData = 1;
-    g_theGxDevicePtr->PrimIndexPtr(indexBuf);
+    if (!rigid->m_indexBuf || !rigid->m_indexBuf->m_hasData || !rigid->m_indexBuf->m_valid) {
+        if (!rigid->m_indexBuf) {
+            if (!rigid->m_indexPool) {
+                rigid->m_indexPool = g_theGxDevicePtr->PoolCreate(GxPoolTarget_Index, GxPoolUsage_Static, sizeof(uint16_t) * section->m_indexCount, GxPoolHintBit_Unk0, shared->m_fileNameWithoutPath);
+            }
+
+            if (rigid->m_indexPool) {
+                rigid->m_indexBuf = g_theGxDevicePtr->BufCreate(rigid->m_indexPool, sizeof(uint16_t), section->m_indexCount, 0);
+            }
+
+            if (!rigid->m_indexBuf) {
+                return 0;
+            }
+        }
+
+        uint16_t* indexOut = reinterpret_cast<uint16_t*>(g_theGxDevicePtr->BufLock(rigid->m_indexBuf));
+
+        if (!indexOut) {
+            return 0;
+        }
+
+        for (uint32_t j = 0; j < section->m_indexCount; ++j) {
+            indexOut[j] = static_cast<uint16_t>(bias + shared->m_skinData->m_indices[indexStart + j]);
+        }
+
+        g_theGxDevicePtr->BufUnlock(rigid->m_indexBuf, 0);
+        rigid->m_indexBuf->m_hasData = 1;
+    }
+
+    GxPrimVertexPtr(rigid->m_vertexBuf, GxVBF_PNT);
+    g_theGxDevicePtr->PrimIndexPtr(rigid->m_indexBuf);
 
     CGxBatch batch;
     batch.m_primType = GxPrim_Triangles;
