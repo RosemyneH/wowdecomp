@@ -1494,6 +1494,12 @@ void WasmAddonClient_LoadWorldAddOns() {
     if (realm && *realm && character && *character)
         charDir = "WTF/Account/" + account + "/" + realm + "/" + character + "/WasmAddOns";
     s_manager.SetStorageDirs(accountDir, charDir);
+    // ʕ •ᴥ•ʔ✿ The addon list owns the checkbox. A disabled package does not start ✿ ʕ •ᴥ•ʔ
+    s_manager.SetPackageFilter([](const std::string& directory) {
+        std::string name = fs::path(directory).filename().string();
+        const char* character = ClientServices::GetCharacterName();
+        return GetAddOnEnableState(name.c_str(), character ? character : "", true) != 0;
+    });
     s_manager.ScanAndLoadAll();
 }
 void WasmAddonClient_UnloadWorldAddOns() {

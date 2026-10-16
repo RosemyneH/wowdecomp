@@ -1064,10 +1064,12 @@ bool LoadAddOn(const char* name, bool demandLoad, CStatus* status) {
         char tocFile[260];
         SStrPrintf(tocFile, sizeof(tocFile), "%s.toc", addonName);
         FormatAddonFile(path, sizeof(path), addonName, tocFile);
-        lua_State* L = FrameScript_GetContext();
-        lua_createtable(L, 0, 0);
-        FrameXML_CreateFrames(path, addonName, &md5, &addonStatus);
-        lua_settop(L, -2);
+        if (SFile::FileExists(path)) {
+            lua_State* L = FrameScript_GetContext();
+            lua_createtable(L, 0, 0);
+            FrameXML_CreateFrames(path, addonName, &md5, &addonStatus);
+            lua_settop(L, -2);
+        }
 
         FormatAddonFile(path, sizeof(path), addonName, "Bindings.xml");
 
@@ -1418,13 +1420,50 @@ static int32_t EnumAddOnsDisk(OS_FILE_DATA& data, void* param) {
     return 0;
 }
 
+static void TomlValue(const char* text, const char* key, char* out, size_t outLen) {
+    out[0] = '\0';
+    const char* hit = strstr(text, key);
+    if (!hit) return;
+    const char* quote = strchr(hit, '"');
+    if (!quote) return;
+    quote++;
+    const char* end = strchr(quote, '"');
+    if (!end || (size_t)(end - quote) >= outLen) return;
+    memcpy(out, quote, (size_t)(end - quote));
+    out[end - quote] = '\0';
+}
+
+static void RegisterWasmPackage(const char* name) {
+    if (s_addons.Ptr(name)) return;
+    s_addonFileRoot[name] = "Interface\\WasmAddOns";
+    UIADDON* addon = s_addons.New(name, 0, 0);
+    addon->m_interfaceVersion = 30300;
+    addon->SetMetadata("Title", name);
+    char path[260];
+    SStrPrintf(path, sizeof(path), "Interface\\WasmAddOns\\%s\\addon.toml", name);
+    void* data = nullptr;
+    uint32_t size = 0;
+    if (!SFile::ReadFile(nullptr, path, &data, &size, 1, 1, nullptr) || !data) return;
+    std::string text(static_cast<const char*>(data), size);
+    SFile::Unload(data);
+    char value[256];
+    TomlValue(text.c_str(), "name =", value, sizeof(value));
+    if (value[0]) addon->SetMetadata("Title", value);
+    TomlValue(text.c_str(), "version =", value, sizeof(value));
+    if (value[0]) addon->SetMetadata("Version", value);
+}
+
 static int32_t EnumWasmPackages(OS_FILE_DATA& data, void* param) {
     if (!(data.flags & 0x10) || data.fileName[0] == '.') return 0;
     char path[260];
     SStrPrintf(path, sizeof(path), "Interface\\WasmAddOns\\%s\\%s.toc", data.fileName, data.fileName);
-    if (!SFile::FileExists(path)) return 0;
-    s_addonFileRoot[data.fileName] = "Interface\\WasmAddOns";
-    LoadAddOnInfo(data.fileName);
+    if (SFile::FileExists(path)) {
+        s_addonFileRoot[data.fileName] = "Interface\\WasmAddOns";
+        LoadAddOnInfo(data.fileName);
+        return 0;
+    }
+    SStrPrintf(path, sizeof(path), "Interface\\WasmAddOns\\%s\\addon.toml", data.fileName);
+    if (SFile::FileExists(path)) RegisterWasmPackage(data.fileName);
     return 0;
 }
 

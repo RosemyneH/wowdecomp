@@ -18,6 +18,7 @@ public:
     const std::string& RootDir() const { return m_rootDir; }
 
     size_t ScanAndLoadAll();
+    void SetPackageFilter(std::function<bool(const std::string& directory)> filter) { m_packageFilter = std::move(filter); }
     bool LoadAddon(const std::string& directory);
     bool UnloadAddon(const std::string& addonId);
     void DispatchEvent(const std::string& eventName, const std::vector<uint8_t>& payload = {});
@@ -80,6 +81,7 @@ private:
     static std::vector<uint8_t> SerializeInventory(const std::vector<InventoryItem>& items);
 
     std::string m_rootDir;
+    std::function<bool(const std::string& directory)> m_packageFilter;
     std::string m_permissionFile;
     bool m_permissionStoreLocked = false;
     std::string m_storageAccountDir;

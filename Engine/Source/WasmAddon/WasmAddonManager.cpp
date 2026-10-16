@@ -947,7 +947,10 @@ size_t WasmAddonManager::ScanAndLoadAll() {
     for (auto& entry : fs::directory_iterator(m_rootDir, ec))
         if (entry.is_directory() && fs::exists(entry.path() / "addon.toml")) dirs.push_back(entry.path());
     std::sort(dirs.begin(), dirs.end());
-    for (auto& dir : dirs) if (LoadAddon(dir.string())) loaded++;
+    for (auto& dir : dirs) {
+        if (m_packageFilter && !m_packageFilter(dir.string())) continue;
+        if (LoadAddon(dir.string())) loaded++;
+    }
     return loaded;
 }
 
