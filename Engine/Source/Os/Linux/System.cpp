@@ -1,6 +1,7 @@
 #if defined(__x86_64__) || defined(__i386__)
 #include <cpuid.h>
 #endif
+#include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -418,8 +419,13 @@ int32_t OsLaunchURL(const char* url) {
         return 0;
     }
 
-    int status;
-    return waitpid(pid, &status, 0) == pid && WIFEXITED(status) && WEXITSTATUS(status) == 0;
+    int status = 0;
+    pid_t waited;
+    do {
+        waited = waitpid(pid, &status, 0);
+    } while (waited == -1 && errno == EINTR);
+
+    return waited == pid && WIFEXITED(status) && WEXITSTATUS(status) == 0;
 }
 
 // OFFSET: 0x0086B9A0
