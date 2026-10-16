@@ -1,3 +1,4 @@
+#include <atomic>
 #include <cstdint>
 #include <ctime>
 #include <mach/mach_time.h>
@@ -55,7 +56,15 @@ uint64_t OsGetAsyncTimeClocks() {
         return mach_absolute_time();
     }
 
-    return clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW_APPROX) / 1000000;
+    static std::atomic<uint64_t> lastGood;
+    uint64_t nanos = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW_APPROX);
+    if (!nanos) {
+        return lastGood.load(std::memory_order_relaxed);
+    }
+
+    uint64_t millis = nanos / 1000000;
+    lastGood.store(millis, std::memory_order_relaxed);
+    return millis;
 }
 
 // OFFSET: 0x0086ADC0
