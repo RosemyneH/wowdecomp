@@ -469,6 +469,11 @@ void SetPortraitTexture(CSimpleTexture* texture, const char* fileName) {
     }
 
     portrait = s_itemPortraits.New(fileName, 0, 0);
+
+    if (!portrait) {
+        return;
+    }
+
     CBLPFile blp;
     char blpName[260];
     SStrPrintf(blpName, sizeof(blpName), "%s.blp", fileName);
