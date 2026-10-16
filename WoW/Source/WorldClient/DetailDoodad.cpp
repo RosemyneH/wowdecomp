@@ -1,6 +1,7 @@
 #include "DetailDoodad.h"
 #include <cmath>
 #include "Engine/Source/Base/Handle.h"
+#include "Engine/Source/Base/Job/JobSystem.h"
 #include "Engine/Source/Base/ObjectAlloc.h"
 #include "Engine/Source/Gx/CGxBuf.h"
 #include "Engine/Source/Gx/CGxMatrixStack.h"
@@ -28,6 +29,7 @@
 #include "WoW/Source/WorldClient/MapChunk.h"
 #include "WoW/Source/WorldClient/MapLight.h"
 #include "WoW/Source/WorldClient/MapObjGroup.h"
+#include "WoW/Source/WorldClient/SortTable.h"
 #include "WoW/Source/WorldClient/Types.h"
 #include "WoW/Source/WorldClient/World.h"
 
@@ -42,6 +44,9 @@ static uint32_t unk_D1C4DC;
 
 // STATIC: 0x00D1C4E8
 static uint32_t unk_D1C4E8;
+
+static int32_t s_vertexColorRgba;
+static int32_t s_jobHeld;
 
 // STATIC: 0x00D1C504
 TSGrowableArray<CGxBuf*> CDetailDoodad::s_freeGxBufs;
@@ -128,6 +133,15 @@ static void AcquireBuffers(uint32_t vertexCount, CGxBuf** vertexBuf, uint32_t in
     (void)indexCount;
 }
 
+static void AcquireJobPool() {
+    if (s_jobHeld) {
+        return;
+    }
+
+    Job::Init();
+    s_jobHeld = 1;
+}
+
 // VERIFY: c83ff776 auto
 // OFFSET: 0x007B0D40
 int32_t CDetailDoodadInst::HasBatches() {
@@ -196,18 +210,12 @@ void CDetailDoodad::UpdateAlphaRampTexture(EGxTexCommand command, uint32_t width
 
 // VERIFY: c5224796 manual
 // OFFSET: 0x007B12B0
-void CDetailDoodadInstBatch::FillIndices() {
-    uint16_t* indices = reinterpret_cast<uint16_t*>(g_theGxDevicePtr->BufLock(this->m_indexBuf));
+void CDetailDoodadInstBatch::FillIndices(uint16_t* indices) {
     uint32_t index = 0;
     uint32_t base = 0;
 
     for (uint32_t i = 0; i < this->m_adds.Count(); i++) {
         CM2Model* model = CDetailDoodad::s_doodadList[this->m_adds[i].m_doodadId]->m_model;
-
-        if (!(model->m_fFlags & 1)) {
-            model->WaitForLoad(nullptr);
-        }
-
         M2SkinProfile* skin = model->m_shared->m_skinData;
 
         for (uint32_t j = 0; j < skin->m_indices.m_count; j++) {
@@ -216,10 +224,6 @@ void CDetailDoodadInstBatch::FillIndices() {
 
         base += skin->m_vertices.m_count;
     }
-
-    CGxBuf* buf = this->m_indexBuf;
-    g_theGxDevicePtr->BufUnlock(buf, 0);
-    buf->m_hasData = 1;
 }
 
 // VERIFY: 039ae168 manual
@@ -333,10 +337,7 @@ void CDetailDoodadData::ModelLoadedCallback(CM2Model* model, void* arg) {
 
 // VERIFY: 69235ba2 manual
 // OFFSET: 0x007B1B50
-void CDetailDoodadInstBatch::FillVertices() {
-    CGxBuf* buf = this->m_vertexBuf;
-    CGxVertexPNCT* vertex = reinterpret_cast<CGxVertexPNCT*>(g_theGxDevicePtr->BufLock(buf));
-
+void CDetailDoodadInstBatch::FillVertices(CGxVertexPNCT* vertex) {
     C3Vector axis(0.0f, 0.0f, 1.0f);
     C33Matrix basis(1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f);
     uint8_t built = 0;
@@ -353,18 +354,7 @@ void CDetailDoodadInstBatch::FillVertices() {
         CDetailDoodadInstAdd& add = this->m_adds[i];
         CDetailDoodadData* data = CDetailDoodad::s_doodadList[add.m_doodadId];
         CM2Model* model = data->m_model;
-
-        if (!(model->m_fFlags & 1)) {
-            model->WaitForLoad(nullptr);
-        }
-
         M2Data* m2Data = model->m_shared->m_data;
-        model = data->m_model;
-
-        if (!(model->m_fFlags & 1)) {
-            model->WaitForLoad(nullptr);
-        }
-
         M2SkinProfile* skin = model->m_shared->m_skinData;
         uint32_t vertexCount = skin->m_vertices.m_count;
         CImVector color = add.m_color;
@@ -377,7 +367,7 @@ void CDetailDoodadInstBatch::FillVertices() {
             color.a = 0xFF;
         }
 
-        if (g_theGxDevicePtr->Caps().m_colorFormat == GxCF_rgba) {
+        if (s_vertexColorRgba) {
             CImVector swapped;
             swapped.a = color.a;
             swapped.g = color.g;
@@ -433,10 +423,6 @@ void CDetailDoodadInstBatch::FillVertices() {
             }
         }
     }
-
-    buf = this->m_vertexBuf;
-    g_theGxDevicePtr->BufUnlock(buf, 0);
-    buf->m_hasData = 1;
 }
 
 // VERIFY: a2c3ec0e manual
@@ -515,6 +501,8 @@ void CDetailDoodad::Initialize() {
         g_theGxDevicePtr->ShaderCreate(CDetailDoodad::s_vertexShader, GxSh_Vertex, "Shaders\\Vertex", "DetailDoodad", sizeof(CDetailDoodad::s_vertexShader) / sizeof(CDetailDoodad::s_vertexShader[0]));
         g_theGxDevicePtr->ShaderCreate(CDetailDoodad::s_pixelShader, GxSh_Pixel, "Shaders\\Pixel", "DetailDoodad", sizeof(CDetailDoodad::s_pixelShader) / sizeof(CDetailDoodad::s_pixelShader[0]));
     }
+
+    AcquireJobPool();
 }
 
 // VERIFY: 2ff521ae auto
@@ -593,6 +581,172 @@ void CDetailDoodad::UpdatePools() {
     CDetailDoodad::s_bPoolsDirty = 0;
 }
 
+static void LoadBatchModels(CDetailDoodadInstBatch& batch) {
+    for (uint32_t i = 0; i < batch.m_adds.Count(); i++) {
+        CM2Model* model = CDetailDoodad::s_doodadList[batch.m_adds[i].m_doodadId]->m_model;
+
+        if (!(model->m_fFlags & 1)) {
+            model->WaitForLoad(nullptr);
+        }
+    }
+}
+
+static void UseVertexColorOrder() {
+    s_vertexColorRgba = g_theGxDevicePtr->Caps().m_colorFormat == GxCF_rgba;
+}
+
+struct MappedBatch {
+    CDetailDoodadInstBatch* batch;
+    CGxVertexPNCT* vertices;
+    uint16_t* indices;
+    CGxBuf* vertexBuf;
+    CGxBuf* indexBuf;
+};
+
+static const uint32_t kGrassSlots = 512;
+static MappedBatch s_fills[kGrassSlots];
+static uint32_t s_fillCount;
+
+static void FillMappedRange(Job::Range range, void* user) {
+    MappedBatch* fills = static_cast<MappedBatch*>(user);
+
+    for (uint32_t i = range.begin; i < range.end; i++) {
+        MappedBatch& fill = fills[i];
+
+        if (fill.vertices) {
+            fill.batch->FillVertices(fill.vertices);
+        }
+
+        if (fill.indices) {
+            fill.batch->FillIndices(fill.indices);
+        }
+    }
+}
+
+static void FillVerticesOnMain(CDetailDoodadInstBatch& batch) {
+    UseVertexColorOrder();
+    LoadBatchModels(batch);
+    CGxVertexPNCT* vertices = reinterpret_cast<CGxVertexPNCT*>(g_theGxDevicePtr->BufLock(batch.m_vertexBuf));
+
+    if (vertices) {
+        batch.FillVertices(vertices);
+    }
+
+    g_theGxDevicePtr->BufUnlock(batch.m_vertexBuf, 0);
+
+    if (vertices) {
+        batch.m_vertexBuf->m_hasData = 1;
+    }
+}
+
+static void FillIndicesOnMain(CDetailDoodadInstBatch& batch) {
+    LoadBatchModels(batch);
+    uint16_t* indices = reinterpret_cast<uint16_t*>(g_theGxDevicePtr->BufLock(batch.m_indexBuf));
+
+    if (indices) {
+        batch.FillIndices(indices);
+    }
+
+    g_theGxDevicePtr->BufUnlock(batch.m_indexBuf, 0);
+
+    if (indices) {
+        batch.m_indexBuf->m_hasData = 1;
+    }
+}
+
+static void QueueBatchFill(CDetailDoodadInstBatch& batch) {
+    if (!batch.m_texture) {
+        return;
+    }
+
+    if (!TextureGetGxTex(batch.m_texture, 0, nullptr)) {
+        return;
+    }
+
+    if (!batch.m_vertexBuf || batch.m_vertexBuf->m_pool->m_usage == GxPoolUsage_Stream) {
+        AcquireBuffers(batch.m_vertexCount, &batch.m_vertexBuf, batch.m_indexCount, &batch.m_indexBuf);
+    }
+
+    if (!batch.m_vertexBuf || !batch.m_indexBuf) {
+        return;
+    }
+
+    int32_t needVertices = !batch.m_vertexBuf->m_hasData || !batch.m_vertexBuf->m_valid;
+    int32_t needIndices = !batch.m_indexBuf->m_hasData || !batch.m_indexBuf->m_valid;
+
+    if (!needVertices && !needIndices) {
+        return;
+    }
+
+    if (s_fillCount >= kGrassSlots) {
+        return;
+    }
+
+    LoadBatchModels(batch);
+
+    CGxVertexPNCT* vertices = nullptr;
+    uint16_t* indices = nullptr;
+
+    if (needVertices) {
+        vertices = reinterpret_cast<CGxVertexPNCT*>(g_theGxDevicePtr->BufLock(batch.m_vertexBuf));
+
+        if (!vertices) {
+            g_theGxDevicePtr->BufUnlock(batch.m_vertexBuf, 0);
+        }
+    }
+
+    if (needIndices) {
+        indices = reinterpret_cast<uint16_t*>(g_theGxDevicePtr->BufLock(batch.m_indexBuf));
+
+        if (!indices) {
+            g_theGxDevicePtr->BufUnlock(batch.m_indexBuf, 0);
+        }
+    }
+
+    if (!vertices && !indices) {
+        return;
+    }
+
+    MappedBatch& fill = s_fills[s_fillCount];
+    fill.batch = &batch;
+    fill.vertices = vertices;
+    fill.indices = indices;
+    fill.vertexBuf = vertices ? batch.m_vertexBuf : nullptr;
+    fill.indexBuf = indices ? batch.m_indexBuf : nullptr;
+    s_fillCount += 1;
+}
+
+static void PrepareGrassFills() {
+    AcquireJobPool();
+    UseVertexColorOrder();
+    s_fillCount = 0;
+
+    for (CDetailDoodadInst* inst = CWorldScene::sortTable.m_detailDoodadInstList.Head(); inst; inst = CWorldScene::sortTable.m_detailDoodadInstList.Next(inst)) {
+        for (uint32_t i = 0; i < 4; i++) {
+            QueueBatchFill(inst->m_batches[i]);
+        }
+    }
+
+    if (s_fillCount > 0) {
+        // -- ʕ •ᴥ•ʔ✿ Main thread already locked these. Workers write only their own mapped batches ✿ ʕ •ᴥ•ʔ
+        Job::ParallelFor(s_fillCount, FillMappedRange, s_fills);
+    }
+
+    for (uint32_t i = 0; i < s_fillCount; i++) {
+        MappedBatch& fill = s_fills[i];
+
+        if (fill.vertexBuf) {
+            g_theGxDevicePtr->BufUnlock(fill.vertexBuf, 0);
+            fill.vertexBuf->m_hasData = 1;
+        }
+
+        if (fill.indexBuf) {
+            g_theGxDevicePtr->BufUnlock(fill.indexBuf, 0);
+            fill.indexBuf->m_hasData = 1;
+        }
+    }
+}
+
 // VERIFY: 564457f1 manual
 // OFFSET: 0x007B2D30
 int32_t CDetailDoodad::InitializeRenderState() {
@@ -606,6 +760,7 @@ int32_t CDetailDoodad::InitializeRenderState() {
         g_theGxDevicePtr->RsSet(GxRs_PixelShader, CDetailDoodad::s_pixelShader[4 * ((CWorld::enables2 >> 1) & 1) + shadow]);
         CDetailDoodad::InitializeShaderConstants();
         CShadowCache::SetShadowMapDetailDoodad();
+        PrepareGrassFills();
         return 1;
     }
 
@@ -629,6 +784,7 @@ int32_t CDetailDoodad::InitializeRenderState() {
     stack.m_flags[stack.m_level] &= ~CGxMatrixStack::F_Identity;
     stack.m_mtx[stack.m_level] = matrix;
 
+    PrepareGrassFills();
     return 0;
 }
 
@@ -734,13 +890,13 @@ void CDetailDoodadInstBatch::Draw() {
     }
 
     if (!this->m_vertexBuf->m_hasData || !this->m_vertexBuf->m_valid) {
-        this->FillVertices();
+        FillVerticesOnMain(*this);
     }
 
     GxPrimVertexPtr(this->m_vertexBuf, GxVBF_PNCT);
 
     if (!this->m_indexBuf->m_hasData || !this->m_indexBuf->m_valid) {
-        this->FillIndices();
+        FillIndicesOnMain(*this);
     }
 
     g_theGxDevicePtr->PrimIndexPtr(this->m_indexBuf);
