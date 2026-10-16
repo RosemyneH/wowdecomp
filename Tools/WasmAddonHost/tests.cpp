@@ -80,6 +80,15 @@ struct MockHost final : IWasmHostServices {
     bool UiGetText(uint64_t, std::string& out) override { out = ""; return true; }
     bool GetUnitNames(const std::vector<std::string>& tokens, std::vector<std::pair<uint32_t, std::string>>& out) override {
         out.clear(); for (size_t i = 0; i < tokens.size(); i++) out.push_back({(uint32_t)i, "U" + std::to_string(i)}); return true; }
+    std::vector<std::string> luaExec;
+    std::vector<std::string> luaAddons;
+    int ExecuteLua(const std::string&, const std::string&, const std::string& source, std::string&) override { luaExec.push_back(source); return 0; }
+    int LoadLuaPath(const std::string&, const std::string&, const std::string& path, std::string&) override { luaExec.push_back(path); return 0; }
+    int LoadNamedAddon(const std::string& name, std::string& error) override {
+        if (name == "Missing") { error = "not found"; return ErrNotFound; }
+        luaAddons.push_back(name);
+        return 0;
+    }
 };
 
 static InspectorInfo Find(WasmAddonManager& m, const std::string& id) {
@@ -681,6 +690,18 @@ int main(int argc, char** argv) {
         ui.Number((double)edit);
         m.DispatchEvent("WASM_UI", ui.Finish());
         CHECK(m.CallExportInt("test.lua-parity", "wow_ui_event", uiEvent) && uiEvent == 1);
+        m.Shutdown();
+    }
+
+    {   // ʕ •ᴥ•ʔ✿ lua.full runs client Lua and can name an Interface/AddOns addon ✿ ʕ •ᴥ•ʔ
+        MockHost host; WasmAddonManager m; m.Initialize(tmp.string(), &host);
+        CHECK(m.LoadAddon((dist / "lua-full").string()));
+        CHECK(Find(m, "test.lua-full").state == AddonState::Running);
+        int64_t exec = -1, missing = -1;
+        CHECK(m.CallExportInt("test.lua-full", "wow_exec", exec) && exec == 0);
+        CHECK(m.CallExportInt("test.lua-full", "wow_missing", missing) && missing == ErrNotFound);
+        CHECK(!host.luaExec.empty() && host.luaExec[0].find("SlashCmdList") != std::string::npos);
+        CHECK((Find(m, "test.lua-full").grantedPermissions & PermLuaFull) != 0);
         m.Shutdown();
     }
 

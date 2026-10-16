@@ -62,6 +62,16 @@ wasmdeny <addon-id> <permission>
 
 `ui_bind` attaches `click`, `enter`, `leave`, `escape`, `enter_pressed`, or `text_changed`. Subscribe to `WASM_UI`. In this client, `OnClick` exists on buttons. Edit boxes receive enter, escape, and text-changed. `ui_get_text` reads an edit box. `units::names` returns display names when `units.read` is granted.
 
+## Full Lua
+
+Declare `lua.full = true`. The host then runs Lua in the client state:
+
+- `lua_exec(source)` runs a snippet against the full 3.3.5 API
+- `lua_load("Addon.toc")` runs a toc, lua, or xml file shipped inside the WASM package
+- `lua_load_addon("ElvUI")` runs an addon already installed under `Interface/AddOns`, including XML and saved variables
+
+`port.elvui` and `port.wim` load the real addons that way. The guide is [docs/lua-wasm.md](../../docs/lua-wasm.md).
+
 ## Ports
 
 Clean-room layouts, not the upstream Lua addons:

@@ -424,6 +424,12 @@ int32_t FrameXML_RegisterDefault() {
 
 // VERIFY: 0ad0cd1b manual
 // OFFSET: 0x00813EE0
+int32_t FrameXML_ProcessFileNoHash(const char* filename, const char* wrapper, CStatus* status) {
+    MD5_CTX md5;
+    MD5Init(&md5);
+    return FrameXML_ProcessFile(filename, wrapper, &md5, status);
+}
+
 int32_t FrameXML_ProcessFile(const char* filename, const char* wrapper, MD5_CTX* md5, CStatus* status) {
     char cleanPath[260];
 

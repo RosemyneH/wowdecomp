@@ -240,6 +240,18 @@ wasmgrant port.wim storage.write
 
 Without `units.read`, the ElvUI frames still show and the numbers stay empty. Without `chat.read`, WIM still loads and whisper text stays redacted. `chat.send` only queues the confirm dialog. Storage grants are what let WIM keep history on the character.
 
+## Full Lua
+
+`lua.full` is granted when the manifest declares it. It is the client Lua state, not a second API.
+
+| Call | What it runs |
+|---|---|
+| `lua_exec(source)` | That source, with every global the 3.3.5 client already has (`CreateFrame`, `UnitName`, `SendChatMessage`, `hooksecurefunc`, slash lists). Up to 1 MB. |
+| `lua_load("ElvUI.toc")` | A `.toc`, `.lua`, or `.xml` file inside the WASM package directory. A toc runs its files in order. XML is parsed by the client `FrameXML` loader, so templates and `Script file=` includes work when the package sits under the client directory. |
+| `lua_load_addon("ElvUI")` | The normal `Interface/AddOns` loader: toc, XML, Lua, bindings, and saved variables. A second call is a no-op if `IsAddOnLoaded` is already true. |
+
+`port.elvui` and `port.wim` are these loaders. Drop the real `ElvUI.toc` tree into `Interface/WasmAddOns/elvui/`, or install `Interface/AddOns/ElvUI` and `Interface/AddOns/WIM` and let the package call `lua_load_addon`. The addon that runs is the upstream Lua, on whatever 3.3.5 server that client is logged into.
+
 ## Intentionally not Lua
 
 - No secure action buttons, no `SecureActionButtonTemplate`, no macro text, no `CastSpellByName` from the guest.

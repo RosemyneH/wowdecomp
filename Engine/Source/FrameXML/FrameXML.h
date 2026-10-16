@@ -50,6 +50,7 @@ int32_t FrameXML_GetDebugLevel();
 int32_t FrameXML_GuessNumFiles(const char* toc);
 XMLTree* FrameXML_LoadXML(const char* filename, MD5_CTX* md5, CStatus* status);
 int32_t FrameXML_ProcessFile(const char* filename, const char* wrapper, MD5_CTX* md5, CStatus* status);
+int32_t FrameXML_ProcessFileNoHash(const char* filename, const char* wrapper, CStatus* status);
 int32_t FrameXML_RegisterDefault();
 int32_t FrameXML_RegisterFactory(const char* name, CSimpleFrame* (*factory)(CSimpleFrame* parent), bool unique);
 void FrameXML_RegisterLoadProgressCallback(void (*callback)(float progress, void* param), void* param, uint32_t total);

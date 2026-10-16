@@ -53,6 +53,7 @@ enum Permission : uint32_t {
     PermProcessExecute = 1u << 12,
     PermProfilingRead = 1u << 13,
     PermCombatRead = 1u << 14,
+    PermLuaFull = 1u << 15,
 };
 const char* PermissionName(Permission perm);
 bool PermissionFromName(const std::string& name, Permission& out);
@@ -274,6 +275,10 @@ public:
     virtual bool UiBind(uint64_t hostHandle, int32_t guestHandle, const std::string& event) { (void)hostHandle; (void)guestHandle; (void)event; return false; }
     virtual bool UiGetText(uint64_t hostHandle, std::string& out) { (void)hostHandle; (void)out; return false; }
     virtual bool GetUnitNames(const std::vector<std::string>& tokens, std::vector<std::pair<uint32_t, std::string>>& out) { (void)tokens; (void)out; return false; }
+    // ʕ •ᴥ•ʔ✿ Runs in the client Lua state, so the guest can call any 3.3.5 API the server’s client exposes ✿ ʕ •ᴥ•ʔ
+    virtual int ExecuteLua(const std::string& addonId, const std::string& chunkName, const std::string& source, std::string& error) { (void)addonId; (void)chunkName; (void)source; (void)error; return ErrUnavailable; }
+    virtual int LoadLuaPath(const std::string& addonId, const std::string& addonRoot, const std::string& absolutePath, std::string& error) { (void)addonId; (void)addonRoot; (void)absolutePath; (void)error; return ErrUnavailable; }
+    virtual int LoadNamedAddon(const std::string& name, std::string& error) { (void)name; (void)error; return ErrUnavailable; }
     virtual void UiDestroy(uint64_t hostHandle) { (void)hostHandle; }
     virtual void Log(const std::string& message) { (void)message; }
     virtual void ConfirmShow(const ConfirmRequest& request) { (void)request; }
@@ -285,7 +290,7 @@ public:
 
 enum class HostFn : uint32_t {
     ApiVersion = 0, Ping, ChatPrint, EventSubscribe, InventorySnapshot, UiCreate, UiSetText, PerfQuery,
-    StorageGet, StorageLen, StorageKeys, StorageUsage, StorageSet, StorageDelete, UnitSnapshot, AuctionSnapshot, ChatSendRequest, AuctionBidRequest, UiSpawn, UiStyle, UiBind, UiGetText, UnitNames, Count
+    StorageGet, StorageLen, StorageKeys, StorageUsage, StorageSet, StorageDelete, UnitSnapshot, AuctionSnapshot, ChatSendRequest, AuctionBidRequest, UiSpawn, UiStyle, UiBind, UiGetText, UnitNames, LuaExec, LuaLoad, LuaLoadAddon, Count
 };
 static_assert((uint32_t)HostFn::Count <= 32, "hostCallsByFn array too small");
 

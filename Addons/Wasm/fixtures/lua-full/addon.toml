@@ -1,0 +1,9 @@
+[addon]
+id = "test.lua-full"
+name = "Lua Full Fixture"
+version = "0.1.0"
+api_version = "2"
+
+[permissions]
+lua.full = true
+chat.print = true

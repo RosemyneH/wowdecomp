@@ -1,15 +1,13 @@
 [addon]
 id = "port.elvui"
 name = "ElvUI"
-version = "0.1.0"
+version = "0.2.0"
 author = "wowdecomp"
 api_version = "2"
 
 [permissions]
-ui.create = true
-units.read = true
+lua.full = true
 chat.print = true
-profiling.read = true
 
 [limits]
 memory_mb = 32

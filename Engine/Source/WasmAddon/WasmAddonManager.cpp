@@ -390,6 +390,28 @@ static int32_t ReadI32(const uint8_t* p) { return (int32_t)GetU32(p); }
 
 static bool InRange(int32_t v, int32_t lo, int32_t hi) { return v >= lo && v <= hi; }
 
+// ʕ •ᴥ•ʔ✿ Lua files stay inside the addon directory. No absolute paths and no parent segments ✿ ʕ •ᴥ•ʔ
+static bool AddonRelativeFile(const std::string& root, const std::string& rel, std::string& out, std::string& error) {
+    if (root.empty() || rel.empty() || rel.size() > 240) { error = "bad path"; return false; }
+    if (rel[0] == '/' || rel[0] == '\\' || rel.find(':') != std::string::npos || rel.find("..") != std::string::npos) {
+        error = "path rejected";
+        return false;
+    }
+    fs::path base = fs::path(root).lexically_normal();
+    fs::path file = (base / rel).lexically_normal();
+    std::string baseS = base.string();
+    std::string fileS = file.string();
+    if (fileS.size() <= baseS.size() || fileS.compare(0, baseS.size(), baseS) != 0 ||
+        (fileS[baseS.size()] != '/' && fileS[baseS.size()] != '\\')) {
+        error = "path escapes addon";
+        return false;
+    }
+    std::error_code ec;
+    if (!fs::is_regular_file(file, ec)) { error = "missing file"; return false; }
+    out = fileS;
+    return true;
+}
+
 bool WasmAddonManager::HasPermission(Addon& addon, Permission perm, HostFn) {
     if (addon.info.grantedPermissions & perm) return true;
     addon.info.stats.denials++;
@@ -761,6 +783,45 @@ int64_t WasmAddonManager::HandleHostCall(Addon& addon, IWasmInstance& instance, 
             if (!instance.WriteMemory((uint32_t)args[2], bytes.data(), (uint32_t)bytes.size())) return ErrInvalidMemory;
             RecordActivity(addon.info.manifest.id, "units.names", std::to_string(records.size()) + " names");
             return (int64_t)bytes.size();
+        }
+        case HostFn::LuaExec: {
+            if (!HasPermission(addon, PermLuaFull, fn)) return ErrPermissionDenied;
+            if (args.size() < 2 || args[0] < 0 || args[1] < 0 || args[1] > 1024 * 1024) return ErrInvalidArgument;
+            std::string source;
+            if (!instance.ReadMemory((uint32_t)args[0], (uint32_t)args[1], source)) return ErrInvalidMemory;
+            if (!m_host) return ErrUnavailable;
+            std::string error;
+            int rc = m_host->ExecuteLua(addon.info.manifest.id, "@wasm/" + addon.info.manifest.id, source, error);
+            if (rc != 0) { RecordError(addon, error.empty() ? "lua_exec failed" : error); return rc; }
+            RecordActivity(addon.info.manifest.id, "lua.exec", std::to_string(source.size()) + " bytes");
+            return Ok;
+        }
+        case HostFn::LuaLoad: {
+            if (!HasPermission(addon, PermLuaFull, fn)) return ErrPermissionDenied;
+            std::string rel;
+            if (!readString(0, 1, rel)) return ErrInvalidMemory;
+            std::string full, error;
+            if (!AddonRelativeFile(addon.info.directory, rel, full, error)) return error == "missing file" ? ErrNotFound : ErrInvalidArgument;
+            if (!m_host) return ErrUnavailable;
+            int rc = m_host->LoadLuaPath(addon.info.manifest.id, addon.info.directory, full, error);
+            if (rc != 0) { RecordError(addon, error.empty() ? "lua_load failed" : error); return rc; }
+            RecordActivity(addon.info.manifest.id, "lua.load", rel);
+            return Ok;
+        }
+        case HostFn::LuaLoadAddon: {
+            if (!HasPermission(addon, PermLuaFull, fn)) return ErrPermissionDenied;
+            std::string name;
+            if (!readString(0, 1, name)) return ErrInvalidMemory;
+            if (name.empty() || name.size() > 64) return ErrInvalidArgument;
+            for (char c : name)
+                if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-'))
+                    return ErrInvalidArgument;
+            if (!m_host) return ErrUnavailable;
+            std::string error;
+            int rc = m_host->LoadNamedAddon(name, error);
+            if (rc != 0) { RecordError(addon, error.empty() ? "lua_load_addon failed" : error); return rc; }
+            RecordActivity(addon.info.manifest.id, "lua.addon", name);
+            return Ok;
         }
         case HostFn::AuctionSnapshot: {
             if (!HasPermission(addon, PermAuctionRead, fn)) return ErrPermissionDenied;

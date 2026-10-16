@@ -49,6 +49,18 @@ struct ConsoleHost final : IWasmHostServices {
         std::cout << "[ui] get_text " << handle << "\n";
         return true;
     }
+    int ExecuteLua(const std::string&, const std::string&, const std::string& source, std::string&) override {
+        std::cout << "[lua] exec " << source.size() << " bytes\n";
+        return 0;
+    }
+    int LoadLuaPath(const std::string&, const std::string&, const std::string& path, std::string&) override {
+        std::cout << "[lua] load " << path << "\n";
+        return 0;
+    }
+    int LoadNamedAddon(const std::string& name, std::string&) override {
+        std::cout << "[lua] addon " << name << "\n";
+        return 0;
+    }
     bool GetUnitNames(const std::vector<std::string>& tokens, std::vector<std::pair<uint32_t, std::string>>& out) override {
         out.clear();
         for (size_t i = 0; i < tokens.size(); i++) out.emplace_back((uint32_t)i, "Unit" + std::to_string(i));

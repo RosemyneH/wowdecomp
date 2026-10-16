@@ -1,4 +1,6 @@
 #include "WoW/Source/WasmAddonClient.h"
+#include "Engine/Source/Base/Status.h"
+#include "WoW/Source/Ui/AddOns.h"
 #include "WoW/Source/Ui/AuctionHouse.h"
 #include "WoW/Source/Ui/ChatFrame.h"
 #include "WoW/Source/Ui/ScriptEvents.h"
@@ -7,7 +9,9 @@
 #include "Engine/Source/ConsoleBase/ConsoleCommand.h"
 #include "Engine/Source/ConsoleBase/IConsole.h"
 #include "Engine/Source/ConsoleBase/Types.h"
+#include "Engine/Source/Storm/Source/MD5.h"
 #include "Engine/Source/FrameScript/FrameScript.h"
+#include "Engine/Source/FrameXML/FrameXML.h"
 #include "Engine/Source/Os/TimeManager.h"
 #include "Engine/Source/WasmAddon/WasmAddonManager.h"
 #include "Engine/Source/WasmAddon/WasmConfirm.h"
@@ -17,9 +21,15 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <map>
+#include <set>
+
+bool LoadAddOn(const char* name, bool demandLoad, CStatus* status);
 
 namespace {
+
+namespace fs = std::filesystem;
 
 struct TaintScope {
     const char* saved;
@@ -123,6 +133,36 @@ public:
         ctx.tokens = &tokens;
         ctx.names = &out;
         return lua_cpcall(L, &TrampUnitNames, &ctx) == 0 && ctx.ok;
+    }
+
+    int ExecuteLua(const std::string& addonId, const std::string& chunkName, const std::string& source, std::string& error) override {
+        return RunLua(addonId, chunkName, source.data(), source.size(), error);
+    }
+
+    int LoadLuaPath(const std::string& addonId, const std::string& addonRoot, const std::string& absolutePath, std::string& error) override {
+        std::set<std::string> seen;
+        return LoadLuaFile(addonId, addonRoot, absolutePath, error, seen, 0);
+    }
+
+    int LoadNamedAddon(const std::string& name, std::string& error) override {
+        lua_State* L = FrameScript_GetContext();
+        if (!L) { error = "lua state unavailable"; return WasmAddon::ErrUnavailable; }
+        int top = lua_gettop(L);
+        lua_getfield(L, LUA_GLOBALSINDEX, "IsAddOnLoaded");
+        if (lua_isfunction(L, -1)) {
+            lua_pushstring(L, name.c_str());
+            if (lua_pcall(L, 1, 1, 0) == 0 && lua_toboolean(L, -1)) {
+                lua_settop(L, top);
+                return WasmAddon::Ok;
+            }
+        }
+        lua_settop(L, top);
+        CStatus status;
+        if (!LoadAddOn(name.c_str(), true, &status)) {
+            error = "addon not found or not loadable: " + name;
+            return WasmAddon::ErrNotFound;
+        }
+        return WasmAddon::Ok;
     }
 
     void UiDestroy(uint64_t handle) override {
@@ -800,6 +840,98 @@ private:
         }
         lua_settop(L, top);
         return true;
+    }
+
+    static bool EndsWithFold(const std::string& path, const char* ext) {
+        size_t n = std::strlen(ext);
+        if (path.size() < n) return false;
+        for (size_t i = 0; i < n; i++) {
+            char a = path[path.size() - n + i];
+            char b = ext[i];
+            if (a >= 'A' && a <= 'Z') a = (char)(a - 'A' + 'a');
+            if (b >= 'A' && b <= 'Z') b = (char)(b - 'A' + 'a');
+            if (a != b) return false;
+        }
+        return true;
+    }
+
+    static bool InsideRoot(const std::string& root, const fs::path& file) {
+        fs::path base = fs::path(root).lexically_normal();
+        fs::path norm = file.lexically_normal();
+        std::string baseS = base.string();
+        std::string fileS = norm.string();
+        return fileS.size() > baseS.size() && fileS.compare(0, baseS.size(), baseS) == 0 &&
+            (fileS[baseS.size()] == '/' || fileS[baseS.size()] == '\\');
+    }
+
+    static std::string GameRelative(const fs::path& file) {
+        std::error_code ec;
+        fs::path rel = fs::relative(file, fs::current_path(), ec);
+        if (ec) return {};
+        std::string text = rel.generic_string();
+        for (char& c : text) if (c == '/') c = '\\';
+        return text;
+    }
+
+    int RunLua(const std::string& addonId, const std::string& chunkName, const char* source, size_t length, std::string& error) {
+        lua_State* L = FrameScript_GetContext();
+        if (!L) { error = "lua state unavailable"; return WasmAddon::ErrUnavailable; }
+        if (length > 8u * 1024u * 1024u) { error = "lua source too large"; return WasmAddon::ErrLimitExceeded; }
+        TaintScope taint(addonId);
+        int top = lua_gettop(L);
+        if (luaL_loadbuffer(L, source, length, chunkName.c_str())) {
+            error = lua_tostring(L, -1) ? lua_tostring(L, -1) : "lua load error";
+            lua_settop(L, top);
+            return WasmAddon::ErrGeneric;
+        }
+        if (lua_pcall(L, 0, 0, 0)) {
+            error = lua_tostring(L, -1) ? lua_tostring(L, -1) : "lua runtime error";
+            lua_settop(L, top);
+            return WasmAddon::ErrGeneric;
+        }
+        lua_settop(L, top);
+        return WasmAddon::Ok;
+    }
+
+    int LoadLuaFile(const std::string& addonId, const std::string& addonRoot, const std::string& absolutePath, std::string& error, std::set<std::string>& seen, int depth) {
+        if (depth > 8) { error = "toc include depth exceeded"; return WasmAddon::ErrLimitExceeded; }
+        fs::path file = fs::path(absolutePath).lexically_normal();
+        if (!InsideRoot(addonRoot, file)) { error = "path escapes addon"; return WasmAddon::ErrInvalidArgument; }
+        std::string key = file.string();
+        if (!seen.insert(key).second) return WasmAddon::Ok;
+        std::error_code ec;
+        if (!fs::is_regular_file(file, ec)) { error = "missing file " + key; return WasmAddon::ErrNotFound; }
+        if (EndsWithFold(key, ".toc")) {
+            std::ifstream in(file);
+            if (!in) { error = "couldn't open toc"; return WasmAddon::ErrNotFound; }
+            std::string line;
+            while (std::getline(in, line)) {
+                if (!line.empty() && line.back() == '\r') line.pop_back();
+                size_t start = line.find_first_not_of(" \t");
+                if (start == std::string::npos || line[start] == '#') continue;
+                size_t end = line.find_last_not_of(" \t");
+                std::string name = line.substr(start, end - start + 1);
+                fs::path child = (file.parent_path() / name).lexically_normal();
+                int rc = LoadLuaFile(addonId, addonRoot, child.string(), error, seen, depth + 1);
+                if (rc != WasmAddon::Ok) return rc;
+            }
+            return WasmAddon::Ok;
+        }
+        if (EndsWithFold(key, ".xml")) {
+            std::string rel = GameRelative(file);
+            if (rel.empty()) { error = "xml must live under the client directory: " + key; return WasmAddon::ErrUnavailable; }
+            TaintScope taint(addonId);
+            CStatus status;
+            if (!FrameXML_ProcessFileNoHash(rel.c_str(), addonId.c_str(), &status)) {
+                error = "xml failed: " + rel;
+                return WasmAddon::ErrGeneric;
+            }
+            return WasmAddon::Ok;
+        }
+        std::ifstream in(file, std::ios::binary);
+        if (!in) { error = "couldn't open " + key; return WasmAddon::ErrNotFound; }
+        std::string source((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        return RunLua(addonId, "@" + key, source.data(), source.size(), error);
     }
 
     bool DoUiSetText(lua_State* L, uint64_t handle, const std::string& text) {
