@@ -13,6 +13,9 @@ project(wowdecomp CXX C)
 if (MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
     add_compile_options(/utf-8)
+    if (CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|aarch64")
+        add_compile_options(/Zc:preprocessor)
+    endif ()
 endif ()
 
 # ʕ •ᴥ•ʔ✿ Vendored C/C++ uses 'register', an error under Clang C++17 (MSVC/GCC only warn) ✿ ʕ •ᴥ•ʔ
