@@ -1,0 +1,5 @@
+[addon]
+id = "test.unknown-import"
+name = "Unknown Import Fixture"
+version = "0.1.0"
+api_version = "1"

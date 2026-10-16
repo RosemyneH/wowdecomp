@@ -1,0 +1,7 @@
+[addon]
+id = "test.bad-pointer"
+name = "Bad Pointer Fixture"
+version = "0.1.0"
+api_version = "1"
+[permissions]
+chat.print = true

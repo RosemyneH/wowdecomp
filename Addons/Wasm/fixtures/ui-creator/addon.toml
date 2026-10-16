@@ -1,0 +1,7 @@
+[addon]
+id = "test.ui-creator"
+name = "UI Creator Fixture"
+version = "0.1.0"
+api_version = "1"
+[permissions]
+ui.create = true

@@ -1,0 +1,7 @@
+[addon]
+id = "test.loop"
+name = "Loop Fixture"
+version = "0.1.0"
+api_version = "1"
+[limits]
+fuel = 1000000

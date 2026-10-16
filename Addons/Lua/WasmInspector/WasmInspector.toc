@@ -1,0 +1,5 @@
+## Interface: 30300
+## Title: WASM Addon Inspector
+## Notes: Shows WASM addon identity, permissions, runtime stats and activity.
+## Author: wowdecomp
+WasmInspector.lua

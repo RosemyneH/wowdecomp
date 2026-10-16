@@ -1,0 +1,8 @@
+[addon]
+id = "test.confirm"
+name = "Confirm Fixture"
+version = "0.1.0"
+api_version = "2"
+[permissions]
+chat.send = true
+auction.write = true

@@ -1,0 +1,8 @@
+[addon]
+id = "test.unit-auction"
+name = "Unit Auction Fixture"
+version = "0.1.0"
+api_version = "1"
+[permissions]
+units.read = true
+auction.read = true

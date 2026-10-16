@@ -1,0 +1,5 @@
+[addon]
+id = "test.payload"
+name = "Payload Fixture"
+version = "0.1.0"
+api_version = "2"

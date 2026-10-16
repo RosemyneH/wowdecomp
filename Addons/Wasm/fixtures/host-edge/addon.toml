@@ -1,0 +1,11 @@
+[addon]
+id = "test.host-edge"
+name = "Host Edge Fixture"
+version = "0.1.0"
+api_version = "1"
+[permissions]
+profiling.read = true
+storage.read = true
+storage.write = true
+[limits]
+max_events = 2

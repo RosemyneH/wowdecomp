@@ -1,0 +1,10 @@
+[addon]
+id = "test.storage"
+name = "Storage Fixture"
+version = "0.1.0"
+api_version = "1"
+[permissions]
+storage.read = true
+storage.write = true
+[limits]
+storage_kb = 1

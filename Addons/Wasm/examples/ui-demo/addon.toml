@@ -1,0 +1,14 @@
+[addon]
+id = "example.ui"
+name = "UI Demo"
+version = "0.1.0"
+author = "wowdecomp"
+api_version = "1"
+
+[permissions]
+ui.create = true
+chat.print = true
+profiling.read = true
+
+[limits]
+memory_mb = 32

@@ -1,0 +1,8 @@
+[package]
+name = "wow-addon-sdk"
+version = "0.1.0"
+edition = "2021"
+description = "Typed Rust SDK for the wowdecomp WASM addon host ABI v1"
+license = "MIT"
+
+[dependencies]
