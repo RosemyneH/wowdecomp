@@ -245,24 +245,59 @@ int32_t CGxDeviceVulkan::ICreateDeviceObjects() {
     VkDescriptorSetLayoutCreateInfo setInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
     setInfo.bindingCount = 3;
     setInfo.pBindings = bindings;
-    vkCreateDescriptorSetLayout(device, &setInfo, nullptr, &this->m_setLayout);
+
+    VkDescriptorSetLayout setLayout = VK_NULL_HANDLE;
+    if (vkCreateDescriptorSetLayout(device, &setInfo, nullptr, &setLayout) != VK_SUCCESS) {
+        return 0;
+    }
 
     VkPipelineLayoutCreateInfo layoutInfo = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
     layoutInfo.setLayoutCount = 1;
-    layoutInfo.pSetLayouts = &this->m_setLayout;
-    vkCreatePipelineLayout(device, &layoutInfo, nullptr, &this->m_pipelineLayout);
+    layoutInfo.pSetLayouts = &setLayout;
+
+    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+    if (vkCreatePipelineLayout(device, &layoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+        vkDestroyDescriptorSetLayout(device, setLayout, nullptr);
+        return 0;
+    }
 
     VkPipelineCacheCreateInfo cacheInfo = { VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO };
-    vkCreatePipelineCache(device, &cacheInfo, nullptr, &this->m_pipelineCache);
+    VkPipelineCache pipelineCache = VK_NULL_HANDLE;
+    if (vkCreatePipelineCache(device, &cacheInfo, nullptr, &pipelineCache) != VK_SUCCESS) {
+        vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+        vkDestroyDescriptorSetLayout(device, setLayout, nullptr);
+        return 0;
+    }
 
     VkShaderModuleCreateInfo moduleInfo = { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
     moduleInfo.codeSize = sizeof(s_ffpVertexCode);
     moduleInfo.pCode = s_ffpVertexCode;
-    vkCreateShaderModule(device, &moduleInfo, nullptr, &this->m_vertexModule);
+
+    VkShaderModule vertexModule = VK_NULL_HANDLE;
+    if (vkCreateShaderModule(device, &moduleInfo, nullptr, &vertexModule) != VK_SUCCESS) {
+        vkDestroyPipelineCache(device, pipelineCache, nullptr);
+        vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+        vkDestroyDescriptorSetLayout(device, setLayout, nullptr);
+        return 0;
+    }
 
     moduleInfo.codeSize = sizeof(s_ffpFragmentCode);
     moduleInfo.pCode = s_ffpFragmentCode;
-    vkCreateShaderModule(device, &moduleInfo, nullptr, &this->m_fragmentModule);
+
+    VkShaderModule fragmentModule = VK_NULL_HANDLE;
+    if (vkCreateShaderModule(device, &moduleInfo, nullptr, &fragmentModule) != VK_SUCCESS) {
+        vkDestroyShaderModule(device, vertexModule, nullptr);
+        vkDestroyPipelineCache(device, pipelineCache, nullptr);
+        vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+        vkDestroyDescriptorSetLayout(device, setLayout, nullptr);
+        return 0;
+    }
+
+    this->m_setLayout = setLayout;
+    this->m_pipelineLayout = pipelineLayout;
+    this->m_pipelineCache = pipelineCache;
+    this->m_vertexModule = vertexModule;
+    this->m_fragmentModule = fragmentModule;
 
     if (!this->m_vk.CreateBuffer(32, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, this->m_dummyVertices)) {
         return 0;
@@ -271,7 +306,7 @@ int32_t CGxDeviceVulkan::ICreateDeviceObjects() {
     memset(this->m_dummyVertices.mapped, 0, 16);
     memset(this->m_dummyVertices.mapped + 16, 0xFF, 16);
 
-    return this->m_setLayout && this->m_pipelineLayout && this->m_vertexModule && this->m_fragmentModule;
+    return 1;
 }
 
 void CGxDeviceVulkan::IDestroyVulkan() {
