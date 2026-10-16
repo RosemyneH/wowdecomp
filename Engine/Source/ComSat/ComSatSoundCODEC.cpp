@@ -211,7 +211,11 @@ void ComSat::Sound::CODECIPMR6000::GenerateSilence(uint8_t* pcm, uint32_t size) 
 // VERIFY: 5d9ec280 auto
 // OFFSET: 0x00886CA0
 ComSat::Sound::CODEC* ComSat::Sound::CODEC::Create(const ComSat::Initialization& init, ComSat::Allocator& allocator) {
-    ComSat::Sound::CODEC* codec = new (allocator.Alloc(sizeof(ComSat::Sound::CODECIPMR6000))) ComSat::Sound::CODECIPMR6000(init, allocator);
+    void* memory = allocator.Alloc(sizeof(ComSat::Sound::CODECIPMR6000));
+    if (!memory) {
+        return nullptr;
+    }
+    ComSat::Sound::CODEC* codec = new (memory) ComSat::Sound::CODECIPMR6000(init, allocator);
     codec->Init();
     return codec;
 }
