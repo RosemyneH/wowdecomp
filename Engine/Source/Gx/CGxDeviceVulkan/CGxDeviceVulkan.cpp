@@ -1933,6 +1933,12 @@ int32_t CGxDeviceVulkan::IBlitFromBackBuffer(CGxTex* dest, const VkOffset3D* des
         return 0;
     }
 
+    vkGetPhysicalDeviceFormatProperties(this->m_vk.m_physicalDevice, this->m_vk.m_colorFormat, &properties);
+
+    if (!(properties.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_SRC_BIT)) {
+        return 0;
+    }
+
     VkImageBlit region = {};
     region.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
     region.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, level, 0, 1 };
