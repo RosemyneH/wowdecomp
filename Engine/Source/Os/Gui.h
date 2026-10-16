@@ -180,7 +180,7 @@ int32_t OsGuiGetVulkanInstanceExtensions(void* window, uint32_t* count, const ch
 int32_t OsGuiCreateVulkanSurface(void* window, void* instance, void* surface);
 #endif
 
-#if defined(WOWDECOMP_APPLE)
+#if defined(WOWDECOMP_APPLE) || defined(WOWDECOMP_LINUX)
 uint32_t OsGuiGetWindowFlags();
 float OsGuiGetPixelScale(void* window);
 #endif

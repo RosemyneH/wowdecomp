@@ -123,6 +123,33 @@ void OsGuiSetGxWindow(void* window) {
     s_GxDevWindow = static_cast<SDL_Window*>(window);
 }
 
+uint32_t OsGuiGetWindowFlags() {
+    return SDL_WINDOW_ALLOW_HIGHDPI;
+}
+
+float OsGuiGetPixelScale(void* window) {
+    if (!window) {
+        return 1.0f;
+    }
+
+    int32_t pointWidth = 0;
+    int32_t pointHeight = 0;
+    int32_t pixelWidth = 0;
+    int32_t pixelHeight = 0;
+
+    SDL_GetWindowSize(static_cast<SDL_Window*>(window), &pointWidth, &pointHeight);
+    SDL_Vulkan_GetDrawableSize(static_cast<SDL_Window*>(window), &pixelWidth, &pixelHeight);
+
+    if (pointWidth <= 0 || pointHeight <= 0) {
+        return 1.0f;
+    }
+
+    float scaleX = static_cast<float>(pixelWidth) / static_cast<float>(pointWidth);
+    float scaleY = static_cast<float>(pixelHeight) / static_cast<float>(pointHeight);
+
+    return scaleX > scaleY ? scaleX : scaleY;
+}
+
 static int GxWindowEventWatch(void* userdata, SDL_Event* event) {
     if (event->type != SDL_WINDOWEVENT || !s_GxWindowProc || SDL_GetWindowFromID(event->window.windowID) != s_GxProcWindow) {
         return 0;
@@ -226,7 +253,7 @@ void* OsGuiCreateGxWindow(const char* title, int32_t width, int32_t height, int3
         return nullptr;
     }
 
-    uint32_t flags = SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
+    uint32_t flags = SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | OsGuiGetWindowFlags();
 
     if (fullscreen) {
         flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
