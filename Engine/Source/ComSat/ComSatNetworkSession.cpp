@@ -184,7 +184,11 @@ bool ComSat::Network::Session::Add(uint64_t talker, uint8_t networkId, const uin
         }
     }
     if (!endpoint) {
-        endpoint = new (this->m_manager->m_allocator->Alloc(sizeof(ComSat::Network::Endpoint))) ComSat::Network::Endpoint;
+        void* memory = this->m_manager->m_allocator->Alloc(sizeof(ComSat::Network::Endpoint));
+        if (!memory) {
+            return false;
+        }
+        endpoint = new (memory) ComSat::Network::Endpoint;
         memcpy(&endpoint->m_address, &address, sizeof(endpoint->m_address));
         memcpy(endpoint->m_key, key, sizeof(endpoint->m_key));
         endpoint->m_refCount = 0;
