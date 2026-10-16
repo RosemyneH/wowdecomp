@@ -76,7 +76,9 @@ static void ConvertString(CMDDEF* ptr, const char* string, int32_t* datachars) {
     }
 
     ptr->currvaluestr = static_cast<char*>(SMemAlloc(SStrLen(string) + 1, __FILE__, __LINE__, 0));
-    SStrCopy(ptr->currvaluestr, string, STORM_MAX_STR);
+    if (ptr->currvaluestr) {
+        SStrCopy(ptr->currvaluestr, string, STORM_MAX_STR);
+    }
 
     if (ptr->variableptr) {
         SStrCopy(static_cast<char*>(ptr->variableptr), string, ptr->variablebytes);
@@ -158,8 +160,14 @@ static int32_t PerformConversion(CMDDEF* ptr, const char* string, int32_t* datac
                         SMemFree(curr->currvaluestr, __FILE__, __LINE__, 0);
                     }
 
-                    curr->currvaluestr = static_cast<char*>(SMemAlloc(SStrLen(ptr->currvaluestr) + 1, __FILE__, __LINE__, 0));
-                    SStrCopy(curr->currvaluestr, ptr->currvaluestr, STORM_MAX_STR);
+                    if (ptr->currvaluestr) {
+                        curr->currvaluestr = static_cast<char*>(SMemAlloc(SStrLen(ptr->currvaluestr) + 1, __FILE__, __LINE__, 0));
+                        if (curr->currvaluestr) {
+                            SStrCopy(curr->currvaluestr, ptr->currvaluestr, STORM_MAX_STR);
+                        }
+                    } else {
+                        curr->currvaluestr = nullptr;
+                    }
                 } else {
                     curr->currvalue = ptr->currvalue;
                 }
