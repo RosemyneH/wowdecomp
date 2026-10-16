@@ -1541,7 +1541,18 @@ int32_t CGxDeviceVulkan::BufUnlock(CGxBuf* buf, uint32_t size) {
 void CGxDeviceVulkan::BufData(CGxBuf* buf, const void* data, uint32_t size, uint32_t offset) {
     CGxDevice::BufData(buf, data, size, offset);
 
+    // ʕ •ᴥ•ʔ✿ A null source with a positive size, or a null lock, must not reach memcpy ✿ ʕ •ᴥ•ʔ
+    if (!data && size > 0) {
+        return;
+    }
+
     char* dst = this->IBufLock(buf);
+
+    if (!dst) {
+        this->IBufUnlock(buf);
+        return;
+    }
+
     memcpy(dst + offset, data, size);
     this->IBufUnlock(buf);
 }

@@ -406,6 +406,11 @@ PendingCombatLogData* GetPendingCombatLogData(CombatLogEntry* entry, const WOWGU
 // OFFSET: 0x0074F400
 void UnitCombatLogInvalidateName(const char* name) {
     InvalidatedName* node = s_invalidatedNames.NewNode(2, 0, 0);
+
+    if (!node) {
+        return;
+    }
+
     node->m_name = SStrDupA(name, __FILE__, __LINE__);
 
     for (CombatLogEntry* entry = s_entries.Head(); entry; entry = s_entries.Next(entry)) {
