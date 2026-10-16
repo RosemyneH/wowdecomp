@@ -932,13 +932,13 @@ void ComSatClient_PopulateSessionDataWithoutJoin(uint64_t session, int32_t type,
 
 // VERIFY: 1177c447 manual
 // OFFSET: 0x007DE5A0
-void VoiceSessionRosterUpdate(uint64_t session, uint16_t networkId, int32_t type, const char* name, const uint8_t* key, uint64_t self, uint8_t selfNetworkId, uint8_t selfFlags, int32_t count, VoiceRosterMember* members) {
+bool VoiceSessionRosterUpdate(uint64_t session, uint16_t networkId, int32_t type, const char* name, const uint8_t* key, uint64_t self, uint8_t selfNetworkId, uint8_t selfFlags, int32_t count, VoiceRosterMember* members) {
     s_comsatDeviceLock.Enter();
     ComSat::Interface* comsat = ComSatThread::s_comsat;
 
     if (!comsat || !name) {
         s_comsatDeviceLock.Leave();
-        return;
+        return true;
     }
 
     if (comsat->SessionCreate(session)) {
@@ -946,7 +946,7 @@ void VoiceSessionRosterUpdate(uint64_t session, uint16_t networkId, int32_t type
 
         if (!FillComsatData(session, type, name)) {
             s_comsatDeviceLock.Leave();
-            return;
+            return true;
         }
 
         WOWGUID player = ClntObjMgrGetActivePlayer();
@@ -1024,23 +1024,34 @@ void VoiceSessionRosterUpdate(uint64_t session, uint16_t networkId, int32_t type
 
     uint8_t sessionKey[16];
     memcpy(sessionKey, key, sizeof(sessionKey));
+    bool addedAll = true;
+    int32_t added = 0;
 
     for (int32_t i = 0; i < count; i++) {
-        comsat->SessionAddRemote(session, members[i].m_guid.m_guid, members[i].m_priority, sessionKey, members[i].m_address);
-        comsat->SessionSetTalkerPriority(session, members[i].m_guid.m_guid, members[i].m_talkerPriority);
+        if (!comsat->SessionAddRemote(session, members[i].m_guid.m_guid, members[i].m_priority, sessionKey, members[i].m_address)) {
+            addedAll = false;
+            continue;
+        }
+
+        if (added != i) {
+            members[added] = members[i];
+        }
+
+        comsat->SessionSetTalkerPriority(session, members[added].m_guid.m_guid, members[added].m_talkerPriority);
+        added++;
     }
 
     COMSATDATA* data = &s_comsatData[index];
     data->m_members[0].m_guid.m_guid = self;
     data->m_members[0].m_flags = selfFlags;
-    data->m_numMembers = count + 1;
+    data->m_numMembers = added + 1;
 
     for (uint32_t k = 1; k < data->m_numMembers; k++) {
         data->m_members[k].m_guid = members[k - 1].m_guid;
         data->m_members[k].m_flags = members[k - 1].m_flags;
     }
 
-    for (int32_t i = 0; i < count; i++) {
+    for (int32_t i = 0; i < added; i++) {
         uint32_t j;
 
         for (j = 0; j < FriendList::s_friendList->GetNumIgnores(); j++) {
@@ -1089,6 +1100,7 @@ void VoiceSessionRosterUpdate(uint64_t session, uint16_t networkId, int32_t type
     }
 
     s_comsatDeviceLock.Leave();
+    return addedAll;
 }
 
 // VERIFY: 62882824 manual

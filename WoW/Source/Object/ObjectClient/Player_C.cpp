@@ -14689,9 +14689,9 @@ int32_t Packet_SMSG_VOICE_SESSION_ROSTER_UPDATE(void* param, NETMESSAGE msgId, u
         SStrCopy(members[i].m_address, address, sizeof(members[i].m_address));
     }
 
-    VoiceSessionRosterUpdate(session, networkId, type, name, key, self, selfNetworkId, selfFlags, remote, members);
+    int32_t added = VoiceSessionRosterUpdate(session, networkId, type, name, key, self, selfNetworkId, selfFlags, remote, members);
     ConsolePrintf("VoiceSessionRosterUpdate - type %d, channelName <%s>, %d members", type, name, count);
-    return 1;
+    return added;
 }
 
 // VERIFY: f847071c auto
