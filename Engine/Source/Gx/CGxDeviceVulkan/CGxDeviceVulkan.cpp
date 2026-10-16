@@ -2181,10 +2181,20 @@ int32_t CGxDeviceVulkan::DeviceWM(EGxWM wm, uintptr_t param1, uintptr_t param2) 
             }
 
             this->m_windowVisible = 1;
-            this->DeviceSetDefWindow(*reinterpret_cast<const CRect*>(param1));
-            this->m_swapchainDirty = 1;
-            this->m_viewportDirty = 1;
-            this->m_scissorRectDirty = 1;
+            {
+                // ʕ •ᴥ•ʔ✿ Expose is delivered every frame on X11. Rebuilding the swapchain for the same drawable is the 30fps cap ✿ ʕ •ᴥ•ʔ
+                const CRect& next = *reinterpret_cast<const CRect*>(param1);
+                uint32_t width = next.maxX > next.minX ? static_cast<uint32_t>(next.maxX - next.minX) : 0;
+                uint32_t height = next.maxY > next.minY ? static_cast<uint32_t>(next.maxY - next.minY) : 0;
+                int32_t changed = width != this->m_clientExtent.width || height != this->m_clientExtent.height;
+                this->DeviceSetDefWindow(next);
+
+                if (changed) {
+                    this->m_swapchainDirty = 1;
+                    this->m_viewportDirty = 1;
+                    this->m_scissorRectDirty = 1;
+                }
+            }
             break;
 
         case GxWM_DisplayChange:

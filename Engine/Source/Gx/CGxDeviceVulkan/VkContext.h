@@ -153,8 +153,9 @@ class VkContext {
     VkCommandPool m_commandPool = VK_NULL_HANDLE;
     VkFrame m_frames[FramesInFlight] = {};
     std::vector<VkBufferAlloc> m_spareBuffers;
-    static constexpr size_t MaxSpareBuffers = 16;
-    static constexpr uint64_t MaxSpareBytes = 16ull * 1024 * 1024;
+    // ʕ •ᴥ•ʔ✿ Small dynamic buffers are a few KB. A count of 16 forced a driver free on every later retire ✿ ʕ •ᴥ•ʔ
+    static constexpr size_t MaxSpareBuffers = 512;
+    static constexpr uint64_t MaxSpareBytes = 32ull * 1024 * 1024;
     VkHeap m_heap;
     uint32_t m_frameIndex = 0;
     uint32_t m_imageIndex = 0;
