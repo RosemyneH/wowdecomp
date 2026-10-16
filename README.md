@@ -14,14 +14,29 @@ Join the Discord for other clients and to show off cool stuff you build: https:/
 
 | Area | Status in this fork |
 |------|---------------------|
-| **Vulkan renderer** | Primary graphics backend on every supported OS (MoltenVK on macOS). Direct3D 9 remains a selectable fallback on Windows. |
-| **Cross-platform** | **Windows** (x64 and **Windows on ARM64**), **Linux** (x86_64 and **aarch64**), and **macOS** (Intel and **Apple Silicon**). Linux aarch64 cross-builds use `cmake/Toolchain-Clang-aarch64-linux.cmake`. |
+| **Vulkan renderer** | Default backend wherever the full client builds (MoltenVK on macOS **Gx**). **Windows x64** still exposes Direct3D 9 and OpenGL; **Windows on ARM64** and **Linux** are **Vulkan-only** at the Gx layer. |
+| **Cross-platform** | See **[Build & CI status](#build--ci-status)** below—full **WowClient** CI covers **Windows x64**, **Windows ARM64**, and **Linux x86_64**; **macOS** is a partial **Os + Gx** compile only; **Linux aarch64** is local/cross-build via `cmake/Toolchain-Clang-aarch64-linux.cmake` (no CI yet). |
 | **Custom Vulkan shaders** | GLSL sources under `Engine/Source/Gx/CGxDeviceVulkan/Shaders/`; SPIR-V is embedded in-tree. Regenerate with the `GxVulkanShadersRegenerate` CMake target when `glslc` is installed. |
 | **Lighting & fog** | Modernized lighting paths through the Vulkan fixed-function pipeline and existing `ShaderEffect` stack; **volumetric fog** and related atmosphere work are part of this experimental rendering push (behavior and quality will change). |
 | **WASM addons** | Host runtime (`WasmAddon`, Wasmtime) for sandboxed `wasm32` addons. GitHub reading: [`Addons/Wasm/README.md`](Addons/Wasm/README.md), [`docs/lua-wasm.md`](docs/lua-wasm.md), [`docs/wasm-addon-architecture.md`](docs/wasm-addon-architecture.md). Wiki: [wowdecomp/wiki](https://github.com/RosemyneH/wowdecomp/wiki). Install addons under `Interface/WasmAddOns/`. |
 | **Multithreaded performance** | Shared **job pool** (`Engine/Source/Base/Job/JobSystem.h`) drives parallel terrain, models, UI, and other hot paths—a broad performance rewrite on top of the decompiled client. |
 
 Everything above is **experimental**: APIs move, backends differ per OS, and regressions are expected. Treat nightly-quality builds as the norm.
+
+### Build & CI status
+
+What **GitHub Actions** exercises on every push/PR, what **releases** ship, and what you can expect when building locally. “**WowClient**” means the full game executable (`Tools/WowClient`); “**Os + Gx**” is only the engine layers needed for the Vulkan path.
+
+| OS / arch | CI workflow | CI builds | Release tag (`v*`) | Typical graphics | Playability notes |
+|-----------|---------------|-----------|--------------------|------------------|-------------------|
+| **Windows x64** | [`windows-x64`](.github/workflows/windows.yml) | **WowClient** (Ninja, Release) | `wowdecomp-windows-x64.zip` | Vulkan (default) + D3D9 + OpenGL | Main reference path; closest to “retail-like” on this fork. |
+| **Windows ARM64** | same workflow, job **`build-arm64`** | **WowClient** on `windows-11-arm` | `wowdecomp-windows-arm64.zip` when the ARM job succeeds | **Vulkan only** (no D3D9/NvAPI/OpenGL in the build) | CI job uses `continue-on-error: true` so x64 stays authoritative if ARM regresses; **currently building in CI**. |
+| **Linux x86_64** | [`linux-x64`](.github/workflows/linux.yml) | **WowClient** (Ninja, RelWithDebInfo) | `wowdecomp-linux-x86_64.tar.gz` | Vulkan only | Experimental; needs Vulkan loader/drivers. |
+| **Linux aarch64** | — | *not in CI* | — | Vulkan only (expected) | Cross-build with `cmake/Toolchain-Clang-aarch64-linux.cmake`; treat as untested in automation. |
+| **macOS Apple Silicon** | [`macos-arm64`](.github/workflows/macos.yml) | **Os + Gx** static libs only | *not published* | MoltenVK via **Gx** | Full **WowClient** still fails to link (e.g. `malloc.h`, FMOD codec paths)—CI is a compile smoke test, not a runnable client. |
+| **macOS Intel** | — | *not in CI* | — | Same stack as arm64 locally | No automated build; use `-DCMAKE_OSX_ARCHITECTURES=x86_64` if you try it. |
+
+Other automation: [`generated-drift`](.github/workflows/generated-drift.yml) regenerates embedded Vulkan SPIR-V when GLSL under `Engine/Source/Gx/CGxDeviceVulkan/Shaders/` changes.
 
 ---
 
@@ -87,12 +102,14 @@ cmake -S . -B build/x64 -G "Visual Studio 17 2022" -A x64
 cmake --build build/x64 --config Release --target WowClient --parallel
 ```
 
-Windows on ARM64 (experimental; same client, native ARM64 binary):
+Windows on ARM64 (native **WowClient**; **Vulkan-only** Gx—match CI with Ninja):
 
 ```powershell
-cmake -S . -B build/arm64 -G "Visual Studio 17 2022" -A ARM64
-cmake --build build/arm64 --config Release --target WowClient --parallel
+cmake -S . -B build/arm64 -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build/arm64 --target WowClient --parallel
 ```
+
+Visual Studio generator also works: `-G "Visual Studio 17 2022" -A ARM64` with `--config Release`.
 
 Win32 (optional, needs NASM):
 
@@ -101,16 +118,32 @@ cmake -S . -B build/win32 -G "Visual Studio 17 2022" -A Win32
 cmake --build build/win32 --config Release --target WowClient --parallel
 ```
 
-### Linux / macOS (experimental)
+### Linux (experimental)
 
-Example Ninja release build on Linux:
+Matches CI (`linux-x64` workflow):
 
 ```bash
-cmake -S . -B build/linux -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build/linux --target WowClient
+cmake -S . -B build/linux -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build build/linux --target WowClient -j"$(nproc)"
 ```
 
-On Apple Silicon, pass `-DCMAKE_OSX_ARCHITECTURES=arm64` if needed. For aarch64 Linux cross-builds, see `cmake/Toolchain-Clang-aarch64-linux.cmake`.
+For **aarch64** Linux cross-builds (no CI), see `cmake/Toolchain-Clang-aarch64-linux.cmake`.
+
+### macOS (experimental, partial)
+
+You can configure the full tree locally, but **CI only builds `Os` and `Gx`** until the macOS **WowClient** port catches up. Smoke build (same as [`macos-arm64`](.github/workflows/macos.yml)):
+
+```bash
+brew install ninja sdl2 xvid molten-vk vulkan-loader vulkan-headers vulkan-tools
+cmake -S . -B build/mac -G Ninja \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DCMAKE_OSX_ARCHITECTURES=arm64 \
+  -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
+  -DCMAKE_PREFIX_PATH="$(brew --prefix)"
+cmake --build build/mac --target Os Gx -j3
+```
+
+A full `WowClient` target on macOS is still expected to fail until platform gaps are closed.
 
 ### CMake options (selected)
 
@@ -129,9 +162,11 @@ cmake --build <build-dir> --target GxVulkanShadersRegenerate
 
 ### CI and releases
 
-GitHub Actions on push/PR: **`linux-x64`** and **`windows-x64`** build **WowClient**; **`macos-arm64`** compiles **Os + Gx** (Vulkan path) until the full macOS client port is ready; **`windows-arm64`** is experimental. Shader drift is checked by `generated-drift` when GLSL under `Engine/Source/Gx/CGxDeviceVulkan/Shaders/` changes.
+On every push/PR, see the **[Build & CI status](#build--ci-status)** table for job names and what each platform compiles.
 
-**Prebuilt binaries:** push a version tag (`v0.1.0`, etc.) to run the **Release** workflow (Linux + Windows x64 packages; Windows ARM64 when that job succeeds). macOS releases are not published yet. Game `Data` is never included—use your own 3.3.5a install.
+**Prebuilt binaries:** push a version tag (`v0.1.0`, etc.) to run [`.github/workflows/release.yml`](.github/workflows/release.yml)—**Linux x86_64**, **Windows x64**, and **Windows ARM64** archives (ARM is packaged when its job succeeds; it does not block the release job). **macOS** is not shipped. Game `Data` is never included—use your own 3.3.5a install.
+
+Workflow artifacts from non-tag CI runs: `linux-x64-WowClient64`, `windows-x64-WowClient64`, and `windows-arm64-WowClient64` when the ARM job passes.
 
 ---
 
