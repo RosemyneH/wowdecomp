@@ -1790,6 +1790,11 @@ void CGlueMgr::LogConnectionStatus(const char* format, ...) {
 
     ConsoleString* string = s_connectionStatus.NewNode(2, 0, 0);
 
+    if (!string) {
+        s_connectionStatusLock.Leave();
+        return;
+    }
+
     va_list args;
     va_start(args, format);
     SStrVPrintf(string->m_text, sizeof(string->m_text), format, args);
