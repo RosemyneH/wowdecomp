@@ -501,7 +501,10 @@ bool CWorldParam::DistanceFogCallback(CVar* var, const char* oldValue, const cha
         return false;
     }
 
-    CWorldParamSlider::ApplyDistanceFogFromCVar();
+    // ʕ •ᴥ•ʔ✿ The callback runs before the cvar stores the new value ✿ ʕ •ᴥ•ʔ
+    if (g_theGxDevicePtr) {
+        g_theGxDevicePtr->MasterEnableSet(GxMasterEnable_Fog, SStrToInt(value) ? 1 : 0);
+    }
 
     return true;
 }
