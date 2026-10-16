@@ -95,10 +95,12 @@ struct VkFrame {
     std::unordered_map<VkSetKey, VkDescriptorSet, VkSetKeyHash> sets;
     VkBufferAlloc uniforms;
     VkDeviceSize uniformOffset;
-    VkBufferAlloc staging;
-    VkDeviceSize stagingOffset;
-    VkBufferAlloc stream;
-    VkDeviceSize streamOffset;
+    std::vector<VkBufferAlloc> stagingChunks;
+    uint32_t stagingChunk = 0;
+    VkDeviceSize stagingOffset = 0;
+    std::vector<VkBufferAlloc> streamChunks;
+    uint32_t streamChunk = 0;
+    VkDeviceSize streamOffset = 0;
     std::vector<VkGarbage> garbage;
     int32_t prepared;
     int32_t recording;
@@ -114,7 +116,7 @@ class VkContext {
         FramesInFlight = 2,
         UniformRingSize = 32 << 20,
         StagingRingSize = 16 << 20,
-        // ʕ •ᴥ•ʔ✿ One ring per frame. A new 2.75MB buffer on every stream wrap was the multi-GB spike ✿ ʕ •ᴥ•ʔ
+        // ʕ •ᴥ•ʔ✿ Chunks stay on the frame. A fresh buffer per lock after the first chunk filled was the stall ✿ ʕ •ᴥ•ʔ
         StreamRingSize = 64 << 20,
         DescriptorSetsPerFrame = 8192,
     };
@@ -184,6 +186,7 @@ class VkContext {
 
     uint32_t FindMemoryType(uint32_t typeBits, VkMemoryPropertyFlags flags);
     int32_t CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkBufferAlloc& out);
+    int32_t BumpChunk(std::vector<VkBufferAlloc>& chunks, uint32_t& chunkIndex, VkDeviceSize& cursor, VkDeviceSize chunkSize, VkBufferUsageFlags usage, uint32_t align, uint32_t bytes, uint32_t& index, VkBufferAlloc& out);
     int32_t StreamLock(uint32_t align, uint32_t bytes, uint32_t& index, VkBufferAlloc& out);
     void DestroyBuffer(VkBufferAlloc& buffer);
     int32_t CreateImage(const VkImageCreateInfo& info, VkImageAspectFlags aspect, VkImageViewType viewType, const VkComponentMapping& swizzle, VkImageAlloc& out);
