@@ -322,7 +322,12 @@ FMOD_RESULT FMOD_OS_Semaphore_Create(FMOD_OS_SEMAPHORE **sema)
         return FMOD_ERR_MEMORY;
     }
 
-    sem_init(semaphore, 0, 0);
+    if (sem_init(semaphore, 0, 0))
+    {
+        free(semaphore);
+        return FMOD_ERR_INVALID_PARAM;
+    }
+
     *sema = (FMOD_OS_SEMAPHORE *)semaphore;
 
     return FMOD_OK;
