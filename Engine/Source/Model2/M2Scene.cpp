@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstring>
 #include <new>
+#include <unordered_map>
 #include <vector>
 #if defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64)
 #include "ThirdParty/sse2neon/sse2neon.h"
@@ -1696,6 +1697,192 @@ M2Element* CM2Scene::AddParticleElement(CParticleEmitter2* emitter, CM2Model* mo
     return element;
 }
 
+struct SkinKey {
+    CM2Model* model;
+    M2SkinSection* section;
+    int32_t texCoord;
+    int32_t optimized;
+
+    bool operator==(const SkinKey& other) const {
+        return this->model == other.model && this->section == other.section && this->texCoord == other.texCoord && this->optimized == other.optimized;
+    }
+};
+
+struct SkinKeyHash {
+    size_t operator()(const SkinKey& key) const {
+        size_t hash = reinterpret_cast<uintptr_t>(key.model);
+        hash ^= reinterpret_cast<uintptr_t>(key.section) + 0x9e3779b97f4a7c15ull + (hash << 6) + (hash >> 2);
+        hash ^= static_cast<size_t>(key.texCoord) << 1;
+        hash ^= static_cast<size_t>(key.optimized);
+        return hash;
+    }
+};
+
+struct SkinJob {
+    CM2Model* model;
+    M2SkinSection* section;
+    int32_t texCoord;
+    int32_t optimized;
+    uint32_t offset;
+    uint32_t bytes;
+};
+
+static std::vector<SkinJob> s_skinJobs;
+static std::vector<uint8_t> s_skinBytes;
+static std::unordered_map<SkinKey, uint32_t, SkinKeyHash> s_skinLookup;
+static uint32_t s_skinUsed = 0;
+static int32_t s_skinReady = 0;
+
+static uint32_t SkinVertexCount(CM2Model* model, M2SkinSection* section, int32_t optimized) {
+    if (!optimized) {
+        return section->m_boneInfluences < 5 ? section->m_vertexCount : 0;
+    }
+
+    if (!model->m_optGeo || !model->m_shared || !model->m_shared->m_skinData || !model->m_skinSections) {
+        return 0;
+    }
+
+    M2SkinProfile* skin = model->m_shared->m_skinData;
+    M2BatchRange* range = &model->m_optGeo->m_batchRanges[section->m_skinSectionId];
+    uint32_t verts = 0;
+
+    for (uint32_t b = range->m_first; b <= range->m_last; ++b) {
+        uint16_t sectionIndex = skin->m_batches[b].m_skinSectionIndex;
+
+        if (!model->m_skinSections[sectionIndex]) {
+            continue;
+        }
+
+        M2SkinSection* batchSection = &skin->m_skinSections[sectionIndex];
+
+        if (batchSection->m_boneInfluences > 4) {
+            return 0;
+        }
+
+        verts += batchSection->m_vertexCount;
+    }
+
+    return verts && verts <= section->m_vertexCount ? verts : 0;
+}
+
+static void WriteSkin(const SkinJob& job, uint8_t* dst) {
+    if (!job.optimized) {
+        CM2Model::s_transformVertices[job.section->m_boneInfluences](job.model, job.section, dst, job.texCoord);
+        return;
+    }
+
+    M2SkinProfile* skin = job.model->m_shared->m_skinData;
+    M2BatchRange* range = &job.model->m_optGeo->m_batchRanges[job.section->m_skinSectionId];
+
+    for (uint32_t b = range->m_first; b <= range->m_last; ++b) {
+        uint16_t sectionIndex = skin->m_batches[b].m_skinSectionIndex;
+
+        if (!job.model->m_skinSections[sectionIndex]) {
+            continue;
+        }
+
+        M2SkinSection* batchSection = &skin->m_skinSections[sectionIndex];
+        CM2Model::s_transformVertices[batchSection->m_boneInfluences](job.model, batchSection, dst, job.texCoord);
+        dst += 32 * batchSection->m_vertexCount;
+    }
+}
+
+static void SkinRange(Job::Range range, void* user) {
+    SkinJob* jobs = static_cast<SkinJob*>(user);
+
+    for (uint32_t i = range.begin; i < range.end; ++i) {
+        WriteSkin(jobs[i], s_skinBytes.data() + jobs[i].offset);
+    }
+}
+
+void M2SkinPrepare(CM2Scene* scene) {
+    Job::Wait();
+    s_skinReady = 0;
+    s_skinJobs.clear();
+    s_skinLookup.clear();
+    s_skinUsed = 0;
+
+    if (!scene) {
+        s_skinReady = 1;
+        return;
+    }
+
+    for (uint32_t i = 0; i < scene->m_elements.m_count; ++i) {
+        M2Element* element = &scene->m_elements.m_data[i];
+
+        if (!element->m_model || !element->m_batch || !element->m_skinSection) {
+            continue;
+        }
+
+        if (element->m_type == 2 && element->m_skinSection->m_boneCount == 1) {
+            continue;
+        }
+
+        if (element->m_type != 0 && element->m_type != 2) {
+            continue;
+        }
+
+        if (element->m_batch->m_flags & 0x40) {
+            continue;
+        }
+
+        int32_t optimized = element->m_type == 0 ? static_cast<int32_t>(element->m_flags & 4) : 0;
+        int32_t texCoord = element->m_type == 2 ? 0 : ((element->m_batch->m_shader & 0x4000) ? 1 : 0);
+        SkinKey key = { element->m_model, element->m_skinSection, texCoord, optimized };
+
+        if (s_skinLookup.find(key) != s_skinLookup.end()) {
+            continue;
+        }
+
+        uint32_t verts = SkinVertexCount(element->m_model, element->m_skinSection, optimized);
+
+        if (!verts || s_skinUsed > (64u << 20)) {
+            continue;
+        }
+
+        uint32_t offset = (s_skinUsed + 15u) & ~15u;
+        SkinJob job = { element->m_model, element->m_skinSection, texCoord, optimized, offset, verts * 32u };
+        s_skinLookup.emplace(key, static_cast<uint32_t>(s_skinJobs.size()));
+        s_skinJobs.push_back(job);
+        s_skinUsed = offset + job.bytes;
+    }
+
+    if (s_skinJobs.empty()) {
+        s_skinReady = 1;
+        return;
+    }
+
+    s_skinBytes.resize(s_skinUsed);
+    // ʕ •ᴥ•ʔ✿ Runs through the terrain draw. Draw joins before it reads the bytes ✿ ʕ •ᴥ•ʔ
+    Job::Start(static_cast<uint32_t>(s_skinJobs.size()), SkinRange, s_skinJobs.data());
+
+    if (!Job::WorkerCount()) {
+        s_skinReady = 1;
+    }
+}
+
+void M2SkinFinish() {
+    Job::Wait();
+    s_skinReady = 1;
+}
+
+int32_t M2SkinTake(CM2Model* model, M2SkinSection* section, int32_t texCoord, int32_t optimized, void* dst) {
+    if (!s_skinReady || !dst) {
+        return 0;
+    }
+
+    SkinKey key = { model, section, texCoord, optimized };
+    auto found = s_skinLookup.find(key);
+
+    if (found == s_skinLookup.end()) {
+        return 0;
+    }
+
+    const SkinJob& job = s_skinJobs[found->second];
+    memcpy(dst, s_skinBytes.data() + job.offset, job.bytes);
+    return 1;
+}
+
 // VERIFY: d0feeb6c manual
 // OFFSET: 0x00821A20
 int32_t CM2Scene::Animate(const C3Vector& cameraPos) {
@@ -2206,6 +2393,8 @@ void CM2Scene::Release() {
 // VERIFY: 610b7e45 manual
 // OFFSET: 0x00823CB0
 void CM2Scene::Draw(M2PASS pass) {
+    M2SkinFinish();
+
     if (!((1 << pass) & this->m_passMask)) {
         return;
     }

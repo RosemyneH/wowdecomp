@@ -2705,6 +2705,13 @@ int32_t CM2Model::SetVertices(int32_t optimized, M2SkinSection* section, int32_t
         return 0;
     }
 
+    if (M2SkinTake(this, section, texCoord, optimized, vertices)) {
+        g_theGxDevicePtr->BufUnlock(buf, 0);
+        buf->m_hasData = 1;
+        GxPrimVertexPtr(buf, GxVBF_PNT);
+        return 1;
+    }
+
     if (optimized) {
         M2SkinProfile* skin = this->m_shared->m_skinData;
         M2BatchRange* range = &this->m_optGeo->m_batchRanges[section->m_skinSectionId];

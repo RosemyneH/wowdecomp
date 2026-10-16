@@ -600,7 +600,11 @@ static void FillDoodadSkin(Job::Range range, void* user) {
 
     for (uint32_t n = range.begin; n < range.end; ++n) {
         CM2Model* model = skin->elements[skin->indices[skin->done + n]].m_model;
-        CM2Model::s_transformVertices[skin->influences](model, skin->section, skin->vertices + n * skin->stride, 0);
+        uint8_t* dst = skin->vertices + n * skin->stride;
+
+        if (!M2SkinTake(model, skin->section, 0, 0, dst)) {
+            CM2Model::s_transformVertices[skin->influences](model, skin->section, dst, 0);
+        }
     }
 }
 

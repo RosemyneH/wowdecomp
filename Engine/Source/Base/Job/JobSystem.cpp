@@ -26,6 +26,7 @@ struct Pool {
     uint32_t chunks = 0;
     std::atomic<uint32_t> next{0};
     std::atomic<uint32_t> remaining{0};
+    bool active = false;
 };
 
 Pool g_pool;
@@ -129,8 +130,84 @@ void Shutdown() {
     g_pool.epoch = 0;
 }
 
+void Publish(uint32_t count, RangeFn fn, void* user, uint32_t chunks) {
+    std::lock_guard<std::mutex> lock(g_pool.mu);
+    g_pool.fn = fn;
+    g_pool.user = user;
+    g_pool.count = count;
+    g_pool.chunks = chunks;
+    g_pool.next.store(0);
+    g_pool.remaining.store(chunks);
+    g_pool.finished = 0;
+    g_pool.active = true;
+    g_pool.epoch += 1;
+    g_pool.cv.notify_all();
+}
+
+void Join() {
+    std::unique_lock<std::mutex> lock(g_pool.mu);
+    if (!g_pool.active) {
+        return;
+    }
+
+    // -- ʕ •ᴥ•ʔ✿ Stay until ranges finish and workers drop fn, so the next publish cannot race them. ✿ ʕ •ᴥ•ʔ
+    g_pool.cv.wait(lock, [] {
+        return g_pool.remaining.load() == 0 && g_pool.finished == g_pool.workerCount;
+    });
+    g_pool.active = false;
+    g_pool.fn = nullptr;
+}
+
+void Wait() {
+    RangeFn fn = nullptr;
+    void* user = nullptr;
+    uint32_t count = 0;
+    uint32_t chunks = 0;
+
+    {
+        std::lock_guard<std::mutex> lock(g_pool.mu);
+        if (!g_pool.active) {
+            return;
+        }
+
+        fn = g_pool.fn;
+        user = g_pool.user;
+        count = g_pool.count;
+        chunks = g_pool.chunks;
+    }
+
+    if (fn && chunks) {
+        RunRanges(fn, user, count, chunks);
+    }
+
+    Join();
+}
+
+void Start(uint32_t count, RangeFn fn, void* user) {
+    if (!count || !fn) {
+        return;
+    }
+
+    Wait();
+
+    if (!g_pool.workerCount) {
+        fn(Range{0, count}, user);
+        return;
+    }
+
+    uint32_t chunks = count < g_pool.workerCount ? count : g_pool.workerCount;
+    Publish(count, fn, user, chunks);
+}
+
 void ParallelFor(uint32_t count, RangeFn fn, void* user) {
     if (count == 0) {
+        return;
+    }
+
+    Wait();
+
+    if (!g_pool.workerCount) {
+        fn(Range{0, count}, user);
         return;
     }
 
@@ -140,26 +217,9 @@ void ParallelFor(uint32_t count, RangeFn fn, void* user) {
         chunks = count;
     }
 
-    {
-        std::lock_guard<std::mutex> lock(g_pool.mu);
-        g_pool.fn = fn;
-        g_pool.user = user;
-        g_pool.count = count;
-        g_pool.chunks = chunks;
-        g_pool.next.store(0);
-        g_pool.remaining.store(chunks);
-        g_pool.finished = 0;
-        g_pool.epoch += 1;
-        g_pool.cv.notify_all();
-    }
-
+    Publish(count, fn, user, chunks);
     RunRanges(fn, user, count, chunks);
-
-    std::unique_lock<std::mutex> lock(g_pool.mu);
-    // -- ʕ •ᴥ•ʔ✿ Stay until ranges finish and workers drop fn/next, so the next publish cannot race them. ✿ ʕ •ᴥ•ʔ
-    g_pool.cv.wait(lock, [] {
-        return g_pool.remaining.load() == 0 && g_pool.finished == g_pool.workerCount;
-    });
+    Join();
 }
 
 }

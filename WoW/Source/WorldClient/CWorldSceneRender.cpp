@@ -188,6 +188,7 @@ void CWorldScene::Render(const C3Vector& cameraPos, float time) {
         scene->AdvanceTime(static_cast<uint32_t>(CMath::fint_(time * 1000.0f)));
         scene->Animate(cameraPos);
         scene->m_flags &= ~0x1;
+        M2SkinPrepare(scene);
     }
 
     CGUnit_C::UpdateMissileTrajectoryTargeting();
