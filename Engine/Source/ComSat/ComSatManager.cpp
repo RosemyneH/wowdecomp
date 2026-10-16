@@ -553,7 +553,7 @@ bool ComSat::Manager::LocalTalkerDestroy(uint8_t localTalker) {
 bool ComSat::Manager::SessionDestroy(uint64_t session) {
     for (uint8_t i = 0; i < this->m_maxLocalPlayers; i++) {
         LocalTalker* local = this->m_localTalkers[i];
-        if (local->m_guid) {
+        if (local && local->m_guid) {
             ComSat::Session* current = local->m_session;
             if (current && current->m_id == session) {
                 local->m_session = nullptr;
