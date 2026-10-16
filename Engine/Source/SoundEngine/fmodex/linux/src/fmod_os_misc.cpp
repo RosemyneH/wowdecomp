@@ -18,6 +18,9 @@ struct FMOD_OS_THREADSTART
 {
     THREAD_RETURNTYPE (THREAD_CALLCONV *func)(void *param);
     void *param;
+#if defined(__APPLE__)
+    char name[16];
+#endif
 };
 
 static pthread_mutex_t gMemoryCrit;
@@ -26,6 +29,12 @@ static void *FMOD_OS_Thread_Start(void *data)
 {
     FMOD_OS_THREADSTART start = *(FMOD_OS_THREADSTART *)data;
     free(data);
+#if defined(__APPLE__)
+    if (start.name[0])
+    {
+        pthread_setname_np(start.name);
+    }
+#endif
     start.func(start.param);
     return 0;
 }
@@ -188,6 +197,16 @@ FMOD_RESULT FMOD_OS_Thread_Create(const char *name, THREAD_RETURNTYPE (THREAD_CA
     start->func = func;
     start->param = param;
 
+    char shortname[16];
+    shortname[0] = '\0';
+    if (name)
+    {
+        snprintf(shortname, sizeof(shortname), "%s", name);
+    }
+#if defined(__APPLE__)
+    snprintf(start->name, sizeof(start->name), "%s", shortname);
+#endif
+
     pthread_t thread;
     if (pthread_create(&thread, NULL, FMOD_OS_Thread_Start, start))
     {
@@ -195,16 +214,12 @@ FMOD_RESULT FMOD_OS_Thread_Create(const char *name, THREAD_RETURNTYPE (THREAD_CA
         return FMOD_ERR_MEMORY;
     }
 
+#if !defined(__APPLE__)
     if (name)
     {
-        char shortname[16];
-        snprintf(shortname, sizeof(shortname), "%s", name);
-#if !defined(__APPLE__)
         pthread_setname_np(thread, shortname);
-#else
-        (void)thread; (void)shortname;
-#endif
     }
+#endif
 
     *handle = (void *)thread;
 
