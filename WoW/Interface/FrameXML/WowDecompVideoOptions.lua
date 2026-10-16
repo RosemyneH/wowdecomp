@@ -120,9 +120,12 @@ local function WowDecomp_InstallEffectsPanelPlaytest(panel)
     section:SetSize(380, 96);
     section:SetPoint("TOPLEFT", viewDist, "BOTTOMLEFT", -2, -18);
 
-    local header = section:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall");
+    local header = section:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall");
     header:SetPoint("TOPLEFT", section, "TOPLEFT", 4, -2);
     header:SetText("Map exploration (playtest)");
+    if GameFontHighlightSmall then
+        header:SetFontObject(GameFontHighlightSmall);
+    end
 
     local anchor = section;
     WowDecomp_RegisterCheckbox(panel, "VideoOptionsEffectsPanelExtendedView", "Extended view distance", "extendedView", anchor, 8, -22, WowDecomp_OnPlaytestCVarChanged);
