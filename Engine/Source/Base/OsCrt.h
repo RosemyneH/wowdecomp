@@ -43,6 +43,9 @@ template <typename T>
 inline T _rotl(T value, int shift) {
     constexpr int bits = static_cast<int>(sizeof(T) * 8);
     shift &= bits - 1;
+    if (shift == 0) {
+        return value;
+    }
     return static_cast<T>((static_cast<typename std::make_unsigned<T>::type>(value) << shift) |
         (static_cast<typename std::make_unsigned<T>::type>(value) >> (bits - shift)));
 }
