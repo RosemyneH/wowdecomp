@@ -836,7 +836,11 @@ bool ComSat::Sound::Manager::RegisterRemoteTalkerForSession(uint64_t session, ui
     }
     uint32_t index;
     if (!this->m_remoteTalkers.Find(ComSat::MapKey<uint64_t>(talker), index)) {
-        RemoteTalker* remote = new (this->m_allocator->Alloc(sizeof(RemoteTalker))) RemoteTalker(*this->m_allocator);
+        void* memory = this->m_allocator->Alloc(sizeof(RemoteTalker));
+        if (!memory) {
+            return false;
+        }
+        RemoteTalker* remote = new (memory) RemoteTalker(*this->m_allocator);
         remote->m_guid = talker;
         for (int32_t i = 0; i < s_jitterBufferSize; i++) {
             remote->m_packets[i].m_valid = false;
