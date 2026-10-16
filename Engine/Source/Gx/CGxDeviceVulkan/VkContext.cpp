@@ -895,7 +895,7 @@ int32_t VkContext::EndFrame() {
     return submitted && result == VK_SUCCESS && !this->m_suboptimal;
 }
 
-void VkContext::AbandonFrame() {
+int32_t VkContext::AbandonFrame() {
     VkFrame& frame = this->Frame();
     int32_t submitted = this->Submit(0);
     // ʕ •ᴥ•ʔ✿ A failed submit can leave the reset fence unsignaled when the signaled replacement cannot be created ✿ ʕ •ᴥ•ʔ
@@ -904,16 +904,19 @@ void VkContext::AbandonFrame() {
     // ʕ ◕ᴥ◕ ʔ✿ The next BeginFrame must reset rings/pools and must not wait on an unpresented image ✿ ʕ ◕ᴥ◕ ʔ
     frame.prepared = 0;
     frame.acquired = 0;
+    return submitted;
 }
 
 void VkContext::FlushFrame() {
     VkFrame& frame = this->Frame();
     // ʕ ●ᴥ●ʔ✿ Preserve the acquired image across the reset, or it is never presented and stalls acquire ✿ ʕ ●ᴥ●ʔ
     int32_t acquired = frame.acquired;
-    this->AbandonFrame();
+    int32_t alreadyWaited = frame.imageWaited;
+    int32_t submitted = this->AbandonFrame();
     this->PrepareFrame();
     frame.acquired = acquired;
-    frame.imageWaited = acquired;
+    // ʕ •ᴥ•ʔ✿ A failed abandon submit did not consume imageAvailable; an earlier successful wait stays consumed ✿ ʕ •ᴥ•ʔ
+    frame.imageWaited = alreadyWaited || (submitted && acquired);
 
     VkCommandBufferBeginInfo beginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;

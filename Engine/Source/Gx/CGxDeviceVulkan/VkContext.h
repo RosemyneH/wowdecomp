@@ -173,7 +173,7 @@ class VkContext {
     VkCommandBuffer UploadCmd();
     int32_t Submit(int32_t present);
     int32_t EndFrame();
-    void AbandonFrame();
+    int32_t AbandonFrame();
     void FlushFrame();
 
     uint32_t FindMemoryType(uint32_t typeBits, VkMemoryPropertyFlags flags);
