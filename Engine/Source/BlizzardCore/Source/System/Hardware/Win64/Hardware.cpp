@@ -2,8 +2,10 @@
 
 #include <cstdint>
 #include <cstring>
-#include <intrin.h>
 #include <windows.h>
+#if defined(_M_X64)
+#include <intrin.h>
+#endif
 #include "Engine/Source/BlizzardCore/Source/System/Hardware/Hardware.h"
 #include "Engine/Source/BlizzardCore/Source/System/Lock/Lock.h"
 
@@ -16,9 +18,35 @@ bool System_Hardware::s_initialized;
 // STATIC: 0x00B33FF0
 Blizzard::Lock::Atomic System_Hardware::s_initCount;
 
+#if defined(_M_ARM64)
+
+bool System_Hardware::ReadCPUID(CPUIDInfo* info) {
+    memset(info, 0, sizeof(*info));
+    return false;
+}
+
+void System_Hardware::InitProcessorFeatures() {
+    SYSTEM_INFO systemInfo = {};
+    GetSystemInfo(&systemInfo);
+
+    s_processorFeatures.m_processorCount = systemInfo.dwNumberOfProcessors ? systemInfo.dwNumberOfProcessors : 1;
+    s_processorFeatures.m_coreCount = 1;
+
+    uint32_t features = 0;
+
+    if (s_processorFeatures.m_processorCount > 1) {
+        features = 0x40;
+        s_processorFeatures.m_coreCount = s_processorFeatures.m_processorCount;
+    }
+
+    s_processorFeatures.m_features = features;
+}
+
+#elif defined(_M_X64)
+
 // OFFSET: 0x0042E120
 bool System_Hardware::ReadCPUID(CPUIDInfo* info) {
-    memset(info, sizeof(info), 0);
+    memset(info, 0, sizeof(*info));
     bool result = false;
     uint32_t maxLeaf = 0;
     uint32_t maxExtLeaf = 0;
@@ -152,6 +180,8 @@ void System_Hardware::InitProcessorFeatures() {
 
     s_processorFeatures.m_features = features;
 }
+
+#endif
 
 // OFFSET: 0x00435BB0
 uint32_t Blizzard::Hardware::GetProcessorFeatures() {

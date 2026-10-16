@@ -4,8 +4,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <intrin.h>
 #include <windows.h>
+#if defined(_M_X64)
+#include <intrin.h>
+#endif
 #include <shellapi.h>
 #include "Engine/Source/Os/OsFile.h"
 #include "Engine/Source/Os/Processor.h"
@@ -76,6 +78,10 @@ static const char s_vendorIds[] = "GenuineIntel" "AuthenticAMD" "CyrixInstead" "
 int32_t IOsGetProcessorFeatures(CpuIdInfo* info) {
     memset(info, 0, sizeof(CpuIdInfo));
 
+#if !defined(_M_X64)
+    return 0;
+#else
+
     int32_t result = 0;
     uint32_t maxStandard = 0;
     uint32_t maxExtended = 0;
@@ -139,6 +145,7 @@ int32_t IOsGetProcessorFeatures(CpuIdInfo* info) {
     }
 
     return result;
+#endif
 }
 
 // OFFSET: 0x0086B0C0

@@ -1,7 +1,7 @@
 #include <cstdint>
 #include "Engine/Source/Os/Processor.h"
 
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
 #include <intrin.h>
 #elif defined(__x86_64__) || defined(__i386__)
 #include <cpuid.h>
@@ -17,7 +17,7 @@ uint32_t OsGetProcessorFeatures() {
 namespace {
 
 int32_t DetectAvx2() {
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
     int regs[4] = {};
     __cpuid(regs, 0);
 
