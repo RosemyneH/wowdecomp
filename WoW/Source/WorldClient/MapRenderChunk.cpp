@@ -23,6 +23,9 @@
 #include "WoW/Source/WorldClient/MapLight.h"
 #include "WoW/Source/WorldClient/Types.h"
 #include "WoW/Source/WorldClient/World.h"
+#include "Engine/Source/Base/Job/JobSystem.h"
+#include <cstdint>
+#include <vector>
 #if defined(_MSC_VER)
 #include <malloc.h>
 #else
@@ -131,6 +134,218 @@ CMapRenderChunk::SVertexShaderConstants CMapRenderChunk::s_vertexShaderConsts;
 // STATIC: 0x00D252F0
 TSGrowableArray<CMapChunkBufBlock> CMapRenderChunk::s_chunkBlockArray;
 
+namespace {
+
+struct OwnedFill {
+    CMapRenderChunk* chunk;
+    char* vertices;
+    uint16_t* indices;
+    CGxBuf* vertexBuf;
+    CGxBuf* indexBuf;
+};
+
+std::vector<CMapRenderChunk*> s_ownedFills;
+
+bool RangesOverlap(const char* a, uint32_t aSize, const char* b, uint32_t bSize) {
+    if (!a || !b || !aSize || !bSize) {
+        return false;
+    }
+
+    uintptr_t a0 = reinterpret_cast<uintptr_t>(a);
+    uintptr_t b0 = reinterpret_cast<uintptr_t>(b);
+    return a0 < b0 + bSize && b0 < a0 + aSize;
+}
+
+void FillLockedBufs(CMapRenderChunk* chunk, char* vertices, uint16_t* indices) {
+    if (vertices) {
+        C3Vector offset;
+
+        if (chunk->m_mapChunks[0]) {
+            chunk->m_mapChunks[0]->CreateVertices(vertices, 0, offset);
+        }
+
+        if (chunk->m_mapChunks[1]) {
+            offset.z = chunk->m_mapChunks[1]->m_topLeftCoords.z - chunk->m_mapChunks[0]->m_topLeftCoords.z;
+
+            if (chunk->m_unkFlags & 0x2) {
+                offset.y = -33.333332f;
+            } else {
+                offset.x = -33.333332f;
+            }
+
+            chunk->m_mapChunks[1]->CreateVertices(vertices, 145, offset);
+        }
+    }
+
+    if (indices) {
+        chunk->m_batch.m_primType = GxPrim_Triangles;
+        chunk->m_batch.m_start = 0;
+        chunk->m_batch.m_count = 0;
+        chunk->m_batch.m_minIndex = 0xFFFF;
+        chunk->m_batch.m_maxIndex = 0;
+
+        if (chunk->m_mapChunks[0]) {
+            chunk->m_mapChunks[0]->CreateIndices(indices, &chunk->m_batch);
+        }
+
+        if (chunk->m_mapChunks[1]) {
+            chunk->m_mapChunks[1]->CreateIndices(&indices[chunk->m_batch.m_count], &chunk->m_batch);
+        }
+    }
+}
+
+void FillOwnedRange(Job::Range range, void* user) {
+    OwnedFill* jobs = static_cast<OwnedFill*>(user);
+
+    for (uint32_t i = range.begin; i < range.end; ++i) {
+        FillLockedBufs(jobs[i].chunk, jobs[i].vertices, jobs[i].indices);
+    }
+}
+
+void CancelOwnedFill(CMapRenderChunk* chunk) {
+    for (size_t i = 0; i < s_ownedFills.size();) {
+        if (s_ownedFills[i] == chunk) {
+            s_ownedFills.erase(s_ownedFills.begin() + static_cast<std::ptrdiff_t>(i));
+        } else {
+            ++i;
+        }
+    }
+}
+
+void ClearOwnedFills() {
+    s_ownedFills.clear();
+}
+
+void QueueOwnedFill(CMapRenderChunk* chunk) {
+    if (!chunk || !chunk->m_chunkBuf) {
+        return;
+    }
+
+    CGxBuf* vertexBuf = chunk->m_chunkBuf->m_vertexBuf;
+    CGxBuf* indexBuf = chunk->m_chunkBuf->m_indexBuf;
+
+    if (!vertexBuf || !indexBuf) {
+        return;
+    }
+
+    if (vertexBuf->m_hasData && vertexBuf->m_valid && indexBuf->m_hasData && indexBuf->m_valid) {
+        return;
+    }
+
+    for (CMapRenderChunk* queued : s_ownedFills) {
+        if (queued == chunk) {
+            return;
+        }
+    }
+
+    s_ownedFills.push_back(chunk);
+}
+
+void FlushOwnedFills() {
+    if (s_ownedFills.empty()) {
+        return;
+    }
+
+    std::vector<CMapRenderChunk*> pending;
+    pending.swap(s_ownedFills);
+
+    if (!g_theGxDevicePtr) {
+        s_ownedFills.swap(pending);
+        return;
+    }
+
+    CMapChunk::SetVertexColorFormat(g_theGxDevicePtr->Caps().m_colorFormat);
+
+    std::vector<OwnedFill> jobs;
+    jobs.reserve(pending.size());
+    bool overlap = false;
+
+    for (CMapRenderChunk* chunk : pending) {
+        if (!chunk->m_chunkBuf) {
+            continue;
+        }
+
+        CGxBuf* vertexBuf = chunk->m_chunkBuf->m_vertexBuf;
+        CGxBuf* indexBuf = chunk->m_chunkBuf->m_indexBuf;
+
+        if (!vertexBuf || !indexBuf) {
+            continue;
+        }
+
+        int32_t vertexReady = vertexBuf->m_hasData && vertexBuf->m_valid;
+        int32_t indexReady = indexBuf->m_hasData && indexBuf->m_valid;
+
+        if (vertexReady && indexReady) {
+            continue;
+        }
+
+        OwnedFill job;
+        job.chunk = chunk;
+        job.vertices = nullptr;
+        job.indices = nullptr;
+        job.vertexBuf = vertexBuf;
+        job.indexBuf = indexBuf;
+
+        if (!vertexReady) {
+            job.vertices = g_theGxDevicePtr->BufLock(vertexBuf);
+
+            for (const OwnedFill& prev : jobs) {
+                if (RangesOverlap(job.vertices, vertexBuf->m_size, prev.vertices, prev.vertexBuf->m_size)) {
+                    overlap = true;
+                }
+            }
+        }
+
+        if (!indexReady) {
+            job.indices = reinterpret_cast<uint16_t*>(g_theGxDevicePtr->BufLock(indexBuf));
+
+            for (const OwnedFill& prev : jobs) {
+                if (RangesOverlap(reinterpret_cast<char*>(job.indices), indexBuf->m_size, reinterpret_cast<char*>(prev.indices), prev.indexBuf->m_size)) {
+                    overlap = true;
+                }
+            }
+        }
+
+        jobs.push_back(job);
+    }
+
+    if (jobs.empty()) {
+        return;
+    }
+
+    if (overlap) {
+        for (OwnedFill& job : jobs) {
+            if (job.vertices) {
+                g_theGxDevicePtr->BufUnlock(job.vertexBuf, 0);
+            }
+
+            if (job.indices) {
+                g_theGxDevicePtr->BufUnlock(job.indexBuf, 0);
+            }
+
+            job.chunk->RenderPrepBufs(job.vertexBuf, job.indexBuf);
+        }
+
+        return;
+    }
+
+    Job::ParallelFor(static_cast<uint32_t>(jobs.size()), FillOwnedRange, jobs.data());
+
+    for (OwnedFill& job : jobs) {
+        if (job.vertices) {
+            g_theGxDevicePtr->BufUnlock(job.vertexBuf, 0);
+            job.vertexBuf->m_hasData = 1;
+        }
+
+        if (job.indices) {
+            g_theGxDevicePtr->BufUnlock(job.indexBuf, 0);
+            job.indexBuf->m_hasData = 1;
+        }
+    }
+}
+
+}
+
 // VERIFY: b7c2a1ad auto
 // OFFSET: 0x007B7320
 void CMapRenderChunk::SetDirty() {
@@ -140,6 +355,7 @@ void CMapRenderChunk::SetDirty() {
 // VERIFY: b36ae9fd auto
 // OFFSET: 0x007BA340
 void CMapRenderChunk::Initialize() {
+    Job::Init();
     CMapRenderChunk::s_bPoolsDirty = 1;
     CMapRenderChunk::s_gxBufVertexFormat = GxVBF_PN;
     CMapRenderChunk::s_chunkBatch.m_maxIndex = s_maxVertexCount - 1;
@@ -451,6 +667,8 @@ CMapChunkBuf* CMapRenderChunk::AllocBuf(int32_t flags, CMapRenderChunk* renderCh
 // VERIFY: e18a2023 manual
 // OFFSET: 0x007B9560
 void CMapRenderChunk::PurgeChunkBufBlocks() {
+    CMapChunk::FlushQueuedVisibility();
+
     for (uint32_t i = 0; i < CMapRenderChunk::s_chunkBlockArray.Count(); i++) {
         CMapChunkBufBlock& block = CMapRenderChunk::s_chunkBlockArray[i];
 
@@ -564,6 +782,7 @@ CMapChunkBufBlock::~CMapChunkBufBlock() {
 // VERIFY: a8d77235 manual
 // OFFSET: 0x007B9D60
 CMapRenderChunk::~CMapRenderChunk() {
+    CancelOwnedFill(this);
     this->FreeBuf();
     this->FreeLayers();
 
@@ -583,6 +802,14 @@ CMapRenderChunk::~CMapRenderChunk() {
 // VERIFY: 2d552482 manual
 // OFFSET: 0x007BA600
 void CMapRenderChunk::UpdatePools() {
+    CMapChunk::FlushQueuedVisibility();
+
+    if (CMapRenderChunk::s_bPoolsDirty) {
+        ClearOwnedFills();
+    } else {
+        FlushOwnedFills();
+    }
+
     if (!CMapRenderChunk::s_bPoolsDirty) {
         return;
     }
@@ -626,47 +853,31 @@ void CMapRenderChunk::RenderPrepBufs(CGxBuf* vertexBuf, CGxBuf* indexBuf) {
     int32_t vertexReady = vertexBuf->m_hasData && vertexBuf->m_valid;
     int32_t indexReady = indexBuf->m_hasData && indexBuf->m_valid;
 
+    if (vertexReady && indexReady) {
+        return;
+    }
+
+    CMapChunk::SetVertexColorFormat(g_theGxDevicePtr->Caps().m_colorFormat);
+
+    char* vertices = nullptr;
+    uint16_t* indices = nullptr;
+
     if (!vertexReady) {
-        C3Vector offset;
-        char* vertices = g_theGxDevicePtr->BufLock(vertexBuf);
+        vertices = g_theGxDevicePtr->BufLock(vertexBuf);
+    }
 
-        if (this->m_mapChunks[0]) {
-            this->m_mapChunks[0]->CreateVertices(vertices, 0, offset);
-        }
+    if (!indexReady) {
+        indices = reinterpret_cast<uint16_t*>(g_theGxDevicePtr->BufLock(indexBuf));
+    }
 
-        if (this->m_mapChunks[1]) {
-            offset.z = this->m_mapChunks[1]->m_topLeftCoords.z - this->m_mapChunks[0]->m_topLeftCoords.z;
+    FillLockedBufs(this, vertices, indices);
 
-            if (this->m_unkFlags & 0x2) {
-                offset.y = -33.333332f;
-            } else {
-                offset.x = -33.333332f;
-            }
-
-            this->m_mapChunks[1]->CreateVertices(vertices, 145, offset);
-        }
-
+    if (!vertexReady) {
         g_theGxDevicePtr->BufUnlock(vertexBuf, 0);
         vertexBuf->m_hasData = 1;
     }
 
     if (!indexReady) {
-        this->m_batch.m_primType = GxPrim_Triangles;
-        this->m_batch.m_start = 0;
-        this->m_batch.m_count = 0;
-        this->m_batch.m_minIndex = 0xFFFF;
-        this->m_batch.m_maxIndex = 0;
-
-        uint16_t* indices = reinterpret_cast<uint16_t*>(g_theGxDevicePtr->BufLock(indexBuf));
-
-        if (this->m_mapChunks[0]) {
-            this->m_mapChunks[0]->CreateIndices(indices, &this->m_batch);
-        }
-
-        if (this->m_mapChunks[1]) {
-            this->m_mapChunks[1]->CreateIndices(&indices[this->m_batch.m_count], &this->m_batch);
-        }
-
         g_theGxDevicePtr->BufUnlock(indexBuf, 0);
         indexBuf->m_hasData = 1;
     }
@@ -696,6 +907,7 @@ void CMapRenderChunk::UseStreamingBufs() {
 // VERIFY: fdc9dc29 manual
 // OFFSET: 0x007D04A0
 void CMapRenderChunk::RenderSetup(int32_t a2) {
+    FlushOwnedFills();
     this->m_lastUpdateTime = 0.0f;
     this->AllocLayerTextures();
 
@@ -782,7 +994,8 @@ void CMapRenderChunk::RenderPrep() {
 
     if (this->m_chunkBuf) {
         CMapRenderChunk::s_bufList.LinkToHead(this->m_chunkBuf->m_block);
-        this->RenderPrepBufs(this->m_chunkBuf->m_vertexBuf, this->m_chunkBuf->m_indexBuf);
+        // -- ʕ •ᴥ•ʔ✿ Main thread owns the buffer; workers fill it before the draw ✿ ʕ •ᴥ•ʔ
+        QueueOwnedFill(this);
     }
 
     if (!this->m_layersCount) {
