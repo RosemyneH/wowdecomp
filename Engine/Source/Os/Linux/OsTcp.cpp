@@ -33,8 +33,11 @@ const char* OsNetAddrToStr(const NETADDR* addr, char* buffer, uint32_t size) {
     const sockaddr_in* in = reinterpret_cast<const sockaddr_in*>(addr);
 
     char address[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &in->sin_addr, address, sizeof(address));
-    SStrPrintf(buffer, size, "%s:%u", address, ntohs(in->sin_port));
+    const char* text = inet_ntop(AF_INET, &in->sin_addr, address, sizeof(address));
+    if (!text) {
+        text = "0.0.0.0";
+    }
+    SStrPrintf(buffer, size, "%s:%u", text, ntohs(in->sin_port));
 
     return buffer;
 }
