@@ -2073,7 +2073,9 @@ void CGxDeviceVulkan::DeviceReadPixels(CiRect& rect, TSGrowableArray<CImVector>&
 void CGxDeviceVulkan::DeviceReadDepths(CiRect& rect, TSGrowableArray<float>& depths) {
     this->ClampRectToWindow(rect);
 
-    uint32_t count = (rect.maxY - rect.minY) * (rect.maxX - rect.minX);
+    uint32_t width = rect.maxX > rect.minX ? static_cast<uint32_t>(rect.maxX - rect.minX) : 0;
+    uint32_t height = rect.maxY > rect.minY ? static_cast<uint32_t>(rect.maxY - rect.minY) : 0;
+    uint32_t count = width * height;
     depths.SetCount(count);
     memset(depths.Ptr(), 0, sizeof(float) * count);
 }
