@@ -30,9 +30,6 @@ else ()
     set(FMODEX_PLATFORM_DIR ${FMODEX_DIR}/linux/src)
     if (WOWDECOMP_APPLE)
         list(FILTER FMODEX_PLATFORM_SOURCES EXCLUDE REGEX "fmod_output_alsa\\.cpp$")
-        find_library(COREAUDIO_FRAMEWORK CoreAudio REQUIRED)
-        find_library(AUDIOTOOLBOX_FRAMEWORK AudioToolbox REQUIRED)
-        find_library(AUDIOUNIT_FRAMEWORK AudioUnit REQUIRED)
     else ()
         find_package(ALSA REQUIRED)
     endif ()
@@ -77,9 +74,6 @@ if (WIN32)
 elseif (WOWDECOMP_APPLE)
     target_link_libraries(fmodex
         PUBLIC
-            ${COREAUDIO_FRAMEWORK}
-            ${AUDIOTOOLBOX_FRAMEWORK}
-            ${AUDIOUNIT_FRAMEWORK}
             ${COREFOUNDATION_FRAMEWORK}
             Threads::Threads
             ${CMAKE_DL_LIBS}
