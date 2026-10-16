@@ -594,7 +594,9 @@ NetClient::NetClient() {
     this->m_objMgr = nullptr;
 
     NETCLIENTNODE* node = s_clientList.NewNode(2, 0, 0);
-    node->m_client = this;
+    if (node) {
+        node->m_client = this;
+    }
 }
 
 // VERIFY: 3e4c9045 manual
@@ -612,6 +614,9 @@ void NetClient::Send(CDataStore* msg) {
 
     if (this->m_suspended) {
         NetClient::HELDMESSAGE* held = this->m_heldMessages.NewNode(2, 0, 0);
+        if (!held) {
+            return;
+        }
         uint32_t bytes = msg->m_size - msg->m_read;
         void* data;
         msg->GetDataInSitu(data, bytes);
