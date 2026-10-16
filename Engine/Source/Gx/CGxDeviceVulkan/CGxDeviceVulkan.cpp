@@ -1134,6 +1134,10 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
     VkDeviceSize offsets[MaxBindings];
 
     for (uint32_t i = 0; i < streamCount; i++) {
+        if (!streamBufs[i] || !streamBufs[i]->m_pool) {
+            return;
+        }
+
         VkBufferAlloc* alloc = static_cast<VkBufferAlloc*>(streamBufs[i]->m_pool->m_apiSpecific);
 
         if (!alloc) {
@@ -1294,6 +1298,10 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
     }
 
     if (count) {
+        if (!this->m_primIndexBuf || !this->m_primIndexBuf->m_pool) {
+            return;
+        }
+
         VkBufferAlloc* indices = static_cast<VkBufferAlloc*>(this->m_primIndexBuf->m_pool->m_apiSpecific);
 
         if (!indices) {
@@ -1388,9 +1396,18 @@ void CGxDeviceVulkan::IBufUnlock(CGxBuf* buf) {
     EmergencyMem& emergencyMem = this->m_emergencyMem[buf->m_pool->m_target];
 
     if (emergencyMem.m_lock) {
+        const uint8_t* src = emergencyMem.m_data.Ptr();
+        VkBufferAlloc* alloc = this->IPoolBuffer(buf->m_pool);
+
+        if (alloc && src && buf->m_size) {
+            memcpy(reinterpret_cast<char*>(alloc->mapped) + buf->m_index, src, buf->m_size);
+            buf->m_valid = 1;
+        } else {
+            buf->m_valid = 0;
+            this->m_intF5C = 1;
+        }
+
         emergencyMem.Unlock();
-        buf->m_valid = 0;
-        this->m_intF5C = 1;
         return;
     }
 

@@ -111,18 +111,18 @@ local function WowDecomp_InstallEffectsPanelPlaytest(panel)
         valueStep = 0.33,
     };
 
-    if VideoOptionsEffectsPanelShaders then
-        VideoOptionsEffectsPanelShaders:ClearAllPoints();
-        VideoOptionsEffectsPanelShaders:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 16, 8);
+    local viewDist = VideoOptionsEffectsPanelViewDistance;
+    if not viewDist then
+        return;
     end
 
     local section = CreateFrame("Frame", "VideoOptionsEffectsPanelWowDecompSection", panel);
-    section:SetSize(380, 88);
-    section:SetPoint("BOTTOMLEFT", VideoOptionsEffectsPanelShaders, "TOPLEFT", 0, 10);
+    section:SetSize(380, 96);
+    section:SetPoint("TOPLEFT", viewDist, "BOTTOMLEFT", -2, -18);
 
     local header = section:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall");
-    header:SetPoint("TOPLEFT", section, "TOPLEFT", 4, -4);
-    header:SetText("Map exploration (playtest, off by default)");
+    header:SetPoint("TOPLEFT", section, "TOPLEFT", 4, -2);
+    header:SetText("Map exploration (playtest)");
 
     local anchor = section;
     WowDecomp_RegisterCheckbox(panel, "VideoOptionsEffectsPanelExtendedView", "Extended view distance", "extendedView", anchor, 8, -22, WowDecomp_OnPlaytestCVarChanged);
@@ -175,4 +175,13 @@ end
 
 if VideoOptionsEffectsPanel then
     WowDecomp_InstallEffectsPanelPlaytest(VideoOptionsEffectsPanel);
+end
+
+if VideoOptionsFrame then
+    VideoOptionsFrame:HookScript("OnShow", function()
+        if VideoOptionsEffectsPanel and not VideoOptionsEffectsPanel.wowDecompPlaytestInstalled then
+            WowDecomp_InstallEffectsPanelPlaytest(VideoOptionsEffectsPanel);
+        end
+        WowDecomp_OnPlaytestCVarChanged();
+    end);
 end
