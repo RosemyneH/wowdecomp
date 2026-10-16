@@ -3,6 +3,7 @@
 #include <cstring>
 #include <new>
 #include "Engine/Source/Model2/M2Cache.h"
+#include "Engine/Source/Base/Job/JobSystem.h"
 #include "Engine/Source/Base/ObjectAlloc.h"
 #include "Engine/Source/BlizzardCore/SFile2-Core.h"
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
@@ -164,6 +165,7 @@ int32_t CM2Cache::Initialize(uint32_t flags) {
     }
 
     CParticleEmitter2::Init();
+    Job::Init();
     this->m_initialized = 1;
 
     return 1;
@@ -198,6 +200,8 @@ void CM2Cache::GarbageCollect(int32_t force) {
 // VERIFY: 370cb080 auto
 // OFFSET: 0x0081C300
 void CM2Cache::Destroy() {
+    Job::Shutdown();
+
     if (this->m_flags & 4) {
         this->m_flags |= 0x800;
         this->m_threadStart.Set();
