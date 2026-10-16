@@ -104,6 +104,11 @@ FMOD_RESULT OutputALSA::init(int selecteddriver, FMOD_INITFLAGS flags, int *outp
         return FMOD_ERR_OUTPUT_FORMAT;
     }
 
+    if (dspbufferlength <= 0 || dspnumbuffers <= 0)
+    {
+        return FMOD_ERR_OUTPUT_FORMAT;
+    }
+
     const char *device = extradriverdata ? *(const char **)extradriverdata : "default";
 
     if (snd_pcm_open(&mHandle, device, SND_PCM_STREAM_PLAYBACK, 0) < 0)
