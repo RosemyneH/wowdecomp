@@ -1,6 +1,7 @@
 #include <cstdint>
 #include <cstring>
 #include <malloc.h>
+#include "Engine/Source/Base/OsCrt.h"
 #include "RSA.h"
 #include "SSignature.h"
 #include "Engine/Source/Storm/H/storm.h"

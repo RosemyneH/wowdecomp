@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include "Engine/Source/Base/OsCrt.h"
 #include "SOption.h"
 #include "Engine/Source/Storm/H/storm.h"
 

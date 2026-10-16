@@ -2,7 +2,7 @@
 #define ENGINE_SOURCE_STORM_H_SCRITSECT_H
 
 #include <cstdint>
-#include <windows.h>
+#include "Engine/Source/Base/OsTypes.h"
 
 class CCritSect {
     public:

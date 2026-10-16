@@ -1,7 +1,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
-#include <windows.h>
+#include "Engine/Source/Base/OsTypes.h"
 #include "Engine/Source/Storm/H/storm.h"
 
 #ifndef NDEBUG

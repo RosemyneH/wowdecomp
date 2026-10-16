@@ -1,7 +1,12 @@
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
+#if defined(_WIN32)
 #include <process.h>
-#include <windows.h>
+#else
+#include <unistd.h>
+#endif
+#include "Engine/Source/Base/OsTypes.h"
 #include "Engine/Source/BlizzardCore/SFile2-Core.h"
 #include "Engine/Source/Storm/H/storm.h"
 
@@ -15,7 +20,11 @@ static int32_t s_exitcount;
 // OFFSET: 0x007739B0
 static void StormAtExit() {
     if (s_exitcount++ == 0) {
+#if defined(_WIN32)
         _cexit();
+#else
+        fflush(nullptr);
+#endif
         StormRtlDestroy();
         _exit(s_exitcode);
     }
@@ -46,7 +55,11 @@ void STORMAPI StormDestroy() {
 // VERIFY: 75275781 auto
 // OFFSET: 0x00773A30
 HINSTANCE STORMAPI StormGetInstance() {
+#if defined(_WIN32)
     return GetModuleHandleA(nullptr);
+#else
+    return nullptr;
+#endif
 }
 
 // VERIFY: 8c025427 auto
@@ -60,5 +73,9 @@ void StormExit(int32_t code) {
 // OFFSET: 0x00773A60
 void StormExitProcess(int32_t code) {
     s_exitcode = code;
+#if defined(_WIN32)
     ExitProcess(code);
+#else
+    _exit(code);
+#endif
 }

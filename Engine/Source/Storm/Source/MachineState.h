@@ -2,7 +2,7 @@
 #define ENGINE_SOURCE_STORM_SOURCE_MACHINESTATE_H
 
 #include <cstdint>
-#include <windows.h>
+#include "Engine/Source/Base/OsTypes.h"
 
 #define LOG_OPTION_DEFAULT 0x1
 #define LOG_OPTION_TITLE 0x2

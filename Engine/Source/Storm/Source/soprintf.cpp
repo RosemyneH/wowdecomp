@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include "Engine/Source/Base/OsCrt.h"
 #include "Engine/Source/Storm/H/storm.h"
 
 #define MAX_ARGUMENTS 64

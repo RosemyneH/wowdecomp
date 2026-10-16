@@ -1,8 +1,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <winerror.h>
 #include <malloc.h>
+#include "Engine/Source/Base/OsCrt.h"
 #include "Engine/Source/Storm/H/storm.h"
 
 // STATIC: 0x00ADE850
