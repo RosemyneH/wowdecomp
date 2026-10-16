@@ -792,7 +792,7 @@ int32_t VkContext::BeginFrame() {
 
     VkCommandBufferBeginInfo beginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    // ʕ •ᴥ•ʔ✿ A failed begin is not a live command buffer; the caller recreates ✿ ʕ •ᴥ•ʔ
+    // ʕ •ᴥ•ʔ✿ A failed begin is not a live command buffer; present the image already acquired ✿ ʕ •ᴥ•ʔ
     if (vkBeginCommandBuffer(frame.cmd, &beginInfo) != VK_SUCCESS) {
         frame.recording = 0;
         this->EndFrame();
