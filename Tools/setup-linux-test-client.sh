@@ -152,3 +152,8 @@ EOF
 # ʕ •ᴥ•ʔ✿ Stage the WASM inspector Lua addon alongside the test client ✿ ʕ •ᴥ•ʔ
 mkdir -p "$PLAY_DIR/Interface/AddOns/WasmInspector"
 cp -f "$ROOT/Addons/Lua/WasmInspector/WasmInspector.toc" "$ROOT/Addons/Lua/WasmInspector/WasmInspector.lua" "$PLAY_DIR/Interface/AddOns/WasmInspector/"
+
+mkdir -p "$PLAY_DIR/Interface/AddOns/ExtendedViewOptions"
+cp -f "$ROOT/Tools/playtest-interface/Addon/ExtendedViewOptions/ExtendedViewOptions.toc" \
+    "$ROOT/Tools/playtest-interface/Addon/ExtendedViewOptions/ExtendedViewOptions.lua" \
+    "$PLAY_DIR/Interface/AddOns/ExtendedViewOptions/"
