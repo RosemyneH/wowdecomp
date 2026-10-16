@@ -174,6 +174,7 @@ int32_t CGxDeviceVulkan::ICreateVulkan(const CGxFormat& format) {
 
     if (!surface) {
         CGxDevice::Log("CGxDeviceVulkan: surface creation failed");
+        this->IDestroyVulkan();
         return 0;
     }
 
@@ -182,16 +183,19 @@ int32_t CGxDeviceVulkan::ICreateVulkan(const CGxFormat& format) {
     if (firstTime) {
         if (!this->m_vk.CreateDevice(surface)) {
             CGxDevice::Log("CGxDeviceVulkan: no suitable Vulkan 1.1 device");
+            this->IDestroyVulkan();
             return 0;
         }
 
         CGxDevice::Log("CGxDeviceVulkan: using %s", this->m_vk.m_properties.deviceName);
 
         if (!this->ICreateDeviceObjects()) {
+            this->IDestroyVulkan();
             return 0;
         }
     } else if (!this->m_vk.SetSurface(surface)) {
         CGxDevice::Log("CGxDeviceVulkan: device cannot present to the new surface");
+        this->IDestroyVulkan();
         return 0;
     }
 
@@ -199,6 +203,7 @@ int32_t CGxDeviceVulkan::ICreateVulkan(const CGxFormat& format) {
 
     if (!this->IRecreateSwapchain()) {
         CGxDevice::Log("CGxDeviceVulkan: swapchain creation failed");
+        this->IDestroyVulkan();
         return 0;
     }
 
