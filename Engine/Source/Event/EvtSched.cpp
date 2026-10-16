@@ -237,7 +237,7 @@ void IEvtSchedulerDestroy() {
             SThread* shutdownThread = new (shutdownMem) SThread;
             *shutdownThreads.New() = shutdownThread;
 
-            while (processors) {
+            while (processors && shutdownThreads.Count()) {
                 processors--;
 
                 SThread thread;
