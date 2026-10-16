@@ -89,6 +89,11 @@ struct MockHost final : IWasmHostServices {
         luaAddons.push_back(name);
         return 0;
     }
+    int CallLua(const std::string&, const uint8_t*, uint32_t, std::vector<uint8_t>& out, std::string&) override {
+        out = {1, 0, 4, 1, 0, 0, 0};
+        return 0;
+    }
+    int BindLua(const std::string&, int32_t, const std::string&, std::string&) override { return 0; }
 };
 
 static InspectorInfo Find(WasmAddonManager& m, const std::string& id) {
@@ -700,6 +705,8 @@ int main(int argc, char** argv) {
         int64_t exec = -1, missing = -1;
         CHECK(m.CallExportInt("test.lua-full", "wow_exec", exec) && exec == 0);
         CHECK(m.CallExportInt("test.lua-full", "wow_missing", missing) && missing == ErrNotFound);
+        int64_t called = -1;
+        CHECK(m.CallExportInt("test.lua-full", "wow_call", called) && called == 1);
         CHECK(!host.luaExec.empty() && host.luaExec[0].find("SlashCmdList") != std::string::npos);
         CHECK((Find(m, "test.lua-full").grantedPermissions & PermLuaFull) != 0);
         m.Shutdown();

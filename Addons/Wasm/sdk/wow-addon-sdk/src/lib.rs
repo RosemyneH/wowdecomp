@@ -35,6 +35,8 @@ mod raw {
         pub fn lua_exec(ptr: *const u8, len: u32) -> i32;
         pub fn lua_load(ptr: *const u8, len: u32) -> i32;
         pub fn lua_load_addon(ptr: *const u8, len: u32) -> i32;
+        pub fn lua_call(ptr: *const u8, len: u32, out: *mut u8, cap: u32) -> i32;
+        pub fn lua_bind(handle: i32, ptr: *const u8, len: u32) -> i32;
     }
 }
 
@@ -141,6 +143,8 @@ pub fn perf(kind: i32) -> i64 { unsafe { raw::perf_query(kind) } }
 pub fn lua_exec(source: &str) -> i32 { unsafe { raw::lua_exec(source.as_ptr(), source.len() as u32) } }
 pub fn lua_load(relative_path: &str) -> i32 { unsafe { raw::lua_load(relative_path.as_ptr(), relative_path.len() as u32) } }
 pub fn lua_load_addon(name: &str) -> i32 { unsafe { raw::lua_load_addon(name.as_ptr(), name.len() as u32) } }
+
+pub mod lua;
 
 /// ʕ •ᴥ•ʔ✿ Write actions are requests: the user confirms in an engine-owned dialog, the result arrives as a WASM_CONFIRM_RESULT event ✿ ʕ •ᴥ•ʔ
 pub mod confirm {

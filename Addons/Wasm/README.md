@@ -62,15 +62,9 @@ wasmdeny <addon-id> <permission>
 
 `ui_bind` attaches `click`, `enter`, `leave`, `escape`, `enter_pressed`, or `text_changed`. Subscribe to `WASM_UI`. In this client, `OnClick` exists on buttons. Edit boxes receive enter, escape, and text-changed. `ui_get_text` reads an edit box. `units::names` returns display names when `units.read` is granted.
 
-## Full Lua
+## Full Lua from Rust
 
-Declare `lua.full = true`. The host then runs Lua in the client state:
-
-- `lua_exec(source)` runs a snippet against the full 3.3.5 API
-- `lua_load("Addon.toc")` runs a toc, lua, or xml file shipped inside the WASM package
-- `lua_load_addon("ElvUI")` runs an addon already installed under `Interface/AddOns`, including XML and saved variables
-
-`port.elvui` and `port.wim` load the real addons that way. The guide is [docs/lua-wasm.md](../../docs/lua-wasm.md).
+Declare `lua.full = true`. Addons stay Rust. `wow_addon_sdk::lua::call` and `lua::method` invoke any 3.3.5 global or widget method. `Val::Map` is how you pass a Lua table. `lua::bind` sends `OnClick` / `OnEnterPressed` back as `WASM_UI`. The guide is [docs/lua-wasm.md](../../docs/lua-wasm.md).
 
 ## Ports
 
@@ -80,18 +74,14 @@ Clean-room layouts, not the upstream Lua addons:
 |---|---|---|---|
 | Unit frames | `examples/unit-frames` | `example.unit-frames` | Player, target, and party bars |
 | Whisper list | `examples/whisper-window` | `example.whisper-window` | One whisper log |
-| ElvUI | `ports/elvui` | `port.elvui` | Player, target, target-of-target, focus, party, and a top data bar |
-| WIM | `ports/wim` | `port.wim` | Per-person whisper windows, history, enter to send |
+| ElvUI | `ports/elvui` | `port.elvui` | Rust unit frames built with `CreateFrame`, `UnitHealth`, and `UnitName` |
+| WIM | `ports/wim` | `port.wim` | Rust whisper windows. Enter calls `SendChatMessage` |
 
 ```text
-wasmgrant port.elvui units.read
 wasmgrant port.wim chat.read
-wasmgrant port.wim chat.send
-wasmgrant port.wim storage.read
-wasmgrant port.wim storage.write
 ```
 
-Until those grants, the panels still show and the sensitive payloads stay redacted.
+`lua.full` is already granted because the manifests declare it. Whisper text stays redacted until `chat.read` is granted.
 
 ## Inspect
 

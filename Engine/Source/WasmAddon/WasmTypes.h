@@ -279,6 +279,9 @@ public:
     virtual int ExecuteLua(const std::string& addonId, const std::string& chunkName, const std::string& source, std::string& error) { (void)addonId; (void)chunkName; (void)source; (void)error; return ErrUnavailable; }
     virtual int LoadLuaPath(const std::string& addonId, const std::string& addonRoot, const std::string& absolutePath, std::string& error) { (void)addonId; (void)addonRoot; (void)absolutePath; (void)error; return ErrUnavailable; }
     virtual int LoadNamedAddon(const std::string& name, std::string& error) { (void)name; (void)error; return ErrUnavailable; }
+    virtual int CallLua(const std::string& addonId, const uint8_t* req, uint32_t reqLen, std::vector<uint8_t>& out, std::string& error) { (void)addonId; (void)req; (void)reqLen; (void)out; (void)error; return ErrUnavailable; }
+    virtual int BindLua(const std::string& addonId, int32_t handle, const std::string& script, std::string& error) { (void)addonId; (void)handle; (void)script; (void)error; return ErrUnavailable; }
+    virtual void ReleaseLua(const std::string& addonId) { (void)addonId; }
     virtual void UiDestroy(uint64_t hostHandle) { (void)hostHandle; }
     virtual void Log(const std::string& message) { (void)message; }
     virtual void ConfirmShow(const ConfirmRequest& request) { (void)request; }
@@ -290,7 +293,7 @@ public:
 
 enum class HostFn : uint32_t {
     ApiVersion = 0, Ping, ChatPrint, EventSubscribe, InventorySnapshot, UiCreate, UiSetText, PerfQuery,
-    StorageGet, StorageLen, StorageKeys, StorageUsage, StorageSet, StorageDelete, UnitSnapshot, AuctionSnapshot, ChatSendRequest, AuctionBidRequest, UiSpawn, UiStyle, UiBind, UiGetText, UnitNames, LuaExec, LuaLoad, LuaLoadAddon, Count
+    StorageGet, StorageLen, StorageKeys, StorageUsage, StorageSet, StorageDelete, UnitSnapshot, AuctionSnapshot, ChatSendRequest, AuctionBidRequest, UiSpawn, UiStyle, UiBind, UiGetText, UnitNames, LuaExec, LuaLoad, LuaLoadAddon, LuaCall, LuaBind, Count
 };
 static_assert((uint32_t)HostFn::Count <= 32, "hostCallsByFn array too small");
 

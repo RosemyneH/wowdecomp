@@ -823,6 +823,31 @@ int64_t WasmAddonManager::HandleHostCall(Addon& addon, IWasmInstance& instance, 
             RecordActivity(addon.info.manifest.id, "lua.addon", name);
             return Ok;
         }
+        case HostFn::LuaCall: {
+            if (!HasPermission(addon, PermLuaFull, fn)) return ErrPermissionDenied;
+            if (args.size() < 4 || args[0] < 0 || args[1] < 1 || args[1] > 16384 || args[2] < 0 || args[3] < 0) return ErrInvalidArgument;
+            std::string raw;
+            if (!instance.ReadMemory((uint32_t)args[0], (uint32_t)args[1], raw)) return ErrInvalidMemory;
+            if (!m_host) return ErrUnavailable;
+            std::vector<uint8_t> out;
+            std::string error;
+            int rc = m_host->CallLua(addon.info.manifest.id, reinterpret_cast<const uint8_t*>(raw.data()), (uint32_t)raw.size(), out, error);
+            if (rc != 0) { RecordError(addon, error.empty() ? "lua_call failed" : error); return rc; }
+            if ((uint64_t)args[3] < out.size()) return ErrBufferTooSmall;
+            if (!out.empty() && !instance.WriteMemory((uint32_t)args[2], out.data(), (uint32_t)out.size())) return ErrInvalidMemory;
+            return (int64_t)out.size();
+        }
+        case HostFn::LuaBind: {
+            if (!HasPermission(addon, PermLuaFull, fn)) return ErrPermissionDenied;
+            if (args.size() < 3) return ErrInvalidArgument;
+            std::string script;
+            if (!readString(1, 2, script)) return ErrInvalidMemory;
+            if (!m_host) return ErrUnavailable;
+            std::string error;
+            int rc = m_host->BindLua(addon.info.manifest.id, (int32_t)args[0], script, error);
+            if (rc != 0) { RecordError(addon, error.empty() ? "lua_bind failed" : error); return rc; }
+            return Ok;
+        }
         case HostFn::AuctionSnapshot: {
             if (!HasPermission(addon, PermAuctionRead, fn)) return ErrPermissionDenied;
             if (args.size() < 3 || args[0] < 0 || args[0] > 2 || args[1] < 0 || args[2] < 0) return ErrInvalidArgument;
@@ -1038,6 +1063,7 @@ bool WasmAddonManager::UnloadAddon(const std::string& addonId) {
                 InvokeExport(addon, "wow_on_unload", {}, ignored);
             }
             for (auto& [slot, handle] : addon.uiHandles) if (m_host) m_host->UiDestroy(handle.hostHandle);
+            if (m_host) m_host->ReleaseLua(addon.info.manifest.id);
         }
         if (wasRunning) { SaveStorage(addon, 0); SaveStorage(addon, 1); }
         addon.uiHandles.clear();

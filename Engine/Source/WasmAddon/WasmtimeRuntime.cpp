@@ -179,7 +179,7 @@ public:
         }
         wasm_importtype_vec_t imports;
         wasmtime_module_imports(module, &imports);
-        static const char* kKnown[] = {"api_version","ping","chat_print","event_subscribe","inventory_snapshot","ui_create","ui_set_text","perf_query","storage_get","storage_len","storage_keys","storage_usage","storage_set","storage_delete","unit_snapshot","auction_snapshot","chat_send_request","auction_bid_request","ui_spawn","ui_style","ui_bind","ui_get_text","unit_names","lua_exec","lua_load","lua_load_addon"};
+        static const char* kKnown[] = {"api_version","ping","chat_print","event_subscribe","inventory_snapshot","ui_create","ui_set_text","perf_query","storage_get","storage_len","storage_keys","storage_usage","storage_set","storage_delete","unit_snapshot","auction_snapshot","chat_send_request","auction_bid_request","ui_spawn","ui_style","ui_bind","ui_get_text","unit_names","lua_exec","lua_load","lua_load_addon","lua_call","lua_bind"};
         for (size_t i = 0; i < imports.size; i++) {
             std::string mod = NameToString(wasm_importtype_module(imports.data[i]));
             std::string name = NameToString(wasm_importtype_name(imports.data[i]));
@@ -249,6 +249,8 @@ public:
             {HostFn::LuaExec, "lua_exec", {WASM_I32, WASM_I32}, {WASM_I32}},
             {HostFn::LuaLoad, "lua_load", {WASM_I32, WASM_I32}, {WASM_I32}},
             {HostFn::LuaLoadAddon, "lua_load_addon", {WASM_I32, WASM_I32}, {WASM_I32}},
+            {HostFn::LuaCall, "lua_call", {WASM_I32, WASM_I32, WASM_I32, WASM_I32}, {WASM_I32}},
+            {HostFn::LuaBind, "lua_bind", {WASM_I32, WASM_I32, WASM_I32}, {WASM_I32}},
         };
         // ʕ ◕ᴥ◕ ʔ✿ HostEnv objects live as long as the linker via finalizer-free storage owned by the instance ✿ ʕ ◕ᴥ◕ ʔ
         inst->hostEnvs.clear();

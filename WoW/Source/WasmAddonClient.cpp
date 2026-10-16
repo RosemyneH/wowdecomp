@@ -44,7 +44,7 @@ struct TaintScope {
 // ʕ •ᴥ•ʔ✿ Game-facing services: every call goes through the existing Lua/UI layer on the main thread ✿ ʕ •ᴥ•ʔ
 class ClientHostServices final : public WasmAddon::IWasmHostServices {
 public:
-    void DropUiReferences() { m_ui.clear(); }
+    void DropUiReferences() { m_ui.clear(); m_luaRefs.clear(); m_nextLua.clear(); }
 
     // ʕ ●ᴥ●ʔ✿ All Lua work runs under lua_cpcall so a replaced global or erroring __index cannot longjmp through Wasmtime ✿ ʕ ●ᴥ●ʔ
     bool ChatPrint(const std::string& addonId, const std::string& text) override {
@@ -163,6 +163,37 @@ public:
             return WasmAddon::ErrNotFound;
         }
         return WasmAddon::Ok;
+    }
+
+    int CallLua(const std::string& addonId, const uint8_t* req, uint32_t reqLen, std::vector<uint8_t>& out, std::string& error) override {
+        return DoCallLua(addonId, req, reqLen, out, error);
+    }
+
+    int BindLua(const std::string& addonId, int32_t handle, const std::string& script, std::string& error) override {
+        lua_State* L = FrameScript_GetContext();
+        if (!L) { error = "lua state unavailable"; return WasmAddon::ErrUnavailable; }
+        int ref = LuaRef(addonId, handle);
+        if (ref == LUA_NOREF) { error = "bad object"; return WasmAddon::ErrInvalidHandle; }
+        const char* name = nullptr;
+        if (script == "OnClick") name = "OnClick";
+        else if (script == "OnEnter") name = "OnEnter";
+        else if (script == "OnLeave") name = "OnLeave";
+        else if (script == "OnEnterPressed") name = "OnEnterPressed";
+        else if (script == "OnEscapePressed") name = "OnEscapePressed";
+        else if (script == "OnTextChanged") name = "OnTextChanged";
+        else { error = "unknown script"; return WasmAddon::ErrInvalidArgument; }
+        TaintScope taint(addonId);
+        if (!InstallUiSignal(L, ref, name, handle, script)) { error = "script rejected"; return WasmAddon::ErrGeneric; }
+        return WasmAddon::Ok;
+    }
+
+    void ReleaseLua(const std::string& addonId) override {
+        lua_State* L = FrameScript_GetContext();
+        auto it = m_luaRefs.find(addonId);
+        if (it == m_luaRefs.end()) return;
+        if (L) for (auto& entry : it->second) luaL_unref(L, LUA_REGISTRYINDEX, entry.second);
+        m_luaRefs.erase(it);
+        m_nextLua.erase(addonId);
     }
 
     void UiDestroy(uint64_t handle) override {
@@ -893,6 +924,199 @@ private:
         return WasmAddon::Ok;
     }
 
+    static uint16_t ReadU16(const uint8_t* p) { return (uint16_t)(p[0] | (p[1] << 8)); }
+    static uint32_t ReadU32(const uint8_t* p) { return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24); }
+    static void WriteU16(std::vector<uint8_t>& out, uint16_t v) { out.push_back((uint8_t)v); out.push_back((uint8_t)(v >> 8)); }
+    static void WriteU32(std::vector<uint8_t>& out, uint32_t v) { for (int i = 0; i < 4; i++) out.push_back((uint8_t)(v >> (8 * i))); }
+
+    static bool LuaNameOk(const std::string& name) {
+        if (name.empty() || name.size() > 128) return false;
+        for (size_t i = 0; i < name.size(); i++) {
+            char c = name[i];
+            bool ident = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_' || (i > 0 && c >= '0' && c <= '9');
+            if (!ident) return false;
+        }
+        return true;
+    }
+
+    int LuaRef(const std::string& addonId, int32_t handle) const {
+        auto addon = m_luaRefs.find(addonId);
+        if (addon == m_luaRefs.end()) return LUA_NOREF;
+        auto it = addon->second.find(handle);
+        return it == addon->second.end() ? LUA_NOREF : it->second;
+    }
+
+    int32_t InternLua(const std::string& addonId, lua_State* L, int idx) {
+        int32_t& next = m_nextLua[addonId];
+        if (next <= 0) next = 1;
+        if (next > 4096) return 0;
+        lua_pushvalue(L, idx);
+        int ref = luaL_ref(L, LUA_REGISTRYINDEX);
+        int32_t id = next++;
+        m_luaRefs[addonId][id] = ref;
+        return id;
+    }
+
+    bool PushLuaVal(lua_State* L, const uint8_t*& p, const uint8_t* end, int depth, const std::string& addonId) {
+        if (p >= end || depth > 3) return false;
+        uint8_t tag = *p++;
+        switch (tag) {
+            case 0: lua_pushnil(L); return true;
+            case 1:
+                if (p >= end) return false;
+                lua_pushboolean(L, *p++ ? 1 : 0);
+                return true;
+            case 2: {
+                if (p + 8 > end) return false;
+                double value = 0;
+                std::memcpy(&value, p, 8);
+                p += 8;
+                lua_pushnumber(L, value);
+                return true;
+            }
+            case 3: {
+                if (p + 4 > end) return false;
+                uint32_t n = ReadU32(p);
+                p += 4;
+                if (n > 4096 || p + n > end) return false;
+                lua_pushlstring(L, reinterpret_cast<const char*>(p), n);
+                p += n;
+                return true;
+            }
+            case 4: {
+                if (p + 4 > end) return false;
+                int32_t handle = (int32_t)ReadU32(p);
+                p += 4;
+                int ref = LuaRef(addonId, handle);
+                if (ref == LUA_NOREF) return false;
+                lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+                return true;
+            }
+            case 5: {
+                if (p + 2 > end) return false;
+                uint16_t fields = ReadU16(p);
+                p += 2;
+                if (fields > 32) return false;
+                lua_newtable(L);
+                int table = lua_gettop(L);
+                for (uint16_t i = 0; i < fields; i++) {
+                    if (p + 2 > end) return false;
+                    uint16_t keyLen = ReadU16(p);
+                    p += 2;
+                    if (keyLen == 0 || keyLen > 64 || p + keyLen > end) return false;
+                    lua_pushlstring(L, reinterpret_cast<const char*>(p), keyLen);
+                    p += keyLen;
+                    if (!PushLuaVal(L, p, end, depth + 1, addonId)) return false;
+                    lua_settable(L, table);
+                }
+                return true;
+            }
+            default: return false;
+        }
+    }
+
+    bool WriteLuaVal(std::vector<uint8_t>& out, lua_State* L, int idx, const std::string& addonId) {
+        switch (lua_type(L, idx)) {
+            case LUA_TBOOLEAN:
+                out.push_back(1);
+                out.push_back((uint8_t)(lua_toboolean(L, idx) ? 1 : 0));
+                return true;
+            case LUA_TNUMBER: {
+                out.push_back(2);
+                double value = lua_tonumber(L, idx);
+                const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&value);
+                out.insert(out.end(), bytes, bytes + 8);
+                return true;
+            }
+            case LUA_TSTRING: {
+                size_t len = 0;
+                const char* text = lua_tolstring(L, idx, &len);
+                if (len > 4096) len = 4096;
+                out.push_back(3);
+                WriteU32(out, (uint32_t)len);
+                out.insert(out.end(), text, text + len);
+                return true;
+            }
+            case LUA_TTABLE:
+            case LUA_TUSERDATA:
+            case LUA_TFUNCTION: {
+                int32_t handle = InternLua(addonId, L, idx);
+                if (handle <= 0) return false;
+                out.push_back(4);
+                WriteU32(out, (uint32_t)handle);
+                return true;
+            }
+            default:
+                out.push_back(0);
+                return true;
+        }
+    }
+
+    int DoCallLua(const std::string& addonId, const uint8_t* req, uint32_t reqLen, std::vector<uint8_t>& out, std::string& error) {
+        if (!req || reqLen < 7) { error = "short lua call"; return WasmAddon::ErrInvalidArgument; }
+        const uint8_t* p = req;
+        const uint8_t* end = req + reqLen;
+        uint8_t op = *p++;
+        if (p + 4 > end) return WasmAddon::ErrInvalidArgument;
+        int32_t obj = (int32_t)ReadU32(p);
+        p += 4;
+        if (p + 2 > end) return WasmAddon::ErrInvalidArgument;
+        uint16_t nameLen = ReadU16(p);
+        p += 2;
+        if (nameLen == 0 || nameLen > 128 || p + nameLen > end) return WasmAddon::ErrInvalidArgument;
+        std::string name(reinterpret_cast<const char*>(p), nameLen);
+        p += nameLen;
+        if (!LuaNameOk(name)) { error = "bad lua name"; return WasmAddon::ErrInvalidArgument; }
+        lua_State* L = FrameScript_GetContext();
+        if (!L) { error = "lua state unavailable"; return WasmAddon::ErrUnavailable; }
+        TaintScope taint(addonId);
+        int saved = lua_gettop(L);
+        int nargs = 0;
+        if (op == 2) {
+            lua_getfield(L, LUA_GLOBALSINDEX, name.c_str());
+        } else if (op == 0) {
+            lua_getfield(L, LUA_GLOBALSINDEX, name.c_str());
+            if (!lua_isfunction(L, -1)) { error = "nil function " + name; lua_settop(L, saved); return WasmAddon::ErrNotFound; }
+        } else if (op == 1) {
+            int ref = LuaRef(addonId, obj);
+            if (ref == LUA_NOREF) { error = "bad object"; lua_settop(L, saved); return WasmAddon::ErrInvalidHandle; }
+            lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+            lua_getfield(L, -1, name.c_str());
+            if (!lua_isfunction(L, -1)) { error = "nil method " + name; lua_settop(L, saved); return WasmAddon::ErrNotFound; }
+            lua_pushvalue(L, -2);
+            lua_remove(L, -3);
+            nargs = 1;
+        } else {
+            error = "bad lua op";
+            return WasmAddon::ErrInvalidArgument;
+        }
+        if (op != 2) {
+            int args = 0;
+            while (p < end) {
+                if (args >= 16) { error = "too many args"; lua_settop(L, saved); return WasmAddon::ErrLimitExceeded; }
+                if (!PushLuaVal(L, p, end, 0, addonId)) { error = "bad lua argument"; lua_settop(L, saved); return WasmAddon::ErrInvalidArgument; }
+                nargs++;
+                args++;
+            }
+            if (lua_pcall(L, nargs, 8, 0)) {
+                error = lua_tostring(L, -1) ? lua_tostring(L, -1) : "lua error";
+                lua_settop(L, saved);
+                return WasmAddon::ErrGeneric;
+            }
+        }
+        int nret = lua_gettop(L) - saved;
+        if (nret < 0) nret = 0;
+        if (nret > 8) nret = 8;
+        std::vector<uint8_t> bytes;
+        WriteU16(bytes, (uint16_t)nret);
+        for (int i = 1; i <= nret; i++) {
+            if (!WriteLuaVal(bytes, L, saved + i, addonId)) { error = "too many lua objects"; lua_settop(L, saved); return WasmAddon::ErrLimitExceeded; }
+        }
+        lua_settop(L, saved);
+        out.swap(bytes);
+        return WasmAddon::Ok;
+    }
+
     int LoadLuaFile(const std::string& addonId, const std::string& addonRoot, const std::string& absolutePath, std::string& error, std::set<std::string>& seen, int depth) {
         if (depth > 8) { error = "toc include depth exceeded"; return WasmAddon::ErrLimitExceeded; }
         fs::path file = fs::path(absolutePath).lexically_normal();
@@ -961,6 +1185,8 @@ private:
     struct UiRefs { int32_t mainRef = LUA_NOREF; int32_t textRef = LUA_NOREF; WidgetKind kind = WidgetKind::Frame; };
     lua_State* m_seenState = nullptr;
     std::map<uint64_t, UiRefs> m_ui;
+    std::map<std::string, std::map<int32_t, int>> m_luaRefs;
+    std::map<std::string, int32_t> m_nextLua;
     uint64_t m_nextHandle = 1;
 
     static int32_t MakeFontString(lua_State* L) {
