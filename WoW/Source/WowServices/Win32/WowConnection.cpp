@@ -795,6 +795,20 @@ bool WowConnection::Connect(const char* host, uint16_t port, int32_t timeout) {
             this->m_connectAddress = bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24);
         } else {
             this->m_connectAddress = 0;
+            this->m_connectPort = port;
+            this->SetState(WOWC_ERROR);
+            this->AddRef();
+            this->AcquireResponseRef();
+
+            WowConnectionResponse* response = this->m_response;
+
+            if (response) {
+                response->WCCantConnect(this, OsGetAsyncTimeMs(), &this->m_peer);
+            }
+
+            this->ReleaseResponseRef();
+            this->Release();
+            return true;
         }
     } else {
         this->m_connectAddress = address;
