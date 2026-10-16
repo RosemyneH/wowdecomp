@@ -290,7 +290,10 @@ FMOD_RESULT FMOD_OS_CriticalSection_Enter(FMOD_OS_CRITICALSECTION *crit)
         return FMOD_ERR_INVALID_PARAM;
     }
 
-    pthread_mutex_lock((pthread_mutex_t *)crit);
+    if (pthread_mutex_lock((pthread_mutex_t *)crit))
+    {
+        return FMOD_ERR_INVALID_PARAM;
+    }
 
     return FMOD_OK;
 }
@@ -303,7 +306,10 @@ FMOD_RESULT FMOD_OS_CriticalSection_Leave(FMOD_OS_CRITICALSECTION *crit)
         return FMOD_ERR_INVALID_PARAM;
     }
 
-    pthread_mutex_unlock((pthread_mutex_t *)crit);
+    if (pthread_mutex_unlock((pthread_mutex_t *)crit))
+    {
+        return FMOD_ERR_INVALID_PARAM;
+    }
 
     return FMOD_OK;
 }
