@@ -236,7 +236,7 @@ int32_t WowConnection::SendPacket(CDataStore* msg, int32_t headroom) {
 
 // OFFSET: 0x00467990
 int32_t WowConnection::Send(uint8_t* data, int32_t size, bool raw) {
-    if (!WowConnection::s_network) {
+    if ((!data && size > 0) || !WowConnection::s_network) {
         return 2;
     }
 
