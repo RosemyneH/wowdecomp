@@ -779,6 +779,10 @@ bool System_File::Open(Blizzard::File::Filesystem* fs, System_File::Stacked::Fil
     if (!stream) {
         uint32_t length = static_cast<uint32_t>(strlen(path));
         stream = static_cast<Blizzard::File::StreamRecord*>(SMemAlloc(sizeof(Blizzard::File::StreamRecord) + length + 1, __FILE__, __LINE__, SMEM_FLAG_ZEROMEMORY));
+        if (!stream) {
+            CloseHandle(handle);
+            return false;
+        }
         stream->m_pathname = reinterpret_cast<char*>(stream + 1);
         Blizzard::String::Copy(stream->m_pathname, path, length + 1);
     }
