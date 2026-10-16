@@ -6,16 +6,23 @@ PLAY_DIR="${WOWDECOMP_PLAY_DIR:-$ROOT/test/play-335}"
 GAME_SRC=""
 LOCAL_REALM=1
 RETAIL_WTF=0
+VANILLA=1
 REALM_HOST="${WOWDECOMP_REALM_HOST:-127.0.0.1}"
 
 usage() {
-    echo "Usage: $0 [--retail] [--use-game-wtf] [/path/to/3.3.5a/client]" >&2
-    echo "  Default: vanilla local realm at $REALM_HOST (AzerothCore auth :3724)" >&2
+    echo "Usage: $0 [--vanilla|--full-install] [--retail] [--use-game-wtf] [/path/to/3.3.5a/client]" >&2
+    echo "  Default (--vanilla): MPQs only; local Cache/Interface/Logs (no wxl, no symlinked addons)" >&2
+    echo "  --full-install: also symlink Interface/Cache/Logs from the game folder (Astral-style)" >&2
+    echo "  Default realm: $REALM_HOST (AzerothCore auth :3724)" >&2
     echo "  --retail: symlink retail WTF / realmlist from install" >&2
     exit 1
 }
 
 default_game_src() {
+    if [[ "$VANILLA" -eq 1 && -d "${HOME}/Games/client/Data" ]]; then
+        echo "${HOME}/Games/client"
+        return
+    fi
     if [[ -d "${HOME}/Games/Astral/Data" ]]; then
         echo "${HOME}/Games/Astral"
         return
@@ -37,6 +44,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --use-game-wtf)
             RETAIL_WTF=1
+            shift
+            ;;
+        --vanilla)
+            VANILLA=1
+            shift
+            ;;
+        --full-install)
+            VANILLA=0
             shift
             ;;
         -h|--help)
@@ -66,6 +81,7 @@ fi
 mkdir -p "$PLAY_DIR" "$ROOT/bin/Linux"
 
 cp -fl "$ROOT/bin/Linux/WowClient64" "$PLAY_DIR/WowClient64" 2>/dev/null || cp -f "$ROOT/bin/Linux/WowClient64" "$PLAY_DIR/WowClient64"
+rm -f "$PLAY_DIR/Wow64"
 if [[ -f "$ROOT/bin/Linux/Wow64" ]]; then
     cp -fl "$ROOT/bin/Linux/Wow64" "$PLAY_DIR/Wow64" 2>/dev/null || cp -f "$ROOT/bin/Linux/Wow64" "$PLAY_DIR/Wow64"
 fi
@@ -115,11 +131,17 @@ else
     link_data_tree "$GAME_SRC/Data" "$PLAY_DIR/Data"
 fi
 
-for name in Interface Cache Logs; do
-    if [[ -e "$GAME_SRC/$name" ]]; then
-        ln -sfn "$GAME_SRC/$name" "$PLAY_DIR/$name"
-    fi
-done
+if [[ "$VANILLA" -eq 1 ]]; then
+    rm -f "$PLAY_DIR/Interface" "$PLAY_DIR/Cache" "$PLAY_DIR/Logs"
+    mkdir -p "$PLAY_DIR/Cache/WDB" "$PLAY_DIR/Logs" "$PLAY_DIR/Interface/FrameXML"
+    rm -rf "$PLAY_DIR/WasmAddOns"
+else
+    for name in Interface Cache Logs; do
+        if [[ -e "$GAME_SRC/$name" ]]; then
+            ln -sfn "$GAME_SRC/$name" "$PLAY_DIR/$name"
+        fi
+    done
+fi
 
 rm -rf "$PLAY_DIR/WTF"
 mkdir -p "$PLAY_DIR/WTF"
@@ -137,11 +159,12 @@ fi
 
 cat <<EOF
 Playtest tree: $PLAY_DIR  (gitignored)
-Game data:     $GAME_SRC  (vanilla MPQs — not TSWoW-specific)
+Game data:     $GAME_SRC
+Layout:        $(if [[ "$VANILLA" -eq 1 ]]; then echo "vanilla (MPQs + wowdecomp FrameXML patch only)"; else echo "full-install (symlinked Interface/Cache/Logs)"; fi)
 Realm:         $REALM_HOST:3724
 
 wowdecomp client ↔ AzerothCore only needs 3.3.5a protocol + matching build data.
-TSWoW (Trinity + ClientExtensions + custom DB/MPQ) is a separate stack; ignore it unless you point this tree at a TSWoW-patched client on purpose.
+Use --vanilla with a stock 3.3.5a Data tree; avoid Astral/wxl unless you pass --full-install on purpose.
 
 After rebuilds, re-run this script.
 
@@ -149,9 +172,10 @@ After rebuilds, re-run this script.
   Server: $ROOT/Tools/local-server/start.sh
 EOF
 
-# ʕ •ᴥ•ʔ✿ Stage the WASM inspector Lua addon alongside the test client ✿ ʕ •ᴥ•ʔ
-mkdir -p "$PLAY_DIR/Interface/AddOns/WasmInspector"
-cp -f "$ROOT/Addons/Lua/WasmInspector/WasmInspector.toc" "$ROOT/Addons/Lua/WasmInspector/WasmInspector.lua" "$PLAY_DIR/Interface/AddOns/WasmInspector/"
-
 mkdir -p "$PLAY_DIR/Interface/FrameXML"
 cp -f "$ROOT/WoW/Interface/FrameXML/WowDecompVideoOptions.lua" "$PLAY_DIR/Interface/FrameXML/"
+
+if [[ "$VANILLA" -eq 0 ]]; then
+    mkdir -p "$PLAY_DIR/Interface/AddOns/WasmInspector"
+    cp -f "$ROOT/Addons/Lua/WasmInspector/WasmInspector.toc" "$ROOT/Addons/Lua/WasmInspector/WasmInspector.lua" "$PLAY_DIR/Interface/AddOns/WasmInspector/"
+fi
