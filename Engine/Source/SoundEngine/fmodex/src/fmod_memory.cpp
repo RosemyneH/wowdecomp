@@ -821,6 +821,11 @@ void *MemPool::realloc(void *ptr, int len, const char *file, const int line, FMO
         return MemPool::alloc(len, file, line);
     }
 
+    if (len < 0)
+    {
+        return 0;
+    }
+
 #ifdef FMOD_MEMORY_THREADSAFE
     if (!mCrit)
     {
