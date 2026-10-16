@@ -8,6 +8,8 @@
 #include "fmod_string.h"
 #include "fmod_systemi.h"
 
+#include <limits.h>
+
 namespace FMOD
 {
 
@@ -135,7 +137,15 @@ FMOD_RESULT OutputALSA::init(int selecteddriver, FMOD_INITFLAGS flags, int *outp
 
     SoundI::getBytesFromSamples(mBlockLength, &mBlockLengthBytes, outputchannels, *outputformat);
 
-    mBuffer = (char *)FMOD_Memory_Calloc(mBlockLengthBytes * mNumBlocks);
+    const unsigned long long bufferbytes = (unsigned long long)mBlockLengthBytes * (unsigned long long)mNumBlocks;
+    if (bufferbytes > (unsigned long long)INT_MAX)
+    {
+        snd_pcm_close(mHandle);
+        mHandle = 0;
+        return FMOD_ERR_MEMORY;
+    }
+
+    mBuffer = (char *)FMOD_Memory_Calloc((int)bufferbytes);
     if (!mBuffer)
     {
         snd_pcm_close(mHandle);
