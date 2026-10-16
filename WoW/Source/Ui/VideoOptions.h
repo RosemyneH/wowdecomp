@@ -8,6 +8,7 @@ class CGVideoOptions {
     public:
     static void RegisterScriptFunctions();
     static void UnregisterScriptFunctions();
+    static void InstallExtendedViewUiPatch();
 };
 
 #endif

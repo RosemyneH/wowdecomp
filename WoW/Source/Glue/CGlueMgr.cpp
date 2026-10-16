@@ -760,6 +760,7 @@ void CGlueMgr::Resume() {
             }
 #endif
 
+            CGVideoOptions::InstallExtendedViewUiPatch();
             FrameScript_SignalEvent(GLUE_EVENT_FRAMES_LOADED, nullptr);
             CGlueMgr::InitializeFFX();
 

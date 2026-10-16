@@ -1784,6 +1784,8 @@ void CGGameUI::InitializeFrameXML() {
     }
 #endif
 
+    CGVideoOptions::InstallExtendedViewUiPatch();
+
     CGGameUI::m_UISimpleParent = static_cast<CSimpleFrame*>(CScriptObject::GetScriptObjectByName("UIParent", CSimpleFrame::GetObjectType()));
 
     if (!CGGameUI::m_UISimpleParent) {

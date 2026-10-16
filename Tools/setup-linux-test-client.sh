@@ -153,7 +153,5 @@ EOF
 mkdir -p "$PLAY_DIR/Interface/AddOns/WasmInspector"
 cp -f "$ROOT/Addons/Lua/WasmInspector/WasmInspector.toc" "$ROOT/Addons/Lua/WasmInspector/WasmInspector.lua" "$PLAY_DIR/Interface/AddOns/WasmInspector/"
 
-mkdir -p "$PLAY_DIR/Interface/AddOns/ExtendedViewOptions"
-cp -f "$ROOT/Tools/playtest-interface/Addon/ExtendedViewOptions/ExtendedViewOptions.toc" \
-    "$ROOT/Tools/playtest-interface/Addon/ExtendedViewOptions/ExtendedViewOptions.lua" \
-    "$PLAY_DIR/Interface/AddOns/ExtendedViewOptions/"
+mkdir -p "$PLAY_DIR/Interface/FrameXML"
+cp -f "$ROOT/WoW/Interface/FrameXML/WowDecompVideoOptions.lua" "$PLAY_DIR/Interface/FrameXML/"
