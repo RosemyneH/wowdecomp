@@ -1,0 +1,15 @@
+[addon]
+id = "port.details"
+name = "Details"
+version = "0.1.0"
+author = "wowdecomp"
+api_version = "2"
+
+[permissions]
+ui.create = true
+chat.print = true
+lua.full = true
+combat.read = true
+
+[limits]
+memory_mb = 64

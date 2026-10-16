@@ -24,6 +24,7 @@ LIVE_ADDONS=(
     confirm-test
     host-edge
     elvui
+    details
     wim
     lua-parity
 )

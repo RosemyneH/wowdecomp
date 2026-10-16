@@ -228,10 +228,12 @@ This tree ships clean-room ports. They are not the upstream Lua addons and they 
 | Port | Path | Id | What it draws |
 |---|---|---|---|
 | ElvUI | `Addons/Wasm/ports/elvui` | `port.elvui` | Player, target, target-of-target, focus, party, and a top data bar |
+| Details | `Addons/Wasm/ports/details` | `port.details` | Damage, healing, taken, and healed. Current, overall, and previous fights |
 | WIM | `Addons/Wasm/ports/wim` | `port.wim` | Per-person whisper windows, saved history, enter to send, escape to hide |
 
 ```text
 wasmgrant port.elvui units.read
+wasmgrant port.details combat.read
 wasmgrant port.wim chat.read
 wasmgrant port.wim chat.send
 wasmgrant port.wim storage.read
@@ -261,7 +263,7 @@ let _ = lua::call("SendChatMessage", &[
 
 `lua::call(name, args)` invokes any global (`CreateFrame`, `UnitName`, `GetSpellInfo`, `CastSpellByName`, …). `lua::method(handle, name, args)` invokes a method on a frame or other object the client returned. `Val` is `Nil`, `Bool`, `Num`, `Str`, `Obj`, or `Map` for the tables those APIs take (`SetBackdrop`). `lua::bind(frame, "OnEnterPressed")` delivers `WASM_UI` back into `on_event` with the script name and the object handle.
 
-`port.elvui` and `port.wim` are Rust addons on this path. They call the client’s real widget and unit functions. They do not ship or execute Lua source.
+`port.elvui`, `port.details`, and `port.wim` are Rust addons on this path. They call the client’s real widget and unit functions. They do not ship or execute Lua source. `port.details` keeps the combat-log parse in the guest and paints the window about five times a second.
 
 ## Intentionally not Lua
 

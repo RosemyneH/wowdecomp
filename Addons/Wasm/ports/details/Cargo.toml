@@ -1,0 +1,16 @@
+[package]
+name = "details"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wow-addon-sdk = { path = "../../sdk/wow-addon-sdk" }
+details-meter = { path = "meter" }
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1

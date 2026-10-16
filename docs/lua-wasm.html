@@ -190,9 +190,11 @@ pub extern "C" fn wow_on_update() -> i32 { refresh() }</pre>
 <table>
 <tr><th>Port</th><th>Path</th><th>Id</th><th>What it draws</th></tr>
 <tr><td>ElvUI</td><td><code>Addons/Wasm/ports/elvui</code></td><td><code>port.elvui</code></td><td>Unit frames for player, target, target-of-target, focus, and party.</td></tr>
+<tr><td>Details</td><td><code>Addons/Wasm/ports/details</code></td><td><code>port.details</code></td><td>Damage, healing, taken, and healed. The combat log stays in wasm.</td></tr>
 <tr><td>WIM</td><td><code>Addons/Wasm/ports/wim</code></td><td><code>port.wim</code></td><td>Whisper windows: history plus an edit box that sends on enter.</td></tr>
 </table>
 <pre>wasmgrant port.elvui units.read
+wasmgrant port.details combat.read
 wasmgrant port.wim chat.read
 wasmgrant port.wim chat.send
 wasmgrant port.wim storage.read

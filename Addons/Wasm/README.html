@@ -36,11 +36,13 @@ until granted, the panels still show and the payloads stay redacted. From the de
 <h2>Lua-shaped ports</h2>
 <p><code>docs/lua-wasm.html</code> is the authoring guide.
 <code>port.elvui</code> draws unit frames for player, target, target-of-target, focus, and party, and a top data bar.
+<code>port.details</code> is a combat meter. Damage, healing, taken, and healed are totaled in wasm, and the window paints on the update tick.
 <code>port.wim</code> opens per-person whisper windows, keeps history, and sends on enter.
 They are clean-room layouts for this client and install like the other wasm packages.
 The Lua calls they use are <code>ui_bind</code> / <code>WASM_UI</code>, <code>ui_get_text</code>, <code>unit_names</code>, and edit boxes.
 From the developer console:</p>
 <pre>wasmgrant port.elvui units.read
+wasmgrant port.details combat.read
 wasmgrant port.wim chat.read
 wasmgrant port.wim chat.send
 wasmgrant port.wim storage.read
