@@ -1634,10 +1634,12 @@ void CGWorldFrame::UpdateObject(CGObject_C* object, uint32_t flags) {
             this->m_modelList.LinkToTail(record);
         }
 
-        CM2Model* recordModel = object->GetObjectModel();
-        record->m_model = recordModel;
-        recordModel->m_refCount++;
-        record->m_guid = object->m_obj->m_guid;
+        if (record) {
+            CM2Model* recordModel = object->GetObjectModel();
+            record->m_model = recordModel;
+            recordModel->m_refCount++;
+            record->m_guid = object->m_obj->m_guid;
+        }
     }
 
     uint32_t bit = visible & 1;
