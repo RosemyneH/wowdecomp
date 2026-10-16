@@ -60,6 +60,11 @@ void *FMOD_OS_Memory_Alloc(int size, FMOD_MEMORY_TYPE type)
 // OFFSET: 0x008D1CC0
 void *FMOD_OS_Memory_Realloc(void *ptr, int size, FMOD_MEMORY_TYPE type)
 {
+    if (size < 0)
+    {
+        return 0;
+    }
+
     return realloc(ptr, size);
 }
 
