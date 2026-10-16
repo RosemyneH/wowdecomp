@@ -74,7 +74,6 @@ if (WIN32)
 elseif (WOWDECOMP_APPLE)
     target_link_libraries(fmodex
         PUBLIC
-            ${COREFOUNDATION_FRAMEWORK}
             Threads::Threads
             ${CMAKE_DL_LIBS}
     )
