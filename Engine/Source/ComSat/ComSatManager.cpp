@@ -109,11 +109,11 @@ bool ComSat::Manager::SessionGetTalkerByIndex(uint64_t session, int32_t index, u
         if (localTalker >= this->m_maxLocalPlayers) {
             return false;
         }
-        uint64_t guid = this->m_localTalkers[localTalker]->m_guid;
-        if (!guid) {
+        LocalTalker* local = this->m_localTalkers[localTalker];
+        if (!local || !local->m_guid) {
             return false;
         }
-        talker = guid;
+        talker = local->m_guid;
     }
     return true;
 }
@@ -148,8 +148,11 @@ bool ComSat::Manager::MuteTalker(uint8_t localTalker, uint64_t talker, ComSat::M
 // VERIFY: ed19ad38 auto
 // OFFSET: 0x0087FC10
 bool ComSat::Manager::MuteSession(uint8_t localTalker, uint64_t session, ComSat::MuteSetting setting) {
-    if (localTalker < this->m_maxLocalPlayers && this->m_localTalkers[localTalker]->m_guid) {
-        return this->m_soundManager->SetSessionMuted(localTalker, session, setting);
+    if (localTalker < this->m_maxLocalPlayers) {
+        LocalTalker* local = this->m_localTalkers[localTalker];
+        if (local && local->m_guid) {
+            return this->m_soundManager->SetSessionMuted(localTalker, session, setting);
+        }
     }
     return false;
 }
