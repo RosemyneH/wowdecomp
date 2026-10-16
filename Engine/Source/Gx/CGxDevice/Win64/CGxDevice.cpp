@@ -6,8 +6,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <windows.h>
-#include <d3d9.h>
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
+#if !defined(WOWDECOMP_WIN_ARM64)
+#include <d3d9.h>
 #include "Engine/Source/Gx/CGxDeviceD3d/CGxDeviceD3d.h"
 #include "Engine/Source/Gx/CGxDeviceD3d9Ex/CGxDeviceD3d9Ex.h"
 
@@ -28,6 +29,7 @@ static D3DFORMAT s_d3d9ExDepthFormats[4] = { D3DFMT_D16, D3DFMT_D24X8, D3DFMT_D2
 
 // STATIC: 0x00AD8D5C
 static D3DFORMAT s_d3d9ExAdapterFormats[3] = { D3DFMT_R5G6B5, D3DFMT_X8R8G8B8, D3DFMT_A8R8G8B8 };
+#endif
 
 // OFFSET: 0x00682B00
 int32_t CGxDevice::AdapterFormats(EGxApi api, TSGrowableArray<CGxFormat>& formats) {
@@ -36,6 +38,7 @@ int32_t CGxDevice::AdapterFormats(EGxApi api, TSGrowableArray<CGxFormat>& format
     formats.Reserve(256, 0);
 
     switch (api) {
+#if !defined(WOWDECOMP_WIN_ARM64)
         case GxApi_OpenGl:
             CGxDevice::OpenGlAdapterFormats(formats);
             break;
@@ -47,6 +50,7 @@ int32_t CGxDevice::AdapterFormats(EGxApi api, TSGrowableArray<CGxFormat>& format
         case GxApi_D3d9Ex:
             CGxDevice::D3d9ExAdapterFormats(formats);
             break;
+#endif
 
 #if defined(WOWDECOMP_VULKAN)
         case GxApi_Vulkan:
@@ -313,6 +317,7 @@ int32_t CGxDevice::AdapterDesktopMode(CGxMonitorMode& mode) {
     return 1;
 }
 
+#if !defined(WOWDECOMP_WIN_ARM64)
 // OFFSET: 0x0068A170
 int32_t CGxDevice::D3dAdapterFormats(TSGrowableArray<CGxFormat>& formats) {
     HINSTANCE d3dLib = nullptr;
@@ -570,6 +575,7 @@ int32_t CGxDevice::D3d9ExAdapterFormats(TSGrowableArray<CGxFormat>& formats) {
 
     return formats.Count() != 0;
 }
+#endif
 
 // OFFSET: 0x0068A4C0
 int32_t CGxDevice::AdapterMonitorModes(TSGrowableArray<CGxMonitorMode>& modes) {

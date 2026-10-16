@@ -231,7 +231,7 @@ CGxDevice* CreateGxDevice(EGxApi api, GxWindowProc windowProc, const CGxFormat& 
     CGxDevice* device;
 
     switch (api) {
-#if defined(_WIN32)
+#if defined(_WIN32) && !defined(WOWDECOMP_WIN_ARM64)
         case GxApi_OpenGl:
             device = CreateCGxDeviceOpenGl();
             g_theGxDevicePtr = device;
