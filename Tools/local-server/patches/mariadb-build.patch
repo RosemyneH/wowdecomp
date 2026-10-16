@@ -1,0 +1,61 @@
+--- a/src/server/database/Database/MySQLConnection.cpp
++++ b/src/server/database/Database/MySQLConnection.cpp
+@@ -127,6 +127,7 @@ bool MySQLConnection::Open()
+     }
+ #endif
+ 
++#if defined(MYSQL_OPT_SSL_MODE)
+     if (m_connectionInfo.ssl != "")
+     {
+         mysql_ssl_mode opt_use_ssl = SSL_MODE_DISABLED;
+@@ -137,6 +138,7 @@ bool MySQLConnection::Open()
+ 
+         mysql_options(mysqlInit, MYSQL_OPT_SSL_MODE, (char const*)&opt_use_ssl);
+     }
++#endif
+ 
+     m_Mysql = reinterpret_cast<MySQLHandle*>(mysql_real_connect(mysqlInit, m_connectionInfo.host.c_str(), m_connectionInfo.user.c_str(),
+@@ -216,7 +218,7 @@ bool MySQLConnection::Execute(PreparedStatementBase* stmt)
+ 
+     uint32 _s = getMSTime();
+ 
+-#if MYSQL_VERSION_ID >= 80300
++#if !defined(MARIADB_VERSION_ID) && MYSQL_VERSION_ID >= 80300
+     if (mysql_stmt_bind_named_param(msql_STMT, msql_BIND, m_mStmt->GetParameterCount(), nullptr))
+ #else
+     if (mysql_stmt_bind_param(msql_STMT, msql_BIND))
+@@ -268,7 +270,7 @@ bool MySQLConnection::_Query(PreparedStatementBase* stmt, MySQLPreparedStatement
+ 
+     uint32 _s = getMSTime();
+ 
+-#if MYSQL_VERSION_ID >= 80300
++#if !defined(MARIADB_VERSION_ID) && MYSQL_VERSION_ID >= 80300
+     if (mysql_stmt_bind_named_param(msql_STMT, msql_BIND, m_mStmt->GetParameterCount(), nullptr))
+ #else
+     if (mysql_stmt_bind_param(msql_STMT, msql_BIND))
+--- a/src/server/database/Database/DatabaseWorkerPool.cpp
++++ b/src/server/database/Database/DatabaseWorkerPool.cpp
+@@ -59,8 +59,13 @@ DatabaseWorkerPool<T>::DatabaseWorkerPool() :
+ {
+     WPFatal(mysql_thread_safe(), "Used MySQL library isn't thread-safe.");
+ 
++#if (MYSQL_VERSION_ID >= 100000 && MYSQL_VERSION_ID < 200000) || defined(MARIADB_VERSION_ID)
++    bool isSupportClientDB = true;
++    bool isSameClientDB = true;
++#else
+     bool isSupportClientDB = mysql_get_client_version() >= MIN_MYSQL_CLIENT_VERSION;
+     bool isSameClientDB = mysql_get_client_version() == MYSQL_VERSION_ID;
++#endif
+ 
+     WPFatal(isSupportClientDB, "AzerothCore does not support MySQL versions below 8.0\n\nFound version: {} / {}. Server compiled with: {}.\nSearch the wiki for ACE00043 in Common Errors (https://www.azerothcore.org/wiki/common-errors#ace00043).",
+         mysql_get_client_info(), mysql_get_client_version(), MYSQL_VERSION_ID);
+@@ -394,6 +399,9 @@ template <class T>
+ */
+ bool DatabaseIncompatibleVersion(std::string const mysqlVersion)
+ {
++    if (mysqlVersion.find("MariaDB") != std::string::npos)
++        return false;
++
+     // anon func to turn a version string into an array of uint8
+     // "1.2.3" => [1, 2, 3]
+     auto parse = [](std::string const& input)
