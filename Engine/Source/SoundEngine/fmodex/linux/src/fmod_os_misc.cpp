@@ -350,8 +350,12 @@ FMOD_RESULT FMOD_OS_Semaphore_Wait(FMOD_OS_SEMAPHORE *sema)
         return FMOD_ERR_INVALID_PARAM;
     }
 
-    while (sem_wait((sem_t *)sema) && errno == EINTR)
+    while (sem_wait((sem_t *)sema))
     {
+        if (errno != EINTR)
+        {
+            return FMOD_ERR_INVALID_PARAM;
+        }
     }
 
     return FMOD_OK;
