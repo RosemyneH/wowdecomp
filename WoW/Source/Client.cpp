@@ -34,6 +34,7 @@
 #include "Engine/Source/Os/System.h"
 #include "Engine/Source/Os/Time.h"
 #include "Engine/Source/Os/TimeManager.h"
+#include "Engine/Source/Perf/PerfLog.h"
 #include "Engine/Source/Scrn/Scrn.h"
 #include "Engine/Source/Services/AsyncFile.h"
 #include "Engine/Source/Services/ModelBlob.h"
@@ -1078,6 +1079,7 @@ static void InitializeClient() {
 int32_t InitializeEngineCallback(const void* data, void* param) {
     BaseInitializeContext();
     HeapUsageInitialize();
+    PerfLogInit();
     AsyncFileReadRegisterCVars();
     TextureInitialize();
     ModelBlobLoad("world\\model.blob");
@@ -1649,6 +1651,7 @@ int32_t DestroyEngineCallback(const void* data, void* param) {
     TextureDestroy();
     AsyncFileReadDestroy();
     GxuLightShutdown();
+    PerfLogDestroy();
     HeapUsageDestroy();
     ObjectAllocDestroy();
     BaseDestroyContext();

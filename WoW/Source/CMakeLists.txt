@@ -95,6 +95,7 @@ set(WOW_LIBS
         WowServices
         WowSvcs
         Os
+        Perf
 )
 
 if (WIN32 OR WOWDECOMP_APPLE)

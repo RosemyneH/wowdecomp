@@ -22,6 +22,7 @@
 #include "Engine/Source/Model2/M2Scene.h"
 #include "Engine/Source/Os/Time.h"
 #include "Engine/Source/Os/TimeManager.h"
+#include "Engine/Source/Perf/PerfLog.h"
 #include "Engine/Source/Services/Camera.h"
 #include "Engine/Source/Services/SysMessage.h"
 #include "Engine/Source/Services/Texture.h"
@@ -1728,7 +1729,11 @@ void CGWorldFrame::OnWorldRender() {
     }
 
     CShaderEffect::UpdateProjMatrix();
-    CWorld::Render(this->m_camera->m_position, this->m_elapsedSec);
+    {
+        PerfZone frame(g_perf.z_frame_clocks);
+        CWorld::Render(this->m_camera->m_position, this->m_elapsedSec);
+    }
+    PerfLogTick();
     CMap::RenderFootprints();
     PostAnimateVisibleUnits(this);
     CGUnit_C::NamePlateSetResortAll(false);
