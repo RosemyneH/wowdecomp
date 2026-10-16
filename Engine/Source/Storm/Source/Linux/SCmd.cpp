@@ -4,6 +4,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#if defined(__APPLE__)
+#include <crt_externs.h>
+#endif
 #include "Engine/Source/Storm/Source/SCmd.h"
 #include "Engine/Source/Storm/H/stpl.h"
 #include "Engine/Source/Storm/H/storm.h"
@@ -88,6 +91,34 @@ static const char* GetCommandLine() {
         return cmdline;
     }
 
+#if defined(__APPLE__)
+    int argc = *_NSGetArgc();
+    char** argv = *_NSGetArgv();
+
+    for (int i = 0; i < argc; i++) {
+        if (!argv[i]) {
+            continue;
+        }
+
+        bool quote = strpbrk(argv[i], " \t") != nullptr;
+
+        if (cmdline[0]) {
+            SStrPack(cmdline, " ", sizeof(cmdline));
+        }
+
+        if (quote) {
+            SStrPack(cmdline, "\"", sizeof(cmdline));
+        }
+
+        SStrPack(cmdline, argv[i], sizeof(cmdline));
+
+        if (quote) {
+            SStrPack(cmdline, "\"", sizeof(cmdline));
+        }
+    }
+
+    return cmdline;
+#else
     FILE* file = fopen("/proc/self/cmdline", "rb");
 
     if (!file) {
@@ -119,6 +150,7 @@ static const char* GetCommandLine() {
     }
 
     return cmdline;
+#endif
 }
 
 int32_t STORMAPI SCmdProcessCommandLine(int32_t (STORMAPI* extracallback)(const char*), void (STORMAPI* errorcallback)(_CMDERROR*)) {
