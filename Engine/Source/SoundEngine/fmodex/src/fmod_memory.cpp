@@ -836,7 +836,13 @@ void *MemPool::realloc(void *ptr, int len, const char *file, const int line, FMO
 
     if (mRealloc)
     {
+        MemBlockHeader *owned = block;
+
     	block = (MemBlockHeader *)mRealloc(block, reallen, type);
+        if (!block && mFree)
+        {
+            mFree(owned, type);
+        }
     }
     else
     {
