@@ -799,7 +799,11 @@ bool ComSat::Sound::Manager::LocalTalkerSetSessionVolume(uint8_t player, uint64_
 bool ComSat::Sound::Manager::SessionCreate(uint64_t session) {
     uint32_t index;
     if (!this->m_sessions.Find(ComSat::MapKey<uint64_t>(session), index)) {
-        Session* info = new (this->m_allocator->Alloc(sizeof(Session))) Session(*this->m_allocator);
+        void* memory = this->m_allocator->Alloc(sizeof(Session));
+        if (!memory) {
+            return false;
+        }
+        Session* info = new (memory) Session(*this->m_allocator);
         info->m_id = session;
         this->m_sessions.Insert(ComSat::MapKey<uint64_t>(session), info);
     }
