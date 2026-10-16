@@ -1219,6 +1219,11 @@ T* TSHashTable<T, TKey>::InternalNewNode(uint32_t hashval, size_t extrabytes, ui
     }
 
     T* node = this->InternalNew(&this->m_slotlistarray[slot], extrabytes, flags);
+
+    if (!node) {
+        return nullptr;
+    }
+
     this->m_fulllist.LinkToTail(node);
 
     return node;
@@ -1250,6 +1255,11 @@ int32_t TSHashTable<T, TKey>::MonitorFullness(uint32_t slot) {
 template <class T, class TKey>
 T* TSHashTable<T, TKey>::New(uint32_t hashval, const TKey& key, size_t extrabytes, uint32_t flags) {
     T* node = this->InternalNewNode(hashval, extrabytes, flags);
+
+    if (!node) {
+        return nullptr;
+    }
+
     node->m_hashval = hashval;
     node->m_key = key;
 
@@ -1261,6 +1271,11 @@ T* TSHashTable<T, TKey>::New(uint32_t hashval, const TKey& key, size_t extrabyte
 template <class T, class TKey>
 T* TSHashTable<T, TKey>::New(uint32_t hashval, const char* str, size_t extrabytes, uint32_t flags) {
     T* node = this->InternalNewNode(hashval, extrabytes, flags);
+
+    if (!node) {
+        return nullptr;
+    }
+
     node->m_hashval = hashval;
     node->m_key = str;
 
