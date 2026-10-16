@@ -1459,6 +1459,8 @@ void CGxDeviceVulkan::IReleasePool(CGxPool* pool) {
 void CGxDeviceVulkan::IReleasePools() {
     for (CGxPool* pool = this->m_poolList.Head(); pool; pool = this->m_poolList.Next(pool)) {
         this->IReleasePool(pool);
+        // ʕ •ᴥ•ʔ✿ Static model buffers must upload again on the new device ✿ ʕ •ᴥ•ʔ
+        pool->Discard();
     }
 }
 
