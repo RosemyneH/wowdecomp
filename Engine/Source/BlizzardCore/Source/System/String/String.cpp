@@ -1,6 +1,7 @@
 #include <cstdarg>
 #include <cstdint>
 #include <cstring>
+#include "Engine/Source/Base/OsCrt.h"
 #include "Engine/Source/BlizzardCore/Source/System/String/String.h"
 #include "Engine/Source/Storm/H/storm.h"
 

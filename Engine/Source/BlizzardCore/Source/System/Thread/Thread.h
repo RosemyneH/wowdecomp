@@ -5,7 +5,7 @@
 #include <functional>
 #include <set>
 #include <vector>
-#include <windows.h>
+#include "Engine/Source/Base/OsTypes.h"
 #include "Engine/Source/BlizzardCore/Source/System/Lock/Lock.h"
 #include "Engine/Source/BlizzardCore/Source/System/Memory/AllocSTL.h"
 #include "Engine/Source/BlizzardCore/Source/System/Thread/ThreadLocalStorage.h"

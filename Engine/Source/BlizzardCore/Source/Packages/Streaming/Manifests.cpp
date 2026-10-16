@@ -6,6 +6,7 @@
 #include <ctime>
 #include <string>
 #include <vector>
+#include "Engine/Source/Base/OsCrt.h"
 #include "Engine/Source/BlizzardCore/Source/Packages/Streaming/Streaming.h"
 #include "Engine/Source/BlizzardCore/Source/System/File/File.h"
 #include "Engine/Source/BlizzardCore/Source/System/Memory/MemoryStorm.h"

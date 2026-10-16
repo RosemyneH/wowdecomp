@@ -3,6 +3,7 @@
 #include <cstring>
 #include <malloc.h>
 #include <vector>
+#include "Engine/Source/Base/OsCrt.h"
 
 // INLINED
 inline uint32_t ExtractLowPart(uint64_t& value) {
