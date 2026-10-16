@@ -689,6 +689,11 @@ int32_t VkContext::BeginFrame() {
     this->PrepareFrame();
     VkFrame& frame = this->Frame();
 
+    // ʕ •ᴥ•ʔ✿ Null swapchain is a recreate, not an acquire ✿ ʕ •ᴥ•ʔ
+    if (!this->m_swapchain) {
+        return 0;
+    }
+
     VkResult result = vkAcquireNextImageKHR(this->m_device, this->m_swapchain, 100 * 1000000ull, frame.imageAvailable, VK_NULL_HANDLE, &this->m_imageIndex);
 
     if (result == VK_TIMEOUT || result == VK_NOT_READY) {
