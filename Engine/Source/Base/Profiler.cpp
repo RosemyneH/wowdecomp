@@ -206,12 +206,9 @@ Scope::Scope(uint32_t zone) : id(zone), start(0), child(0) {
     if (!g_ready) {
         OpenShm();
         g_ready = 1;
-        g_enabled = !g_shm || g_shm->enabled != 0;
-    } else if (g_depth == 0 && zone == WorldRender && g_shm) {
-        g_enabled = g_shm->enabled != 0;
     }
 
-    if (!g_enabled || zone >= Count || g_depth >= 16) {
+    if (!Enabled() || zone >= Count || g_depth >= 16) {
         return;
     }
 
