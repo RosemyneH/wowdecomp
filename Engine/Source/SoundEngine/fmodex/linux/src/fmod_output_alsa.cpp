@@ -197,6 +197,11 @@ FMOD_RESULT OutputALSA::lock(unsigned int offset, unsigned int length, void **pt
 {
     unsigned int bufferbytes = mBlockLengthBytes * mNumBlocks;
 
+    if (!mBuffer || bufferbytes == 0)
+    {
+        return FMOD_ERR_INVALID_PARAM;
+    }
+
     offset %= bufferbytes;
 
     if (offset + length > bufferbytes)
