@@ -688,7 +688,9 @@ VkDescriptorPool VkContext::CreateDescriptorPool() {
     info.poolSizeCount = 2;
     info.pPoolSizes = poolSizes;
     VkDescriptorPool pool = VK_NULL_HANDLE;
-    vkCreateDescriptorPool(this->m_device, &info, nullptr, &pool);
+    if (vkCreateDescriptorPool(this->m_device, &info, nullptr, &pool) != VK_SUCCESS) {
+        pool = VK_NULL_HANDLE;
+    }
     return pool;
 }
 
