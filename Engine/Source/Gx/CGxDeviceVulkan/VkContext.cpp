@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <iterator>
@@ -187,6 +188,7 @@ int32_t VkContext::CreateDevice(VkSurfaceKHR surface) {
     }
 
     vkGetPhysicalDeviceMemoryProperties(this->m_physicalDevice, &this->m_memoryProperties);
+    this->ChooseHeaps();
 
     VkPhysicalDeviceFeatures supported;
     vkGetPhysicalDeviceFeatures(this->m_physicalDevice, &supported);
@@ -957,6 +959,49 @@ void VkContext::FlushFrame() {
     frame.recording = vkBeginCommandBuffer(frame.cmd, &beginInfo) == VK_SUCCESS;
 }
 
+void VkContext::ChooseHeaps() {
+    this->m_uploadType = UINT32_MAX;
+    this->m_rebarType = UINT32_MAX;
+    this->m_localType = UINT32_MAX;
+    this->m_rebarHeap = 0;
+
+    VkDeviceSize bestLocal = 0;
+
+    for (uint32_t i = 0; i < this->m_memoryProperties.memoryTypeCount; i++) {
+        const VkMemoryType& type = this->m_memoryProperties.memoryTypes[i];
+        VkDeviceSize heap = this->m_memoryProperties.memoryHeaps[type.heapIndex].size;
+        VkMemoryPropertyFlags flags = type.propertyFlags;
+        int32_t visible = (flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
+        int32_t local = (flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0;
+        int32_t coherent = (flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0;
+
+        if (visible && coherent && !local && this->m_uploadType == UINT32_MAX) {
+            this->m_uploadType = i;
+        }
+
+        // ʕ •ᴥ•ʔ✿ 256MB is the legacy BAR window. Larger means the CPU can see the VRAM heap ✿ ʕ •ᴥ•ʔ
+        if (visible && coherent && local && heap > (256ull << 20) && heap > this->m_rebarHeap) {
+            this->m_rebarHeap = heap;
+            this->m_rebarType = i;
+        }
+
+        if (local && !visible && heap >= bestLocal) {
+            bestLocal = heap;
+            this->m_localType = i;
+        }
+    }
+
+    if (this->m_uploadType == UINT32_MAX) {
+        this->m_uploadType = this->FindMemoryType(0xFFFFFFFFu, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    }
+
+    std::fprintf(stderr, "vulkan memory: rebar=%s heap=%lluMiB uploadType=%u localType=%u\n",
+        this->m_rebarType == UINT32_MAX ? "off" : "on",
+        static_cast<unsigned long long>(this->m_rebarHeap >> 20),
+        this->m_uploadType,
+        this->m_localType);
+}
+
 uint32_t VkContext::FindMemoryType(uint32_t typeBits, VkMemoryPropertyFlags flags) {
     for (uint32_t i = 0; i < this->m_memoryProperties.memoryTypeCount; i++) {
         if ((typeBits & (1u << i)) && (this->m_memoryProperties.memoryTypes[i].propertyFlags & flags) == flags) {
@@ -998,12 +1043,37 @@ int32_t VkContext::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkB
 
     VkMemoryAllocateInfo allocInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
     allocInfo.allocationSize = requirements.size;
-    allocInfo.memoryTypeIndex = this->FindMemoryType(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    int32_t bounce = (usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) &&
+        !(usage & (VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT));
+    int32_t readback = usage == VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    uint32_t memoryType = UINT32_MAX;
+
+    if (!bounce && !readback && this->m_rebarType != UINT32_MAX && (requirements.memoryTypeBits & (1u << this->m_rebarType))) {
+        memoryType = this->m_rebarType;
+    }
+
+    if (memoryType == UINT32_MAX || !(requirements.memoryTypeBits & (1u << memoryType))) {
+        memoryType = (this->m_uploadType != UINT32_MAX && (requirements.memoryTypeBits & (1u << this->m_uploadType)))
+            ? this->m_uploadType
+            : this->FindMemoryType(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    }
+
+    allocInfo.memoryTypeIndex = memoryType;
 
     if (allocInfo.memoryTypeIndex == UINT32_MAX || vkAllocateMemory(this->m_device, &allocInfo, nullptr, &out.memory) != VK_SUCCESS) {
-        vkDestroyBuffer(this->m_device, out.buffer, nullptr);
-        out = {};
-        return 0;
+        if (memoryType == this->m_rebarType && this->m_uploadType != UINT32_MAX && (requirements.memoryTypeBits & (1u << this->m_uploadType))) {
+            allocInfo.memoryTypeIndex = this->m_uploadType;
+            if (vkAllocateMemory(this->m_device, &allocInfo, nullptr, &out.memory) != VK_SUCCESS) {
+                vkDestroyBuffer(this->m_device, out.buffer, nullptr);
+                out = {};
+                return 0;
+            }
+        } else {
+            vkDestroyBuffer(this->m_device, out.buffer, nullptr);
+            out = {};
+            return 0;
+        }
     }
 
     if (vkBindBufferMemory(this->m_device, out.buffer, out.memory, 0) != VK_SUCCESS ||
@@ -1109,7 +1179,26 @@ int32_t VkContext::CreateImage(const VkImageCreateInfo& info, VkImageAspectFlags
     VkMemoryRequirements requirements;
     vkGetImageMemoryRequirements(this->m_device, out.image, &requirements);
 
-    uint32_t memoryType = this->FindMemoryType(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    uint32_t memoryType = UINT32_MAX;
+
+    if (this->m_localType != UINT32_MAX && (requirements.memoryTypeBits & (1u << this->m_localType))) {
+        memoryType = this->m_localType;
+    } else {
+        for (uint32_t i = 0; i < this->m_memoryProperties.memoryTypeCount; i++) {
+            const VkMemoryType& type = this->m_memoryProperties.memoryTypes[i];
+
+            if ((requirements.memoryTypeBits & (1u << i)) &&
+                (type.propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) &&
+                !(type.propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)) {
+                memoryType = i;
+                break;
+            }
+        }
+    }
+
+    if (memoryType == UINT32_MAX) {
+        memoryType = this->FindMemoryType(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    }
 
     if (memoryType == UINT32_MAX || !this->m_heap.Alloc(this->m_device, requirements, memoryType, out.alloc)) {
         vkDestroyImage(this->m_device, out.image, nullptr);

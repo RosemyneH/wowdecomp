@@ -174,6 +174,11 @@ class VkContext {
     static constexpr size_t MaxSpareBuffers = 512;
     static constexpr uint64_t MaxSpareBytes = 32ull * 1024 * 1024;
     VkHeap m_heap;
+    // ʕ •ᴥ•ʔ✿ ReBAR is host-visible and device-local, and the heap is the whole VRAM. A 256MB BAR stays on the system upload heap ✿ ʕ •ᴥ•ʔ
+    uint32_t m_uploadType = UINT32_MAX;
+    uint32_t m_rebarType = UINT32_MAX;
+    uint32_t m_localType = UINT32_MAX;
+    VkDeviceSize m_rebarHeap = 0;
     uint32_t m_frameIndex = 0;
     uint32_t m_imageIndex = 0;
 
@@ -202,6 +207,7 @@ class VkContext {
     int32_t AbandonFrame();
     void FlushFrame();
 
+    void ChooseHeaps();
     uint32_t FindMemoryType(uint32_t typeBits, VkMemoryPropertyFlags flags);
     int32_t CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkBufferAlloc& out);
     int32_t AllocDrawItems(uint32_t count, uint32_t& first, GpuDrawItem*& mapped);
