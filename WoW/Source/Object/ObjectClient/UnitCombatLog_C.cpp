@@ -390,6 +390,10 @@ PendingCombatLogData* GetPendingCombatLogData(CombatLogEntry* entry, const WOWGU
         data = s_freePendingData.NewNode(2, 0, 0);
     }
 
+    if (!data) {
+        return nullptr;
+    }
+
     data->m_entry = entry;
     data->m_guid = guid;
     data->m_id = 0;
