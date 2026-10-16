@@ -49,7 +49,6 @@ void IOsSecureRandom(uint8_t* buffer, uint32_t size) {
     uint8_t digest[20];
 
     SHA1_Init(&context);
-    SHA1_Update(&context, buffer, size);
     SHA1_Update(&context, reinterpret_cast<const uint8_t*>(&entropy), sizeof(entropy));
     SHA1_Final(digest, &context);
 
