@@ -668,6 +668,9 @@ void NetClient::Disconnect() {
     if (this->m_redirectConnection) {
         this->m_redirectConnection->SetResponse(nullptr, false);
         this->m_redirectConnection->Disconnect();
+        if (WowConnection::s_network) {
+            WowConnection::s_network->Remove(this->m_redirectConnection);
+        }
         this->m_redirectConnection->Release();
         this->m_redirectConnection = nullptr;
     }
@@ -813,6 +816,9 @@ void NetClient::HandleResumeComms(WowConnection* connection, CDataStore* msg) {
     } else {
         this->m_redirectConnection->SetResponse(nullptr, false);
         this->m_redirectConnection->Disconnect();
+        if (WowConnection::s_network) {
+            WowConnection::s_network->Remove(this->m_redirectConnection);
+        }
         this->m_redirectConnection->Release();
         this->m_redirectConnection = nullptr;
     }
