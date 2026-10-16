@@ -23,8 +23,3 @@ target_link_libraries(XvidDecoder
     PRIVATE
         ${CMAKE_SOURCE_DIR}/ThirdParty/xvidcore/lib/x64/libxvidcore.lib
 )
-
-target_compile_options(XvidDecoder
-    PRIVATE
-        $<$<CONFIG:Debug>:/MD>
-)

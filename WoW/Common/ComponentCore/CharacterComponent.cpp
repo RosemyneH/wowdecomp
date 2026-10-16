@@ -2,7 +2,11 @@
 #include <cstdint>
 #include <cmath>
 #include <cstring>
+#if defined(__aarch64__) || defined(__arm64__)
+#include "ThirdParty/sse2neon/sse2neon.h"
+#else
 #include <emmintrin.h>
+#endif
 #include <new>
 #include <typeinfo>
 #if defined(_MSC_VER)
