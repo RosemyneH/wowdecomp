@@ -729,7 +729,8 @@ bool ComSat::Manager::SessionRemove(uint64_t session, uint64_t talker) {
     }
     uint8_t localTalker = 0xFF;
     for (uint32_t i = 0; i < this->m_maxLocalPlayers; i++) {
-        if (this->m_localTalkers[i]->m_guid == talker) {
+        LocalTalker* local = this->m_localTalkers[i];
+        if (local && local->m_guid == talker) {
             localTalker = i;
         }
     }
@@ -740,7 +741,7 @@ bool ComSat::Manager::SessionRemove(uint64_t session, uint64_t talker) {
     bool unused = true;
     for (uint32_t i = 0; i < this->m_maxLocalPlayers; i++) {
         LocalTalker* local = this->m_localTalkers[i];
-        if (local->m_guid) {
+        if (local && local->m_guid) {
             if (local->m_guid == talker) {
                 local->m_sessions.Remove(session);
             } else {
