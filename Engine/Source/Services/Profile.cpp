@@ -1,7 +1,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include "Engine/Source/Base/OsCrt.h"
+#if defined(_MSC_VER)
 #include <mbstring.h>
+#endif
 #include <new>
 #include "Engine/Source/Services/Profile.h"
 #include "Engine/Source/BlizzardCore/SFile2-Core.h"

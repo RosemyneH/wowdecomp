@@ -5,7 +5,11 @@
 #include <cstdint>
 #include <cstring>
 #include <new>
+#if defined(__aarch64__) || defined(__arm64__)
+#include "ThirdParty/sse2neon/sse2neon.h"
+#else
 #include <xmmintrin.h>
+#endif
 #if defined(_MSC_VER)
 #include <malloc.h>
 #else

@@ -1,6 +1,7 @@
 #include <cfloat>
 #include <cmath>
 #include <cstdint>
+#include "Engine/Source/Base/OsCrt.h"
 #include "Engine/Source/Tempest/CMath.h"
 
 // STATIC: 0x00A9B660
@@ -322,7 +323,11 @@ float CMath::normalizeAngleNegPiToPi_(float angle) {
 // VERIFY: a3991bed auto
 // OFFSET: 0x006E9360
 int32_t IsNaN(double value) {
+#if defined(_MSC_VER)
     return _isnan(value);
+#else
+    return std::isnan(value) ? 1 : 0;
+#endif
 }
 
 // VERIFY: 2ff13d8c auto

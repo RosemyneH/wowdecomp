@@ -1,4 +1,5 @@
 file(GLOB PRIVATE_SOURCES CONFIGURE_DEPENDS "src/*.c" "src/*.cpp")
+wowdecomp_filter_platform_sources(PRIVATE_SOURCES)
 
 set_source_files_properties(${PRIVATE_SOURCES} PROPERTIES LANGUAGE CXX)
 

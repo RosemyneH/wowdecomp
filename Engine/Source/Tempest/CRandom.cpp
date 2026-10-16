@@ -1,6 +1,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include "Engine/Source/Base/OsCrt.h"
 #include "Engine/Source/Tempest/CRandom.h"
 
 // STATIC: 0x009F1700

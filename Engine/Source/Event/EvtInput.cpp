@@ -211,8 +211,12 @@ void ConvertPosition(int32_t x, int32_t y, float* outX, float* outY) {
         }
     }
 
-    tagRECT windowRect;
-    OsGetDefaultWindowRect(&windowRect);
+    tagRECT windowRect = {};
+    if (!OsGetDefaultWindowRect(&windowRect) || windowRect.right <= windowRect.left || windowRect.bottom <= windowRect.top) {
+        *outX = 0.0f;
+        *outY = 0.0f;
+        return;
+    }
 
     *outX = static_cast<float>(x) / static_cast<float>(windowRect.right - windowRect.left);
     *outY = 1.0f - static_cast<float>(y) / static_cast<float>(windowRect.bottom - windowRect.top);

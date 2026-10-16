@@ -3,7 +3,11 @@
 #include <cstdint>
 #include <cstring>
 #include <new>
+#if defined(__aarch64__) || defined(__arm64__)
+#include "ThirdParty/sse2neon/sse2neon.h"
+#else
 #include <xmmintrin.h>
+#endif
 #include "Engine/Source/Model2/M2Scene.h"
 #include "Engine/Source/Base/ObjectAlloc.h"
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"

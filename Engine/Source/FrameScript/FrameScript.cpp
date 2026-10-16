@@ -1442,6 +1442,14 @@ void FrameScript_Destroy() {
     s_scriptEvents.Clear();
 }
 
+static FrameScript_EventObserver s_eventObserver = nullptr;
+static FrameScript_EventInterest s_eventInterest = nullptr;
+void FrameScript_SetEventObserver(FrameScript_EventObserver observer, FrameScript_EventInterest interest) {
+    s_eventObserver = observer;
+    s_eventInterest = interest;
+}
+bool FrameScript_ObserverWants(uint32_t index) { return s_eventObserver && s_eventInterest && s_eventInterest(index); }
+
 // VERIFY: 8009da99 manual
 // OFFSET: 0x0081AA00
 void FrameScript_SignalEvent(uint32_t index, lua_State* L, int32_t argCount) {
@@ -1487,6 +1495,11 @@ void FrameScript_SignalEvent(uint32_t index, lua_State* L, int32_t argCount) {
         node = next;
     }
 
+    // ʕ •ᴥ•ʔ✿ Observers (WASM addons) run after every Lua listener, preserving Lua ordering ✿ ʕ •ᴥ•ʔ
+    if (FrameScript_ObserverWants(index)) {
+        s_eventObserver(index, event->m_key.m_str, L, argCount);
+    }
+
     event->m_pendingSignalCount--;
 
     for (node = event->m_unregisterListeners.Head(); !event->m_unregisterListeners.IsEnd(node); node = event->m_unregisterListeners.DeleteNode(node)) {
@@ -1516,7 +1529,7 @@ void vFrameScript_SignalEvent(uint32_t index, const char* format, va_list args) 
 
     FrameScript_EventObject* event = s_scriptEvents[index];
 
-    if (!event || !event->m_listeners.Head()) {
+    if (!event || (!event->m_listeners.Head() && !FrameScript_ObserverWants(index))) {
         return;
     }
 
