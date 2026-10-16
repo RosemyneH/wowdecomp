@@ -36,10 +36,10 @@ Usage: $0 [all|deps|addons|scope|build|test|launch|release|smoke]
   deps     wasm32 rust std + clang wasm linker
   addons   build Addons/Wasm into Addons/Wasm/dist
   scope    symlink $PLAY_DIR from $GAME_SRC and the built packages
-  build    Ninja RelWithDebInfo (-O2 -g) WowClient, wasm_addon_host, wasm_addon_tests
+  build    Ninja RelWithDebInfo (-O2 -g -DNDEBUG) WowClient, wasm_addon_host, wasm_addon_tests
   test     headless host tests against Addons/Wasm/dist
   launch   start AzerothCore in Docker, then the RelWithDebInfo WowClient64 in the dev scope
-  release  build Release (-O3 -DNDEBUG) into a separate tree and launch that binary in the same scope
+  release  build Release (-O3 -DNDEBUG) into a separate tree and launch a play-dir copy of that binary
   smoke    start the client, require it to stay up, then stop it
 
 Env: WOWDECOMP_GAME_SRC WOWDECOMP_PLAY_DIR WOWDECOMP_BUILD_DIR WOWDECOMP_RELEASE_BUILD_DIR WOWDECOMP_REALM_HOST
@@ -244,7 +244,7 @@ launch_client() {
     WOWDECOMP_SERVER_BACKEND=docker "$ROOT/Tools/local-server/start.sh"
     apply_profiler_env
     profiler_launch_note
-    echo "RelWithDebInfo (-O2 -g): $PLAY_DIR/WowClient64"
+    echo "RelWithDebInfo (-O2 -g -DNDEBUG): $PLAY_DIR/WowClient64"
     cd "$PLAY_DIR"
     exec ./WowClient64
 }
@@ -262,9 +262,12 @@ launch_release() {
     WOWDECOMP_SERVER_BACKEND=docker "$ROOT/Tools/local-server/start.sh"
     apply_profiler_env
     profiler_launch_note
-    echo "Release (-O3 -DNDEBUG): $RELEASE_BIN"
+    # ʕ •ᴥ•ʔ✿ /proc/self/exe is the Data root. A symlink resolves back to bin/Linux ✿ ʕ •ᴥ•ʔ
+    local play_bin="$PLAY_DIR/WowClient64.release"
+    cp -fl "$RELEASE_BIN" "$play_bin" 2>/dev/null || cp -f "$RELEASE_BIN" "$play_bin"
+    echo "Release (-O3 -DNDEBUG): $play_bin"
     cd "$PLAY_DIR"
-    exec "$RELEASE_BIN"
+    exec ./WowClient64.release
 }
 
 smoke_launch() {
