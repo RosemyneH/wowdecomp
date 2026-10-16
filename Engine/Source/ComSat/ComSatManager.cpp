@@ -607,7 +607,9 @@ bool ComSat::Manager::SessionAddRemote(uint64_t session, uint64_t talker, uint8_
         }
     }
     ComSat::Network::Address remote;
-    remote.SetAddress(address);
+    if (!remote.SetAddress(address)) {
+        return false;
+    }
     if (!remote.GetPort()) {
         remote.SetPort(this->m_defaultPort);
     }

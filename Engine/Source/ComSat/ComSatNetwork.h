@@ -22,7 +22,7 @@ class Address {
     Address();
     int32_t GetPort() const;
     bool operator==(const Address& other) const;
-    void SetAddress(const char* address);
+    bool SetAddress(const char* address);
     void SetPort(int32_t port);
 };
 

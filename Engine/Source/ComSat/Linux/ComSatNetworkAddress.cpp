@@ -14,26 +14,30 @@ int32_t ComSat::Network::Address::GetPort() const {
 }
 
 // OFFSET: 0x00885CD0
-void ComSat::Network::Address::SetAddress(const char* address) {
+bool ComSat::Network::Address::SetAddress(const char* address) {
     if (!address) {
-        return;
+        return false;
     }
     const char* colon = strchr(address, ':');
     if (colon) {
-        if (strlen(address) < 128) {
-            char host[128];
-            strcpy(host, address);
-            host[colon - address] = '\0';
-            uint32_t ip = inet_addr(host);
-            if (ip != INADDR_NONE || strcmp(host, "255.255.255.255") == 0) {
-                this->m_ip = ip;
-            }
-            this->m_port = htons(static_cast<uint16_t>(strtol(colon + 1, nullptr, 10)));
+        if (strlen(address) >= 128) {
+            return false;
         }
-    } else {
-        uint32_t ip = inet_addr(address);
-        if (ip != INADDR_NONE || strcmp(address, "255.255.255.255") == 0) {
+        char host[128];
+        strcpy(host, address);
+        host[colon - address] = '\0';
+        uint32_t ip = inet_addr(host);
+        bool parsed = ip != INADDR_NONE || strcmp(host, "255.255.255.255") == 0;
+        if (parsed) {
             this->m_ip = ip;
         }
+        this->m_port = htons(static_cast<uint16_t>(strtol(colon + 1, nullptr, 10)));
+        return parsed;
     }
+    uint32_t ip = inet_addr(address);
+    if (ip != INADDR_NONE || strcmp(address, "255.255.255.255") == 0) {
+        this->m_ip = ip;
+        return true;
+    }
+    return false;
 }
