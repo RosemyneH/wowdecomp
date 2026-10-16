@@ -175,8 +175,14 @@ bool OsUrlDownload::DownloadString(const char* url, OsURLDownloadCallback callba
     std::string host = authority.substr(0, colon);
     std::string port = colon != std::string::npos ? authority.substr(colon + 1) : "80";
 
-    if (host.empty()) {
+    if (host.empty() || port.empty()) {
         return false;
+    }
+
+    for (unsigned char digit : port) {
+        if (digit < '0' || digit > '9') {
+            return false;
+        }
     }
 
     OsUrlDownload* download = new OsUrlDownload();
