@@ -336,10 +336,15 @@ FMOD_RESULT FMOD_OS_Semaphore_Free(FMOD_OS_SEMAPHORE *sema)
         return FMOD_ERR_INVALID_PARAM;
     }
 
-    sem_destroy((sem_t *)sema);
+    FMOD_RESULT result = FMOD_OK;
+    if (sem_destroy((sem_t *)sema))
+    {
+        result = FMOD_ERR_INVALID_PARAM;
+    }
+
     free(sema);
 
-    return FMOD_OK;
+    return result;
 }
 
 // OFFSET: 0x008D2010
