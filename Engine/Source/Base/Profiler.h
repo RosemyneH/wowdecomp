@@ -16,6 +16,21 @@ enum Id : uint32_t {
     Count
 };
 
+struct ZoneLine {
+    const char* name;
+    double selfMs;
+    double totalMs;
+    double calls;
+};
+
+struct Summary {
+    double frameMs;
+    uint32_t frames;
+    ZoneLine zones[Count];
+};
+
+int32_t Summarize(uint32_t frameCount, Summary& out);
+
 struct Scope {
     uint32_t id;
     uint64_t start;

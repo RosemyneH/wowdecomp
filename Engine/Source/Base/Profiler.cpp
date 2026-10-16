@@ -69,6 +69,7 @@ static_assert(offsetof(SharedProfile, frames) == 264, "profile frames");
 
 SharedProfile* g_shm = nullptr;
 ZoneAccum g_zones[Profiler::Count];
+FrameRecord g_history[kFrames];
 OpenScope g_stack[16];
 uint32_t g_depth = 0;
 uint64_t g_frameStart = 0;
@@ -96,6 +97,7 @@ void Publish() {
     frame.frameTicks = now - g_frameStart;
     frame.serial = g_frameSerial;
     memcpy(frame.zones, g_zones, sizeof(g_zones));
+    g_history[slot] = frame;
 
     g_shm->serial.store(serial + 2, std::memory_order_release);
     g_frameSerial++;
@@ -151,13 +153,65 @@ void OpenShm() {
 
 namespace Profiler {
 
+int32_t Summarize(uint32_t frameCount, Summary& out) {
+    memset(&out, 0, sizeof(out));
+
+    if (!g_frameSerial) {
+        return 0;
+    }
+
+    uint32_t available = g_frameSerial < kFrames ? g_frameSerial : kFrames;
+
+    if (!frameCount || frameCount > available) {
+        frameCount = available;
+    }
+
+    double clocks = static_cast<double>(OsGetAsyncClocksPerSecond());
+
+    if (clocks < 1.0) {
+        clocks = 1000000000.0;
+    }
+
+    uint32_t start = g_frameSerial - frameCount;
+    uint64_t selfSum[Count] = {};
+    uint64_t totalSum[Count] = {};
+    uint32_t countSum[Count] = {};
+    double frameSum = 0.0;
+
+    for (uint32_t n = 0; n < frameCount; n++) {
+        const FrameRecord& frame = g_history[(start + n) % kFrames];
+        frameSum += static_cast<double>(frame.frameTicks);
+
+        for (uint32_t zone = 0; zone < Count; zone++) {
+            selfSum[zone] += frame.zones[zone].selfTicks;
+            totalSum[zone] += frame.zones[zone].totalTicks;
+            countSum[zone] += frame.zones[zone].count;
+        }
+    }
+
+    out.frames = frameCount;
+    out.frameMs = frameSum / static_cast<double>(frameCount) / clocks * 1000.0;
+
+    for (uint32_t zone = 0; zone < Count; zone++) {
+        out.zones[zone].name = kNames[zone];
+        out.zones[zone].selfMs = static_cast<double>(selfSum[zone]) / static_cast<double>(frameCount) / clocks * 1000.0;
+        out.zones[zone].totalMs = static_cast<double>(totalSum[zone]) / static_cast<double>(frameCount) / clocks * 1000.0;
+        out.zones[zone].calls = static_cast<double>(countSum[zone]) / static_cast<double>(frameCount);
+    }
+
+    return 1;
+}
+
 Scope::Scope(uint32_t zone) : id(zone), start(0), child(0) {
     if (!g_ready) {
         OpenShm();
         g_ready = 1;
+        g_enabled = !g_shm || g_shm->enabled != 0;
+    } else if (g_depth == 0 && zone == WorldRender && g_shm) {
+        g_enabled = g_shm->enabled != 0;
     }
 
-    if (!Enabled() || zone >= Count || g_depth >= 16) {
+    if (!g_enabled || zone >= Count || g_depth >= 16) {
         return;
     }
 

@@ -1,0 +1,4 @@
+## Interface: 30300
+## Title: Wowdecomp Profile
+## Notes: Frame-zone times on the performance bar and the System datatext tooltip
+WowdecompProfile.lua

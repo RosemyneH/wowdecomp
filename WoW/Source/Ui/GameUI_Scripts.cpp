@@ -3,6 +3,7 @@
 #include <cstdarg>
 #include <cstring>
 #include "Engine/Source/Base/CDataStore.h"
+#include "Engine/Source/Base/Profiler.h"
 #include "Engine/Source/Base/Coordinate.h"
 #include "Engine/Source/BlizzardCore/SFile2-Core.h"
 #include "Engine/Source/BlizzardCore/Source/Packages/Streaming/Streaming.h"
@@ -2564,6 +2565,33 @@ static int32_t Script_GetMirrorTimerInfo(lua_State* L) {
 static int32_t Script_GetFramerate(lua_State* L) {
     lua_pushnumber(L, World::GetFramerate());
     return 1;
+}
+
+static int32_t Script_GetProfilerZones(lua_State* L) {
+    Profiler::Summary summary;
+
+    if (!Profiler::Summarize(30, summary)) {
+        return 0;
+    }
+
+    lua_pushnumber(L, summary.frameMs);
+    lua_createtable(L, Profiler::Count, 0);
+
+    for (uint32_t zone = 0; zone < Profiler::Count; zone++) {
+        const Profiler::ZoneLine& line = summary.zones[zone];
+        lua_createtable(L, 0, 4);
+        lua_pushstring(L, line.name);
+        lua_setfield(L, -2, "name");
+        lua_pushnumber(L, line.selfMs);
+        lua_setfield(L, -2, "selfMs");
+        lua_pushnumber(L, line.totalMs);
+        lua_setfield(L, -2, "totalMs");
+        lua_pushnumber(L, line.calls);
+        lua_setfield(L, -2, "calls");
+        lua_rawseti(L, -2, static_cast<int32_t>(zone + 1));
+    }
+
+    return 2;
 }
 
 // VERIFY: ee32b2a0 auto
@@ -6205,6 +6233,7 @@ static FrameScript_Method s_ScriptFunctions[] = {
     { "SetConsoleKey", &Script_SetConsoleKey },
     { "Screenshot", &Script_Screenshot },
     { "GetFramerate", &Script_GetFramerate },
+    { "GetProfilerZones", &Script_GetProfilerZones },
     { "TogglePerformanceDisplay", &Script_TogglePerformanceDisplay },
     { "TogglePerformancePause", &Script_TogglePerformancePause },
     { "TogglePerformanceValues", &Script_TogglePerformanceValues },
