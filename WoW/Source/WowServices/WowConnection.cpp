@@ -617,7 +617,13 @@ int32_t WowConnection::InitOsNet(bool (*netAddrFilter)(const NETADDR* addr), voi
             numThreads = 32;
         }
 
-        WowConnection::s_network = new (SMemAlloc(sizeof(WowConnectionNet), __FILE__, __LINE__, 0)) WowConnectionNet(numThreads, threadInit);
+        void* mem = SMemAlloc(sizeof(WowConnectionNet), __FILE__, __LINE__, 0);
+
+        if (!mem) {
+            return 0;
+        }
+
+        WowConnection::s_network = new (mem) WowConnectionNet(numThreads, threadInit);
         WowConnection::s_network->PlatformInit(useEngine);
         WowConnection::s_network->Start();
     }
