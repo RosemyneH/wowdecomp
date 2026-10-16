@@ -265,6 +265,9 @@ FMOD_RESULT Thread::closeThread()
             result = FMOD_OS_Semaphore_Signal(mSema, false);  /* make thread execute */
             if (result != FMOD_OK)
             {
+                mRunning = true;
+                FMOD_OS_Semaphore_Free(mEndSema);
+                mEndSema = 0;
                 return result;
             }
         }
