@@ -20,7 +20,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             ninja-build g++ \
-            libsdl2-dev libx11-dev libcurl4-openssl-dev libasound2-dev libvulkan-dev
+            libsdl2-dev libx11-dev libcurl4-openssl-dev libasound2-dev libvulkan-dev libxvidcore-dev
 
       - name: Configure
         run: cmake -S . -B build/linux -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo

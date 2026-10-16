@@ -48,12 +48,12 @@ if (WOWDECOMP_ENABLE_VULKAN)
     )
 endif ()
 
+if (WOWDECOMP_UNIX)
+    target_link_libraries(Gx PUBLIC SDL2::SDL2)
+endif ()
+
 if (WOWDECOMP_LINUX)
-    target_link_libraries(Gx
-        PUBLIC
-            X11::X11
-            SDL2::SDL2
-    )
+    target_link_libraries(Gx PUBLIC X11::X11)
 endif ()
 
 if (WOWDECOMP_APPLE)
