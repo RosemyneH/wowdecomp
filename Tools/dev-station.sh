@@ -9,7 +9,7 @@ BUILD_DIR="${WOWDECOMP_BUILD_DIR:-$ROOT/build/linux-dev}"
 REALM_HOST="${WOWDECOMP_REALM_HOST:-127.0.0.1}"
 
 # ʕ ◕ᴥ◕ ʔ✿ Live client scope. loop/memory-bomb trap or exhaust the host on load ✿ ʕ ◕ᴥ◕ ʔ
-# ʕ •ᴥ•ʔ✿ ElvUI and Details load as the original Interface/AddOns trees, not these crates ✿ ʕ •ᴥ•ʔ
+# ʕ •ᴥ•ʔ✿ ElvUI and Details are whole addon trees staged as their own WasmAddOns folders ✿ ʕ •ᴥ•ʔ
 LIVE_ADDONS=(
     c-hello
     ping
@@ -114,36 +114,64 @@ link_scope() {
     cp -f "$ROOT/Addons/Lua/WasmInspector/WasmInspector.toc" \
         "$ROOT/Addons/Lua/WasmInspector/WasmInspector.lua" \
         "$PLAY_DIR/Interface/AddOns/WasmInspector/"
-    link_game_addons
+    stage_wasm_game_addons "$wasm_root"
     echo "Dev scope: $PLAY_DIR"
-    echo "WasmAddOns -> $wasm_root ($(find "$wasm_root" -mindepth 1 -maxdepth 1 -type l | wc -l) links)"
+    echo "WasmAddOns -> $wasm_root ($(find "$wasm_root" -mindepth 1 -maxdepth 1 -type l -o -mindepth 1 -maxdepth 1 -type d | wc -l) entries)"
 }
 
-# ʕ •ᴥ•ʔ✿ The play scope runs the original addons. Folder names match their texture paths ✿ ʕ •ᴥ•ʔ
-link_game_addons() {
-    local addons="$PLAY_DIR/Interface/AddOns"
-    mkdir -p "$addons"
-    local name
-    if [[ -d "$ELVUI_SRC/ElvUI" ]]; then
-        for name in ElvUI ElvUI_OptionsUI ElvUI_AddOnSkins ElvUI_DTBars2 ElvUI_Enhanced ElvUI_EnhancedFriendsList ElvUI_ExtraActionBars ElvUI_PartyDamage; do
-            if [[ -d "$ELVUI_SRC/$name" ]]; then
-                ln -sfn "$ELVUI_SRC/$name" "$addons/$name"
-            fi
-        done
-        echo "ElvUI -> $ELVUI_SRC"
-    else
-        echo "No ElvUI tree at $ELVUI_SRC" >&2
+# ʕ •ᴥ•ʔ✿ One folder per addon: the original tree, plus a wasm manifest, under Interface/WasmAddOns/<Name> ✿ ʕ •ᴥ•ʔ
+stage_wasm_game_addons() {
+    local wasm_root="$1"
+    local host_wasm="$ROOT/Addons/Wasm/toc-host/addon.wasm"
+    if [[ ! -f "$host_wasm" ]]; then
+        sh "$ROOT/Addons/Wasm/toc-host/build.sh"
     fi
     if [[ ! -d "$DETAILS_SRC/Details" && -d /tmp/Details-WotLK/Details ]]; then
         DETAILS_SRC=/tmp/Details-WotLK
     fi
-    if [[ -d "$DETAILS_SRC/Details" ]]; then
-        for name in Details Details_3DModelsPaths Details_ChartViewer Details_DataStorage Details_DeathGraphs Details_EncounterDetails Details_SunderCount Details_TimeLine Details_TinyThreat; do
-            if [[ -d "$DETAILS_SRC/$name" ]]; then
-                ln -sfn "$DETAILS_SRC/$name" "$addons/$name"
-            fi
+    stage_one() {
+        local src="$1" name="$2" id="$3" title="$4"
+        local dest="$wasm_root/$name"
+        local item base
+        rm -rf "$dest"
+        mkdir -p "$dest"
+        for item in "$src"/*; do
+            [[ -e "$item" ]] || continue
+            base="$(basename "$item")"
+            ln -sfn "$item" "$dest/$base"
         done
-        echo "Details -> $DETAILS_SRC"
+        cp -f "$host_wasm" "$dest/addon.wasm"
+        cat > "$dest/addon.toml" <<EOF
+[addon]
+id = "$id"
+name = "$title"
+version = "1"
+api_version = "1"
+EOF
+        echo "package $name"
+    }
+    if [[ -d "$ELVUI_SRC/ElvUI" ]]; then
+        stage_one "$ELVUI_SRC/ElvUI" ElvUI game.elvui "ElvUI"
+        stage_one "$ELVUI_SRC/ElvUI_OptionsUI" ElvUI_OptionsUI game.elvui-options "ElvUI Options"
+        stage_one "$ELVUI_SRC/ElvUI_AddOnSkins" ElvUI_AddOnSkins game.elvui-addonskins "ElvUI AddOnSkins"
+        stage_one "$ELVUI_SRC/ElvUI_DTBars2" ElvUI_DTBars2 game.elvui-dtbars2 "ElvUI DTBars2"
+        stage_one "$ELVUI_SRC/ElvUI_Enhanced" ElvUI_Enhanced game.elvui-enhanced "ElvUI Enhanced"
+        stage_one "$ELVUI_SRC/ElvUI_EnhancedFriendsList" ElvUI_EnhancedFriendsList game.elvui-friends "ElvUI EnhancedFriendsList"
+        stage_one "$ELVUI_SRC/ElvUI_ExtraActionBars" ElvUI_ExtraActionBars game.elvui-extrabars "ElvUI ExtraActionBars"
+        stage_one "$ELVUI_SRC/ElvUI_PartyDamage" ElvUI_PartyDamage game.elvui-partydamage "ElvUI PartyDamage"
+    else
+        echo "No ElvUI tree at $ELVUI_SRC" >&2
+    fi
+    if [[ -d "$DETAILS_SRC/Details" ]]; then
+        stage_one "$DETAILS_SRC/Details" Details game.details "Details"
+        stage_one "$DETAILS_SRC/Details_3DModelsPaths" Details_3DModelsPaths game.details-models "Details 3DModelsPaths"
+        stage_one "$DETAILS_SRC/Details_ChartViewer" Details_ChartViewer game.details-charts "Details ChartViewer"
+        stage_one "$DETAILS_SRC/Details_DataStorage" Details_DataStorage game.details-storage "Details DataStorage"
+        stage_one "$DETAILS_SRC/Details_DeathGraphs" Details_DeathGraphs game.details-deaths "Details DeathGraphs"
+        stage_one "$DETAILS_SRC/Details_EncounterDetails" Details_EncounterDetails game.details-encounters "Details EncounterDetails"
+        stage_one "$DETAILS_SRC/Details_SunderCount" Details_SunderCount game.details-sunder "Details SunderCount"
+        stage_one "$DETAILS_SRC/Details_TimeLine" Details_TimeLine game.details-timeline "Details TimeLine"
+        stage_one "$DETAILS_SRC/Details_TinyThreat" Details_TinyThreat game.details-threat "Details TinyThreat"
     else
         echo "No Details tree at $DETAILS_SRC" >&2
     fi

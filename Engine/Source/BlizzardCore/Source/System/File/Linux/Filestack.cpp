@@ -57,6 +57,25 @@ static Blizzard::Time::Timestamp FromTimespec(const timespec& time) {
     return (static_cast<int64_t>(time.tv_sec) - 946684800LL) * 1000000000LL + time.tv_nsec;
 }
 
+// ʕ •ᴥ•ʔ✿ The addon folder is Interface/WasmAddOns/<Name>. Its Lua still says Interface/AddOns/<Name> ✿ ʕ •ᴥ•ʔ
+static bool RewriteWasmAddonPath(const char* path, char* out, size_t outLen) {
+    const char* keys[] = {"Interface/AddOns/", "Interface\\AddOns\\"};
+    const char* reps[] = {"Interface/WasmAddOns/", "Interface\\WasmAddOns\\"};
+    for (int i = 0; i < 2; i++) {
+        const char* hit = strstr(path, keys[i]);
+        if (!hit) continue;
+        size_t prefix = (size_t)(hit - path);
+        size_t rep = strlen(reps[i]);
+        size_t rest = strlen(hit + strlen(keys[i]));
+        if (prefix + rep + rest >= outLen) return false;
+        memcpy(out, path, prefix);
+        memcpy(out + prefix, reps[i], rep);
+        memcpy(out + prefix + rep, hit + strlen(keys[i]), rest + 1);
+        return true;
+    }
+    return false;
+}
+
 static int OpenNative(const char* path, uint32_t mode) {
     DWORD sharemode;
     DWORD desiredaccess;
@@ -90,8 +109,13 @@ static int OpenNative(const char* path, uint32_t mode) {
 
     flags |= O_CLOEXEC;
     int fd = open(path, flags, 0644);
+    char rewritten[1024];
+    if (fd < 0 && !(flags & (O_CREAT | O_WRONLY | O_RDWR)) && RewriteWasmAddonPath(path, rewritten, sizeof(rewritten))) {
+        fd = open(rewritten, flags, 0644);
+        if (fd < 0) path = rewritten;
+    }
     // ʕ •ᴥ•ʔ✿ Addon trees keep Windows casing. A misspelled loose file is the same file ✿ ʕ •ᴥ•ʔ
-    if (fd < 0 && !(flags & (O_CREAT | O_WRONLY | O_RDWR)) && (strstr(path, "Interface/AddOns/") || strstr(path, "Interface\\AddOns\\"))) {
+    if (fd < 0 && !(flags & (O_CREAT | O_WRONLY | O_RDWR)) && (strstr(path, "Interface/AddOns/") || strstr(path, "Interface\\AddOns\\") || strstr(path, "Interface/WasmAddOns/") || strstr(path, "Interface\\WasmAddOns\\"))) {
         char resolved[1024];
         size_t used = 0;
         const char* cursor = path;

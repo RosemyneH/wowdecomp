@@ -223,13 +223,13 @@ A whisper reply, once `chat.send` is granted, is `confirm::chat_send(7, who, tex
 
 ## Showing ElvUI, Details, and WIM
 
-ElvUI and Details in the play client are the original addons. WIM is the Rust whisper port.
+ElvUI and Details each live in their own `Interface/WasmAddOns/<Name>` folder, the original tree plus a wasm manifest. WIM is the Rust whisper port.
 
 | Port | Path | Id | What it draws |
 |---|---|---|---|
 | WIM | `Addons/Wasm/ports/wim` | `port.wim` | Per-person whisper windows, saved history, enter to send, escape to hide |
 
-ElvUI and Details are linked into `Interface/AddOns`. ElvUI’s settings window is `ElvUI_OptionsUI` (`/ec`). Details is Bunny67’s WotLK tree, plugins included.
+Nothing is copied into `Interface/AddOns`. ElvUI’s settings window is the `ElvUI_OptionsUI` package (`/ec`). Details is Bunny67’s WotLK tree, plugins included, each in its own folder.
 
 ```text
 wasmgrant port.wim chat.read

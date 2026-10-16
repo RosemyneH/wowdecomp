@@ -35,7 +35,7 @@ until granted, the panels still show and the payloads stay redacted. From the de
 <code>wasmgrant example.unit-frames units.read</code> and <code>wasmgrant example.whisper-window chat.read</code>.</p>
 <h2>Lua-shaped ports</h2>
 <p><code>docs/lua-wasm.html</code> is the authoring guide.
-The play client loads the original <code>ElvUI</code> and <code>Details</code> trees under <code>Interface/AddOns</code>. <code>/ec</code> opens ElvUI’s options. <code>/details</code> is the meter.
+The play client keeps the original <code>ElvUI</code> and <code>Details</code> trees in their own <code>Interface/WasmAddOns/&lt;Name&gt;</code> folders. <code>/ec</code> opens ElvUI’s options. <code>/details</code> is the meter.
 <code>port.wim</code> opens per-person whisper windows, keeps history, and sends on enter.
 They are clean-room layouts for this client and install like the other wasm packages.
 The Lua calls they use are <code>ui_bind</code> / <code>WASM_UI</code>, <code>ui_get_text</code>, <code>unit_names</code>, and edit boxes.

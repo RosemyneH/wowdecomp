@@ -76,7 +76,7 @@ Clean-room layouts, not the upstream Lua addons:
 | Whisper list | `examples/whisper-window` | `example.whisper-window` | One whisper log |
 | WIM | `ports/wim` | `port.wim` | Rust whisper windows. Enter calls `SendChatMessage` |
 
-The play client loads **ElvUI** and **Details** from their original trees (`Interface/AddOns/ElvUI`, `ElvUI_OptionsUI`, `Details`, and the Details plugins). `/ec` is ElvUI’s options. `/details` is the meter. `Tools/dev-station.sh` links those folders on `scope`.
+The play client keeps **ElvUI** and **Details** as their own `Interface/WasmAddOns/<Name>` folders: the original files, a wasm manifest, and `addon.wasm`. `/ec` is ElvUI’s options. `/details` is the meter. `Tools/dev-station.sh` stages those folders on `scope`.
 
 ```text
 wasmgrant port.wim chat.read

@@ -2,6 +2,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <malloc.h>
+#include <string>
+#include <unordered_map>
 #include "Engine/Source/Base/CDataStore.h"
 #include "Engine/Source/Base/Status.h"
 #include "Engine/Source/BlizzardCore/SFile2-Core.h"
@@ -20,6 +22,15 @@
 #include "ThirdParty/zlib/zlib.h"
 #include "WoW/Source/Ui/Types.h"
 #include "WoW/Source/Ui/UIBindings.h"
+
+// ʕ •ᴥ•ʔ✿ Wasm packages keep the whole addon in Interface\WasmAddOns\<Name>. The loader reads that folder ✿ ʕ •ᴥ•ʔ
+static std::unordered_map<std::string, std::string> s_addonFileRoot;
+
+static void FormatAddonFile(char* out, size_t outLen, const char* name, const char* file) {
+    auto it = s_addonFileRoot.find(name);
+    const char* root = it == s_addonFileRoot.end() ? "Interface\\AddOns" : it->second.c_str();
+    SStrPrintf(out, outLen, "%s\\%s\\%s", root, name, file);
+}
 
 // STATIC: 0x00AD17B4
 static const char* s_addOnLoadableTokens[12] = { "LOADABLE", "MISSING", "DISABLED", "BANNED", "CORRUPT", "INSECURE", "DEMAND_LOADED", "INTERFACE_VERSION", "INCOMPATIBLE", "SECURE", "INSECURE", "BANNED" };
@@ -714,8 +725,10 @@ void SetAddOnInfoRequest(CDataStore* msg) {
         const char* name = addon->m_key.m_str;
         char toc[260];
         char bindings[260];
-        SStrPrintf(toc, sizeof(toc), "Interface\\AddOns\\%s\\%s.toc", name, name);
-        SStrPrintf(bindings, sizeof(bindings), "Interface\\AddOns\\%s\\Bindings.xml", name);
+        char tocFile[260];
+        SStrPrintf(tocFile, sizeof(tocFile), "%s.toc", name);
+        FormatAddonFile(toc, sizeof(toc), name, tocFile);
+        FormatAddonFile(bindings, sizeof(bindings), name, "Bindings.xml");
 
         int32_t result = FrameXML_CheckSignature(toc, bindings, addon->m_hasPublicKey ? addon->m_publicKey : nullptr, addon->m_digest);
 
@@ -1048,13 +1061,15 @@ bool LoadAddOn(const char* name, bool demandLoad, CStatus* status) {
         MD5Init(&md5);
 
         char path[260];
-        SStrPrintf(path, sizeof(path), "Interface\\AddOns\\%s\\%s.toc", addonName, addonName);
+        char tocFile[260];
+        SStrPrintf(tocFile, sizeof(tocFile), "%s.toc", addonName);
+        FormatAddonFile(path, sizeof(path), addonName, tocFile);
         lua_State* L = FrameScript_GetContext();
         lua_createtable(L, 0, 0);
         FrameXML_CreateFrames(path, addonName, &md5, &addonStatus);
         lua_settop(L, -2);
 
-        SStrPrintf(path, sizeof(path), "Interface\\AddOns\\%s\\Bindings.xml", addonName);
+        FormatAddonFile(path, sizeof(path), addonName, "Bindings.xml");
 
         if (SFile::FileExistsEx(path, 1)) {
             CGUIBindings::s_bindings->Load(path, &md5, &addonStatus);
@@ -1133,7 +1148,9 @@ static void LoadAddOnInfo(const char* name) {
     }
 
     char path[260];
-    SStrPrintf(path, sizeof(path), "Interface\\AddOns\\%s\\%s.toc", name, name);
+    char tocFile[260];
+    SStrPrintf(tocFile, sizeof(tocFile), "%s.toc", name);
+    FormatAddonFile(path, sizeof(path), name, tocFile);
 
     void* data;
 
@@ -1401,11 +1418,22 @@ static int32_t EnumAddOnsDisk(OS_FILE_DATA& data, void* param) {
     return 0;
 }
 
+static int32_t EnumWasmPackages(OS_FILE_DATA& data, void* param) {
+    if (!(data.flags & 0x10) || data.fileName[0] == '.') return 0;
+    char path[260];
+    SStrPrintf(path, sizeof(path), "Interface\\WasmAddOns\\%s\\%s.toc", data.fileName, data.fileName);
+    if (!SFile::FileExists(path)) return 0;
+    s_addonFileRoot[data.fileName] = "Interface\\WasmAddOns";
+    LoadAddOnInfo(data.fileName);
+    return 0;
+}
+
 // VERIFY: 605b03d2 manual
 // OFFSET: 0x005F8F50
 void InitializeAddOns() {
     ListInterfaceArchive("Interface\\AddOns\\", EnumAddOnsArchive, nullptr);
     OsFileList("Interface\\AddOns\\", "*", EnumAddOnsDisk, nullptr, 0);
+    OsFileList("Interface\\WasmAddOns\\", "*", EnumWasmPackages, nullptr, 0);
 
     for (UIADDON* addon = s_addons.m_fulllist.Head(); addon; addon = s_addons.m_fulllist.Next(addon)) {
         for (uint32_t i = 0; i < addon->m_loadWith.Count(); i++) {
