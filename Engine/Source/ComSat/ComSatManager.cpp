@@ -495,6 +495,9 @@ void ComSat::Manager::LocalTalkerVoiceLevel(uint8_t player, float level, bool ta
 void ComSat::Manager::DeviceError(uint8_t player) {
     if (this->m_callback && player < this->m_maxLocalPlayers) {
         LocalTalker* localTalker = this->m_localTalkers[player];
+        if (!localTalker) {
+            return;
+        }
         if (localTalker->m_guid && localTalker->m_deviceError != true) {
             localTalker->m_deviceError = true;
             this->m_callback->NotifyDeviceError(player);
