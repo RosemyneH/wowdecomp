@@ -134,7 +134,7 @@ void DayNight::DNPlanet::Render() {
     GxUpdateAlphaRef(GxRs_AlphaRef);
     GxRsSet(GxRs_Lighting, 0);
     GxRsSet(GxRs_Fog, 0);
-    GxRsSet(GxRs_DepthTest, 0);
+    GxRsSet(GxRs_DepthTest, 1);
     GxRsSet(GxRs_DepthWrite, 0);
     GxRsSet(GxRs_ColorWrite, 15);
     g_theGxDevicePtr->RsSet(GxRs_Texture0, gxTex);
@@ -173,7 +173,8 @@ void DayNight::DNSky::Render() {
     GxRsSet(GxRs_Lighting, 0);
     GxRsSet(GxRs_Fog, 0);
     GxRsSet(GxRs_Culling, 0);
-    GxRsSet(GxRs_DepthTest, 0);
+    // ʕ •ᴥ•ʔ✿ Additive sky. Depth off from the cloud pass was painting that color over the world ✿ ʕ •ᴥ•ʔ
+    GxRsSet(GxRs_DepthTest, 1);
     GxRsSet(GxRs_DepthWrite, 0);
     GxRsSet(GxRs_ColorWrite, 15);
     GxRsSet(GxRs_BlendingMode, 3);
