@@ -245,12 +245,15 @@ void ComSat::Sound::IOSoundEngine::InitCapture() {
             this->m_channels[i] = new (memory) ComSat::Sound::OutputChannel(*this->m_allocator);
             ComSat::Sound::OutputChannel* channel = this->m_channels[i];
             SI2::VoiceChat_CreateChatSound(&channel->m_object, channel, 1);
-            SI2SoundUserData* userData = new (SMemAlloc(sizeof(SI2SoundUserData), __FILE__, __LINE__, 0)) SI2SoundUserData();
-            userData->m_name = "<Voice Chat>";
-            userData->m_soundKitId = 0;
-            userData->m_def = nullptr;
-            userData->m_group = 3;
-            channel->m_object.m_sound.SetUserData(userData);
+            void* userMemory = SMemAlloc(sizeof(SI2SoundUserData), __FILE__, __LINE__, 0);
+            if (userMemory) {
+                SI2SoundUserData* userData = new (userMemory) SI2SoundUserData();
+                userData->m_name = "<Voice Chat>";
+                userData->m_soundKitId = 0;
+                userData->m_def = nullptr;
+                userData->m_group = 3;
+                channel->m_object.m_sound.SetUserData(userData);
+            }
             SI2::SetPitch(&channel->m_object, this->m_sampleRate);
             SI2::VoiceChat_Play(&channel->m_object);
         }
