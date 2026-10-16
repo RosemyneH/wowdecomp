@@ -41,7 +41,7 @@
     #define PLATFORM_LINUX
     #define PLATFORM_ENDIAN_LITTLE
 
-    #if defined(__amd64__)
+    #if defined(__amd64__) || defined(__aarch64__)
         #define PLATFORM_LINUX64
         #define PLATFORM_64BIT
     #else
@@ -401,12 +401,10 @@
 
 #elif defined(PLATFORM_LINUX64)
 
-    #define FMOD_SUPPORT_OSS
     #define FMOD_SUPPORT_ALSA
-    #define FMOD_SUPPORT_ESD
-    #define FMOD_SUPPORT_NEURAL
 
     #undef  FMOD_SUPPORT_ASF
+    #undef  FMOD_SUPPORT_CDDA
 
     #undef FMOD_SUPPORT_MYEARS
 

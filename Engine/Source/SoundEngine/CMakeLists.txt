@@ -7,15 +7,38 @@ set(FMODEX_FLAC_DIR ${FMODEX_DIR}/lib/flac-1.1.4)
 
 file(GLOB FMODEX_SOURCES CONFIGURE_DEPENDS
     "${FMODEX_DIR}/src/*.cpp"
-    "${FMODEX_DIR}/win32/src/*.cpp"
-    "${FMODEX_DIR}/win32/src/asio/*.cpp"
     "${FMODEX_DIR}/lib/ogg_vorbis/ogg/src/*.c"
     "${FMODEX_DIR}/lib/ogg_vorbis/vorbis/lib/*.c"
     "${FMODEX_FLAC_DIR}/src/libFLAC/*.c"
-    "${FMODEX_DIR}/lib/openal/utils/*.cpp"
     "${FMODEX_DIR}/lib/freeverb/*.cpp"
     "${FMODEX_DIR}/lib/sfx/foreverb/*.cpp"
 )
+
+if (WIN32)
+    file(GLOB FMODEX_PLATFORM_SOURCES CONFIGURE_DEPENDS
+        "${FMODEX_DIR}/win32/src/*.cpp"
+        "${FMODEX_DIR}/win32/src/asio/*.cpp"
+        "${FMODEX_DIR}/lib/openal/utils/*.cpp"
+    )
+    set(FMODEX_PLATFORM_DIR ${FMODEX_DIR}/win32/src)
+else ()
+    file(GLOB FMODEX_PLATFORM_SOURCES CONFIGURE_DEPENDS "${FMODEX_DIR}/linux/src/*.cpp")
+    list(APPEND FMODEX_PLATFORM_SOURCES
+        ${FMODEX_DIR}/win32/src/fmod_dsp_distortion.cpp
+        ${FMODEX_DIR}/win32/src/fmod_dsp_resampler_linear.cpp
+    )
+    set(FMODEX_PLATFORM_DIR ${FMODEX_DIR}/linux/src)
+    if (WOWDECOMP_APPLE)
+        list(FILTER FMODEX_PLATFORM_SOURCES EXCLUDE REGEX "fmod_output_alsa\\.cpp$")
+        find_library(COREAUDIO_FRAMEWORK CoreAudio REQUIRED)
+        find_library(AUDIOTOOLBOX_FRAMEWORK AudioToolbox REQUIRED)
+        find_library(AUDIOUNIT_FRAMEWORK AudioUnit REQUIRED)
+    else ()
+        find_package(ALSA REQUIRED)
+    endif ()
+endif ()
+
+list(APPEND FMODEX_SOURCES ${FMODEX_PLATFORM_SOURCES})
 
 add_library(fmodex STATIC ${FMODEX_SOURCES})
 
@@ -23,17 +46,20 @@ target_include_directories(fmodex
     PUBLIC
         ${FMODEX_DIR}/src
     PRIVATE
-        ${FMODEX_DIR}/win32/src
+        ${FMODEX_PLATFORM_DIR}
         ${FMODEX_DIR}/lib/ogg_vorbis/ogg/include
         ${FMODEX_DIR}/lib/ogg_vorbis/vorbis/include
         ${FMODEX_DIR}/lib/ogg_vorbis/vorbis/lib
         ${FMODEX_FLAC_DIR}/include
         ${FMODEX_FLAC_DIR}/src/libFLAC/include
         ${FMODEX_DIR}/lib/openal/include
-        ${FMODEX_DIR}/win32/lib/wmsdk/include
         ${FMODEX_DIR}/lib/sfx/foreverb
         ${FMODEX_DIR}/lib/freeverb
 )
+
+if (WIN32)
+    target_include_directories(fmodex PRIVATE ${FMODEX_DIR}/win32/lib/wmsdk/include)
+endif ()
 
 target_compile_definitions(fmodex
     PRIVATE
@@ -41,18 +67,37 @@ target_compile_definitions(fmodex
         FLAC__HAS_OGG=1
 )
 
-target_link_libraries(fmodex
-    INTERFACE
-        winmm
-        ws2_32
-        msacm32
-)
+if (WIN32)
+    target_link_libraries(fmodex
+        INTERFACE
+            winmm
+            ws2_32
+            msacm32
+    )
+elseif (WOWDECOMP_APPLE)
+    target_link_libraries(fmodex
+        PUBLIC
+            ${COREAUDIO_FRAMEWORK}
+            ${AUDIOTOOLBOX_FRAMEWORK}
+            ${AUDIOUNIT_FRAMEWORK}
+            ${COREFOUNDATION_FRAMEWORK}
+            Threads::Threads
+            ${CMAKE_DL_LIBS}
+    )
+else ()
+    target_link_libraries(fmodex
+        PUBLIC
+            ALSA::ALSA
+            Threads::Threads
+            ${CMAKE_DL_LIBS}
+    )
+endif ()
 
 if (MSVC)
     target_compile_options(fmodex PRIVATE /MP)
 endif ()
 
-if (CMAKE_SIZEOF_VOID_P EQUAL 4)
+if (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 4)
     target_compile_definitions(fmodex
         PRIVATE
             FLAC__CPU_IA32
