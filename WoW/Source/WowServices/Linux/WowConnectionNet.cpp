@@ -1,4 +1,4 @@
-#if defined(WOWDECOMP_LINUX)
+#if defined(__linux__) || defined(__APPLE__)
 
 #include <fcntl.h>
 #include <netinet/in.h>
@@ -12,6 +12,10 @@ static constexpr uint32_t MAXIMUM_WAIT_OBJECTS = 64;
 static int32_t s_wakePipe[2] = { -1, -1 };
 
 static void SetWakeEvent() {
+    if (s_wakePipe[1] < 0) {
+        return;
+    }
+
     uint8_t signal = 1;
     static_cast<void>(write(s_wakePipe[1], &signal, sizeof(signal)));
 }
@@ -77,6 +81,10 @@ void WowConnectionNet::PlatformRun() {
                     continue;
             }
 
+            if (connection->m_sock < 0) {
+                continue;
+            }
+
             if (count < MAXIMUM_WAIT_OBJECTS) {
                 connection->m_refCount.Increment();
                 handles[count] = { connection->m_sock, events, 0 };
@@ -91,8 +99,16 @@ void WowConnectionNet::PlatformRun() {
 
         this->m_connectionsLock.Leave();
 
-        if (poll(handles, count, timeout) >= 0) {
-            if (handles[0].revents & POLLIN) {
+        pollfd* pollHandles = handles;
+        uint32_t pollCount = count;
+
+        if (s_wakePipe[0] < 0) {
+            pollHandles = count > 1 ? handles + 1 : nullptr;
+            pollCount = count > 1 ? count - 1 : 0;
+        }
+
+        if (poll(pollHandles, pollCount, timeout) >= 0) {
+            if (s_wakePipe[0] >= 0 && (handles[0].revents & POLLIN)) {
                 ResetWakeEvent();
             }
 
@@ -135,9 +151,25 @@ void WowConnectionNet::PlatformRun() {
 
 // OFFSET: 0x004696E0
 void WowConnectionNet::PlatformInit(bool useEngine) {
-    if (!pipe2(s_wakePipe, O_NONBLOCK | O_CLOEXEC)) {
-        this->m_event = s_wakePipe;
+#if defined(__APPLE__)
+    if (pipe(s_wakePipe)) {
+        return;
     }
+
+    if (fcntl(s_wakePipe[0], F_SETFL, O_NONBLOCK) || fcntl(s_wakePipe[1], F_SETFL, O_NONBLOCK)
+        || fcntl(s_wakePipe[0], F_SETFD, FD_CLOEXEC) || fcntl(s_wakePipe[1], F_SETFD, FD_CLOEXEC)) {
+        close(s_wakePipe[0]);
+        close(s_wakePipe[1]);
+        s_wakePipe[0] = -1;
+        s_wakePipe[1] = -1;
+        return;
+    }
+#else
+    if (pipe2(s_wakePipe, O_NONBLOCK | O_CLOEXEC)) {
+        return;
+    }
+#endif
+    this->m_event = s_wakePipe;
 }
 
 // OFFSET: 0x00469740
@@ -169,10 +201,14 @@ void WowConnectionNet::PlatformStop() {
 
 // OFFSET: 0x00469730
 void WowConnectionNet::PlatformDestroy() {
-    close(s_wakePipe[0]);
-    close(s_wakePipe[1]);
-    s_wakePipe[0] = -1;
-    s_wakePipe[1] = -1;
+    if (s_wakePipe[0] >= 0) {
+        close(s_wakePipe[0]);
+        s_wakePipe[0] = -1;
+    }
+    if (s_wakePipe[1] >= 0) {
+        close(s_wakePipe[1]);
+        s_wakePipe[1] = -1;
+    }
     this->m_event = nullptr;
 }
 
