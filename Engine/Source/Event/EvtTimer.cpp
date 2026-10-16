@@ -159,7 +159,15 @@ uint32_t IEvtTimerSet(EvtContext* context, uint32_t delay, EVENTHANDLERFUNC hand
     EvtTimer* timer = context->m_timerIdTable.m_allocArray[id];
 
     if (!timer) {
-        timer = new (SMemAlloc(sizeof(EvtTimer), __FILE__, __LINE__, 0)) EvtTimer;
+        void* mem = SMemAlloc(sizeof(EvtTimer), __FILE__, __LINE__, 0);
+
+        if (!mem) {
+            context->m_timerIdTable.Free(id);
+            context->m_critsect.Leave();
+            return 0;
+        }
+
+        timer = new (mem) EvtTimer;
         context->m_timerIdTable.m_allocArray[id] = timer;
     }
 
