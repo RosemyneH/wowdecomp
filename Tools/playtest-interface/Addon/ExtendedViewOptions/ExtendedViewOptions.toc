@@ -1,0 +1,5 @@
+## Interface: 30300
+## Title: Extended View Options
+## Notes: Playtest toggles for far clip, fog, and horizon Z (wowdecomp client CVars).
+
+ExtendedViewOptions.lua

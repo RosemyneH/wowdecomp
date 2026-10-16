@@ -37,6 +37,7 @@
 #include "WoW/Source/Client.h"
 #include "WoW/Source/Console/ConsoleClient.h"
 #include "WoW/Source/ConsoleDevice/ConsoleDevice.h"
+#include "WoW/Source/WorldClient/WorldParam_CVarSlider.h"
 #include "WoW/Source/DB/DBClient/DBCacheInstances.h"
 #include "WoW/Source/DB/DBClient/DBClient.h"
 #include "WoW/Source/DB/Rec/AreaTableRec.h"
@@ -1793,11 +1794,15 @@ static int32_t Script_GetCVarMin(lua_State* L) {
     }
 
     const char* name = var->m_key.m_str;
+    float bound = 0.0f;
+
+    if (CWorldParamSlider::GetSliderMin(name, &bound)) {
+        lua_pushnumber(L, bound);
+        return 1;
+    }
 
     if (!SStrCmpI(name, "extShadowQuality", STORM_MAX_STR)) {
         lua_pushnumber(L, 0.0);
-    } else if (!SStrCmpI(name, "farclip", STORM_MAX_STR)) {
-        lua_pushnumber(L, 177.0);
     } else {
         lua_pushnil(L);
     }
@@ -1821,6 +1826,12 @@ static int32_t Script_GetCVarMax(lua_State* L) {
     }
 
     const char* name = var->m_key.m_str;
+    float bound = 0.0f;
+
+    if (CWorldParamSlider::GetSliderMax(name, &bound)) {
+        lua_pushnumber(L, bound);
+        return 1;
+    }
 
     if (!SStrCmpI(name, "extShadowQuality", STORM_MAX_STR)) {
         uint32_t mode = 0;
@@ -1835,8 +1846,6 @@ static int32_t Script_GetCVarMax(lua_State* L) {
         } while (mode <= maxMode);
 
         lua_pushnumber(L, mode - 1);
-    } else if (!SStrCmpI(name, "farclip", STORM_MAX_STR)) {
-        lua_pushnumber(L, 1277.0);
     } else {
         lua_pushnil(L);
     }

@@ -475,6 +475,7 @@ void SetHorizonNearClipScale(float scale);
 void SetNearClip(float nearClip);
 void SetTexLodBias(float bias);
 float ValidateFarClip(float farClip, int32_t mapID);
+float MaxValidatedFarClip(int32_t mapID);
     bool NDCClip(C3Vector* verts, uint32_t count, C3Vector*** outVerts, uint32_t* outCount);
     bool GetFacets(CAaBox* a1, CAaBox* a2, FacetData* a3, uint32_t a4, uint32_t* a5);
     bool NDCXform(CFrustum* frustum, C44Matrix* out, bool includeTranslation);

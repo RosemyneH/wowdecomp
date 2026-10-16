@@ -29,6 +29,7 @@
 #include "WoW/Source/WowServices/WDataStore.h"
 #include "WoW/Source/WowSvcs/WowSvcsClient/ClientServices.h"
 #include "WoW/Source/ConsoleDevice/ConsoleDevice.h"
+#include "WoW/Source/WorldClient/WorldParam_CVarSlider.h"
 #include "WoW/Source/WowServices/RealmConnection.h"
 #include "Engine/Source/Scrn/Scrn.h"
 #include "Engine/Source/Event/Event.h"
@@ -672,17 +673,19 @@ static int32_t Script_GetCVarMin(lua_State* L) {
     }
 
     const char* name = var->m_key.m_str;
+    float bound = 0.0f;
+
+    if (CWorldParamSlider::GetSliderMin(name, &bound)) {
+        lua_pushnumber(L, bound);
+        return 1;
+    }
 
     if (!SStrCmpI(name, "extShadowQuality", STORM_MAX_STR)) {
         lua_pushnumber(L, 0.0);
         return 1;
     }
 
-    if (!SStrCmpI(name, "farclip", STORM_MAX_STR)) {
-        lua_pushnumber(L, 177.0);
-    } else {
-        lua_pushnil(L);
-    }
+    lua_pushnil(L);
 
     return 1;
 }
@@ -703,6 +706,12 @@ static int32_t Script_GetCVarMax(lua_State* L) {
     }
 
     const char* name = var->m_key.m_str;
+    float bound = 0.0f;
+
+    if (CWorldParamSlider::GetSliderMax(name, &bound)) {
+        lua_pushnumber(L, bound);
+        return 1;
+    }
 
     if (!SStrCmpI(name, "extShadowQuality", STORM_MAX_STR)) {
         uint32_t mode = 0;
@@ -720,11 +729,7 @@ static int32_t Script_GetCVarMax(lua_State* L) {
         return 1;
     }
 
-    if (!SStrCmpI(name, "farclip", STORM_MAX_STR)) {
-        lua_pushnumber(L, 1277.0);
-    } else {
-        lua_pushnil(L);
-    }
+    lua_pushnil(L);
 
     return 1;
 }

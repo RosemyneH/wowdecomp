@@ -31,6 +31,9 @@ class CWorldParam {
     static CVar* cvar_groundEffectDist;
     static CVar* cvar_terrainAlphaBitDepth;
     static CVar* cvar_farClipOverride;
+    static CVar* cvar_extendedView;
+    static CVar* cvar_extendedHorizonZClip;
+    static CVar* cvar_distanceFog;
     static CVar* cvar_objectFade;
     static CVar* cvar_objectFadeZFill;
     static CVar* cvar_environmentDetail;
@@ -47,6 +50,9 @@ class CWorldParam {
     static bool ExtShadowQualityCallback(CVar* var, const char* oldValue, const char* value, void* arg);
     static bool FarClipCallback(CVar* var, const char* oldValue, const char* value, void* arg);
     static bool FarClipOverrideCallback(CVar* var, const char* oldValue, const char* value, void* arg);
+    static bool ExtendedViewCallback(CVar* var, const char* oldValue, const char* value, void* arg);
+    static bool ExtendedHorizonZClipCallback(CVar* var, const char* oldValue, const char* value, void* arg);
+    static bool DistanceFogCallback(CVar* var, const char* oldValue, const char* value, void* arg);
     static bool FootstepBiasCallback(CVar* var, const char* oldValue, const char* value, void* arg);
     static bool GroundEffectDensityCallback(CVar* var, const char* oldValue, const char* value, void* arg);
     static bool GroundEffectDistCallback(CVar* var, const char* oldValue, const char* value, void* arg);

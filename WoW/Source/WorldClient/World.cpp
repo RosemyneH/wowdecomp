@@ -94,6 +94,7 @@
 #include "WoW/Source/WorldClient/SortTable.h"
 #include "WoW/Source/WorldClient/Types.h"
 #include "WoW/Source/WorldClient/WorldParam.h"
+#include "WoW/Source/WorldClient/WorldParam_CVarSlider.h"
 #include "WoW/Source/WorldClient/WorldView.h"
 #include "WoW/Source/WorldClient/Zones.h"
 #include "WoW/Source/Ui/MinimapFrame.h"
@@ -1318,7 +1319,11 @@ void World::SetDetailDoodadDist(float dist) {
 
 // VERIFY: 5f5281b3 auto
 // OFFSET: 0x00780770
-float World::ValidateFarClip(float farClip, int32_t mapID) {
+float World::MaxValidatedFarClip(int32_t mapID) {
+    if (CWorldParam::cvar_extendedView && CWorldParam::cvar_extendedView->m_intValue >= 1) {
+        return CWorldParamSlider::kFarclipMaxExtended;
+    }
+
     float maxFarClip = 4750.0f / 3.0f;
 
     if (mapID < 530 || mapID == 575 || mapID == 543) {
@@ -1329,8 +1334,15 @@ float World::ValidateFarClip(float farClip, int32_t mapID) {
         maxFarClip = 2375.0f / 3.0f;
     }
 
-    if (farClip < 550.0f / 3.0f) {
-        return 550.0f / 3.0f;
+    return maxFarClip;
+}
+
+float World::ValidateFarClip(float farClip, int32_t mapID) {
+    const float maxFarClip = World::MaxValidatedFarClip(mapID);
+    const float minFarClip = 550.0f / 3.0f;
+
+    if (farClip < minFarClip) {
+        return minFarClip;
     }
 
     if (farClip <= maxFarClip) {
@@ -1559,7 +1571,7 @@ void CWorld::Update(C3Vector* camPos, C3Vector* camTarget, C3Vector* position) {
     DayNight::Update(CWorld::status.m_chunksChanged | CWorld::status.m_prepareAll, camPos);
     CWorld::farFog = DayNight::GetInfo()->m_fog.m_end;
 
-    if (!g_theGxDevicePtr->MasterEnable(GxMasterEnable_Fog)) {
+    if (!g_theGxDevicePtr->MasterEnable(GxMasterEnable_Fog) || !CWorldParam::cvar_distanceFog || !CWorldParam::cvar_distanceFog->m_intValue) {
         CWorld::farFog = 100000.0f;
     }
 
