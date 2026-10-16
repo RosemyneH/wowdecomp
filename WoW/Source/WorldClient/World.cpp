@@ -5,9 +5,11 @@
 #include "Engine/Source/Base/OsCrt.h"
 #include <algorithm>
 #include <cmath>
+#include <vector>
 #include "Engine/Source/BlizzardCore/SFile2-Core.h"
 #include "Engine/Source/BlizzardCore/Source/Packages/Streaming/Streaming.h"
 #include "Engine/Source/Base/Handle.h"
+#include "Engine/Source/Base/Job/JobSystem.h"
 #include "Engine/Source/Base/RCString.h"
 #include "Engine/Source/ConsoleBase/ConsoleCommand.h"
 #include "Engine/Source/ConsoleBase/ConsoleVar.h"
@@ -2056,7 +2058,28 @@ void CWorldScene::BuildHorizonProjection(C44Matrix* projection) {
     CGCamera* camera = CGWorldFrame::GetActiveCamera();
     float farZ = camera->m_farZ;
     float fov = camera->FOV();
-    GxuXformCreateProjection_Exact(fov * 0.60000002f, camera->m_aspect, farZ - 50.0f, World::s_horizonFarClipScale * World::s_farClip, *projection);
+    // ʕ •ᴥ•ʔ✿ Full detail stops at 160 chunks. The horizon starts there and reaches the far side of the continent ✿ ʕ •ᴥ•ʔ
+    float detailFar = 160.0f * 33.333332f;
+    float horizonNear = detailFar - 400.0f;
+    float horizonFar = World::s_horizonFarClipScale * World::s_farClip;
+
+    if (horizonFar < 48000.0f) {
+        horizonFar = 48000.0f;
+    }
+
+    if (horizonNear < 200.0f) {
+        horizonNear = 200.0f;
+    }
+
+    if (farZ - 50.0f < horizonNear) {
+        horizonNear = farZ - 50.0f;
+    }
+
+    if (horizonFar < horizonNear + 100.0f) {
+        horizonFar = horizonNear + 100.0f;
+    }
+
+    GxuXformCreateProjection_Exact(fov * 0.60000002f, camera->m_aspect, horizonNear, horizonFar, *projection);
 }
 
 // VERIFY: 6cb64bd1 manual
@@ -3869,49 +3892,98 @@ void CWorldScene::AddDoodadDefs(TSList<CMapBaseObjLink, TSGetExplicitLink<CMapBa
     }
 }
 
+struct DoodadCull {
+    CMapDoodadDef* def;
+    int32_t inFrustum;
+    int32_t occluded;
+};
+
+static std::vector<DoodadCull> s_doodadCulls;
+
+static void CullDoodadRange(Job::Range range, void* user) {
+    DoodadCull* culls = static_cast<DoodadCull*>(user);
+
+    for (uint32_t i = range.begin; i < range.end; ++i) {
+        CMapDoodadDef* def = culls[i].def;
+        int32_t outside = CWorldScene::FrustumCull(def->m_sphere.c, def->m_sphere.r);
+        culls[i].inFrustum = outside ? 0 : 1;
+        culls[i].occluded = 0;
+
+        if (!outside && CWorldOcclusion::QueryBuffer(def->m_sphere.c, def->m_sphere.r, 0x10) >= 2) {
+            culls[i].occluded = 1;
+        }
+    }
+}
+
 // VERIFY: 9f2071e4 manual
 // OFFSET: 0x00799980
 void CWorldScene::CullDoodadsExterior(TSList<CMapBaseObjLink, TSGetExplicitLink<CMapBaseObjLink> >* linkList, uint8_t fadeLevel) {
-    CMapBaseObjLink* link = linkList->Head();
+    s_doodadCulls.clear();
 
-    while (!linkList->IsEnd(link)) {
+    for (CMapBaseObjLink* link = linkList->Head(); !linkList->IsEnd(link); link = linkList->RawNext(link)) {
         CMapDoodadDef* doodadDef = static_cast<CMapDoodadDef*>(link->m_owner);
 
         if (doodadDef->m_fadeLevel < fadeLevel) {
             if (CMap::header.m_flags & 0x8) {
-                return;
+                break;
             }
-        } else if (doodadDef->m_model && (doodadDef->m_flags & MAPOBJ_FLAG_PREPARED)) {
-            if (doodadDef->m_cullPassStamp != CWorldScene::s_cullPassStamp) {
-                doodadDef->m_cullPassStamp = CWorldScene::s_cullPassStamp;
-                doodadDef->m_culled = 1;
-                int32_t culled = CWorldScene::FrustumCull(doodadDef->m_sphere.c, doodadDef->m_sphere.r);
 
-                if (!culled) {
-                    doodadDef->m_culled = 0;
-                }
+            continue;
+        }
 
-                if (!culled && CWorldOcclusion::QueryBuffer(doodadDef->m_sphere.c, doodadDef->m_sphere.r, 0x10) < 2) {
-                    CWorldScene::AddDoodadDefModelToModelScene(doodadDef);
-                    CWorldScene::nDoodadsRendered++;
-                } else {
-                    C3Vector delta = doodadDef->m_sphere.c - CWorldScene::s_activeWorldView;
-
-                    if ((doodadDef->m_staticFlags & 0x400) || delta.x * delta.x + delta.z * delta.z + delta.y * delta.y < 100.0f) {
-                        doodadDef->m_model->SetAnimating(1);
-                    } else {
-                        doodadDef->m_model->SetAnimating(0);
-                    }
-                }
-            }
-        } else {
+        if (!doodadDef->m_model || !(doodadDef->m_flags & MAPOBJ_FLAG_PREPARED)) {
             CAaBox box;
             CAaBox bounds = doodadDef->m_model->m_shared->m_boundingBox;
             CWorldMath::TransformAABox(doodadDef->m_mat, bounds, box);
             CWorldScene::s_barrier.AddBarrier(box, 10.0f);
+            continue;
         }
 
-        link = linkList->RawNext(link);
+        if (doodadDef->m_cullPassStamp == CWorldScene::s_cullPassStamp) {
+            continue;
+        }
+
+        doodadDef->m_cullPassStamp = CWorldScene::s_cullPassStamp;
+        doodadDef->m_culled = 1;
+
+        DoodadCull cull;
+        cull.def = doodadDef;
+        cull.inFrustum = 0;
+        cull.occluded = 0;
+        s_doodadCulls.push_back(cull);
+    }
+
+    if (s_doodadCulls.empty()) {
+        return;
+    }
+
+    // ʕ •ᴥ•ʔ✿ Sphere tests only read the occlusion buffer. Model flags are applied after the barrier ✿ ʕ •ᴥ•ʔ
+    if (s_doodadCulls.size() >= 32) {
+        Job::ParallelFor(static_cast<uint32_t>(s_doodadCulls.size()), CullDoodadRange, s_doodadCulls.data());
+    } else {
+        CullDoodadRange(Job::Range{0, static_cast<uint32_t>(s_doodadCulls.size())}, s_doodadCulls.data());
+    }
+
+    for (const DoodadCull& cull : s_doodadCulls) {
+        CMapDoodadDef* doodadDef = cull.def;
+
+        if (cull.inFrustum) {
+            doodadDef->m_culled = 0;
+        }
+
+        if (cull.inFrustum && !cull.occluded) {
+            CWorldScene::AddDoodadDefModelToModelScene(doodadDef);
+            CWorldScene::nDoodadsRendered++;
+            continue;
+        }
+
+        C3Vector delta = doodadDef->m_sphere.c - CWorldScene::s_activeWorldView;
+
+        if ((doodadDef->m_staticFlags & 0x400) || delta.x * delta.x + delta.z * delta.z + delta.y * delta.y < 100.0f) {
+            doodadDef->m_model->SetAnimating(1);
+        } else {
+            doodadDef->m_model->SetAnimating(0);
+        }
     }
 }
 
@@ -4938,6 +5010,14 @@ void CWorldScene::RenderHorizon() {
     float maxZ = g_theGxDevicePtr->m_viewport.m_z.m_h;
     GxXformSetViewport(minX, maxX, minY, maxY, s_horizonMinZ, s_horizonMaxZ);
     g_theGxDevicePtr->RsPush();
+    GxRsSet(GxRs_Fog, 1);
+    GxRsSet(GxRs_DepthTest, 3);
+    GxRsSet(GxRs_FogStart, 0.0f);
+    GxRsSet(GxRs_FogEnd, 1.0f);
+    DayNight::DNInfo* info = DayNight::GetInfo();
+    CImVector color = info->m_fog.m_color;
+    GxRsSet(GxRs_FogColor, *reinterpret_cast<int32_t*>(&color));
+    GxRsSet(GxRs_Lighting, 0);
     C44Matrix world;
     world.Translate(C3Vector(-CWorldScene::s_activeWorldView.x, -CWorldScene::s_activeWorldView.y, -CWorldScene::s_activeWorldView.z));
     g_theGxDevicePtr->XformPushAndSet(GxXform_World, world);
@@ -4987,6 +5067,7 @@ void CWorldScene::RenderHorizon() {
         CMapObj::RenderMapObjGroupsColor(groups, count, matrices, &world, &a5);
     }
 
+    g_theGxDevicePtr->m_xforms[GxXform_Tex0].Identity();
     GxXformPop(GxXform_World);
     g_theGxDevicePtr->RsPop();
     GxXformSetViewport(minX, maxX, minY, maxY, minZ, maxZ);

@@ -13,7 +13,6 @@
 #include "WoW/Source/WorldClient/World.h"
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
 #include "Engine/Source/Gx/Gx.h"
-#include "WoW/Source/WorldClient/DayNight__DNInfo.h"
 #include "Engine/Source/Gx/CGxVertexPC.h"
 
 // VERIFY: 3763adce auto
@@ -67,6 +66,11 @@ void CMapLowDetail::CullHorizonAreas(const C3Vector* pos) {
     y = y * 0.029999999f;
     int32_t col = CMath::fint_(y - 0.5f);
     int32_t radius = static_cast<int32_t>(static_cast<int64_t>(World::s_horizonFarClipScale * World::s_farClip * 0.030000001f));
+
+    // ʕ •ᴥ•ʔ✿ The WDL is the whole 64 tile continent. Frustum tests drop the tiles behind the camera ✿ ʕ •ᴥ•ʔ
+    if (radius < 1024) {
+        radius = 1024;
+    }
 
     int32_t minCol = ((col - radius) >> 4) - 2;
     int32_t minRow = ((row - radius) >> 4) - 2;
@@ -254,17 +258,6 @@ void CMap::RenderLowDetail(CMapAreaLow* area) {
         return;
     }
 
-    g_theGxDevicePtr->RsPush();
-    GxRsSet(GxRs_Fog, 1);
-    GxRsSet(GxRs_DepthTest, 3);
-
-    DayNight::DNInfo* info = DayNight::GetInfo();
-    GxRsSet(GxRs_FogStart, 0.0f);
-    GxRsSet(GxRs_FogEnd, 1.0f);
-    CImVector color = info->m_fog.m_color;
-    GxRsSet(GxRs_FogColor, *reinterpret_cast<int32_t*>(&color));
-    GxRsSet(GxRs_Lighting, 0);
-
     if (!area->m_block) {
         CMap::s_vbbList.AcquireBlock(&area->m_block);
     }
@@ -325,9 +318,6 @@ void CMap::RenderLowDetail(CMapAreaLow* area) {
     batch.m_minIndex = 0;
     batch.m_maxIndex = 544;
     g_theGxDevicePtr->Draw(&batch, 1);
-
-    g_theGxDevicePtr->RsPop();
-    g_theGxDevicePtr->m_xforms[GxXform_Tex0].Identity();
 }
 
 // VERIFY: 894a0529 manual
