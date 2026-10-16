@@ -1706,7 +1706,19 @@ VkFramebuffer CGxDeviceVulkan::ITexFramebuffer(VkTexture* texture) {
     info.width = texture->width;
     info.height = texture->height;
     info.layers = 1;
-    vkCreateFramebuffer(this->m_vk.m_device, &info, nullptr, &texture->framebuffer);
+
+    VkFramebuffer framebuffer = VK_NULL_HANDLE;
+    if (vkCreateFramebuffer(this->m_vk.m_device, &info, nullptr, &framebuffer) != VK_SUCCESS) {
+        if (texture->framebuffer) {
+            VkGarbage garbage = {};
+            garbage.framebuffer = texture->framebuffer;
+            this->m_vk.Retire(garbage);
+            texture->framebuffer = VK_NULL_HANDLE;
+        }
+        return VK_NULL_HANDLE;
+    }
+
+    texture->framebuffer = framebuffer;
     texture->depthGeneration = this->m_offscreenDepthGeneration;
 
     return texture->framebuffer;
