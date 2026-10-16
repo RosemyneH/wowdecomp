@@ -11,6 +11,7 @@ static const _ARGLIST s_argList[] = {
     { SCMD_TYPE_STRING, CMD_LOADFILE, "loadfile", nullptr },
     { SCMD_TYPE_STRING, CMD_GAMETYPE, "gametype", nullptr },
     { SCMD_TYPE_BOOL, CMD_OPENGL, "opengl", nullptr },
+    { SCMD_TYPE_BOOL, CMD_VULKAN, "vulkan", nullptr },
     { SCMD_TYPE_BOOL, CMD_SW_TNL, "swtnl", nullptr },
     { SCMD_TYPE_BOOL, CMD_TIMEDEMO, "timedemo", nullptr },
     { SCMD_TYPE_STRING, CMD_DEMOREZ, "rez", nullptr },
