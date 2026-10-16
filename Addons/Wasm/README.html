@@ -32,6 +32,18 @@ size, point, color, backdrop, show, status-bar value, justify, font size, frame 
 Both are original layouts. Health numbers need <code>units.read</code> and whisper text needs <code>chat.read</code>;
 until granted, the panels still show and the payloads stay redacted. From the developer console:
 <code>wasmgrant example.unit-frames units.read</code> and <code>wasmgrant example.whisper-window chat.read</code>.</p>
+<h2>Lua-shaped ports</h2>
+<p><code>docs/lua-wasm.html</code> is the authoring guide.
+<code>port.elvui</code> draws unit frames for player, target, target-of-target, focus, and party, and a top data bar.
+<code>port.wim</code> opens per-person whisper windows, keeps history, and sends on enter.
+They are clean-room layouts for this client and install like the other wasm packages.
+The Lua calls they use are <code>ui_bind</code> / <code>WASM_UI</code>, <code>ui_get_text</code>, <code>unit_names</code>, and edit boxes.
+From the developer console:</p>
+<pre>wasmgrant port.elvui units.read
+wasmgrant port.wim chat.read
+wasmgrant port.wim chat.send
+wasmgrant port.wim storage.read
+wasmgrant port.wim storage.write</pre>
 <h2>Inspect &amp; debug</h2>
 <p>In game: <code>/script DEFAULT_CHAT_FRAME:AddMessage(WasmAddonInspectorText())</code> shows state,
 hash, granted/denied permissions, imports, memory/fuel/host-call counters and the activity log.

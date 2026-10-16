@@ -29,6 +29,9 @@ mod raw {
         pub fn auction_snapshot(kind: i32, out: *mut u8, cap: u32) -> i32;
         pub fn ui_spawn(parent: i32, ptr: *const u8, len: u32) -> i32;
         pub fn ui_style(handle: i32, op: i32, ptr: *const u8, len: u32) -> i32;
+        pub fn ui_bind(handle: i32, ptr: *const u8, len: u32) -> i32;
+        pub fn ui_get_text(handle: i32, out: *mut u8, cap: u32) -> i32;
+        pub fn unit_names(tptr: *const u8, tlen: u32, out: *mut u8, cap: u32) -> i32;
     }
 }
 
@@ -172,6 +175,30 @@ pub mod units {
                               health: f(5), health_max: f(6), power_type: f(7), power: f(8), power_max: f(9) });
         }
         Ok(units)
+    }
+    // ป •ᴥ•ʔ✿ packed: count u32, then tokenIndex u32, byteLen u16, UTF-8, no padding ✿ ป •ᴥ•ʔ
+    pub fn names(tokens: &[&str]) -> Result<Vec<(u32, String)>, i32> {
+        let mut blob = Vec::new();
+        for token in tokens { blob.extend_from_slice(token.as_bytes()); blob.push(0); }
+        let mut buf = vec![0u8; 64 * 1024];
+        let written = unsafe { raw::unit_names(blob.as_ptr(), blob.len() as u32, buf.as_mut_ptr(), buf.len() as u32) };
+        if written < 0 { return Err(written); }
+        let bytes = &buf[..written as usize];
+        if bytes.len() < 4 { return Err(-1); }
+        let count = u32::from_le_bytes(bytes[0..4].try_into().unwrap()) as usize;
+        if (bytes.len() - 4) / 6 < count { return Err(-1); }
+        let mut names = Vec::with_capacity(count);
+        let mut pos = 4;
+        for _ in 0..count {
+            if pos + 6 > bytes.len() { return Err(-1); }
+            let token_index = u32::from_le_bytes(bytes[pos..pos + 4].try_into().unwrap());
+            let len = u16::from_le_bytes(bytes[pos + 4..pos + 6].try_into().unwrap()) as usize;
+            pos += 6;
+            if pos + len > bytes.len() { return Err(-1); }
+            names.push((token_index, String::from_utf8_lossy(&bytes[pos..pos + len]).into_owned()));
+            pos += len;
+        }
+        Ok(names)
     }
 }
 
@@ -349,3 +376,5 @@ pub extern "C" fn wow_free(ptr: *mut u8, len: u32) {
         unsafe { drop(Vec::from_raw_parts(ptr, 0, len as usize)) };
     }
 }
+
+pub mod frame;

@@ -38,6 +38,23 @@ struct ConsoleHost final : IWasmHostServices {
         std::cout << "[ui] set_text " << handle << " = " << text << "\n";
         return true;
     }
+    bool UiBind(uint64_t handle, int32_t guest, const std::string& event) override {
+        if (!ui.count(handle)) return false;
+        std::cout << "[ui] bind " << handle << " guest=" << guest << " event=" << event << "\n";
+        return true;
+    }
+    bool UiGetText(uint64_t handle, std::string& out) override {
+        if (!ui.count(handle)) return false;
+        out.clear();
+        std::cout << "[ui] get_text " << handle << "\n";
+        return true;
+    }
+    bool GetUnitNames(const std::vector<std::string>& tokens, std::vector<std::pair<uint32_t, std::string>>& out) override {
+        out.clear();
+        for (size_t i = 0; i < tokens.size(); i++) out.emplace_back((uint32_t)i, "Unit" + std::to_string(i));
+        std::cout << "[unit] names " << tokens.size() << "\n";
+        return true;
+    }
     void UiDestroy(uint64_t handle) override { ui.erase(handle); }
     void Log(const std::string& message) override { std::cout << message << "\n"; }
 };

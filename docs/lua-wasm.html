@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Lua to WASM — wowdecomp 3.3.5a</title>
+<style>body{font-family:system-ui,sans-serif;max-width:60rem;margin:2rem auto;padding:0 1rem;line-height:1.5}code{background:#eee;padding:.1em .3em}table{border-collapse:collapse}td,th{border:1px solid #999;padding:.3em .6em;text-align:left}pre{background:#111;color:#eee;padding:1rem;overflow:auto}</style>
+</head><body>
+<h1>Lua addons to WASM</h1>
+<p>Authoring guide for a 3.3.5 addon author moving a UI onto this client's sandboxed <code>wasm32</code> runtime. Packages live in <code>Interface/WasmAddOns</code>. The guest is Rust (or anything that emits <code>wasm32-unknown-unknown</code>) linked to <code>wow_addon_sdk</code>. Widget helpers are <code>wow_addon_sdk::ui</code>. A frame is the spawn kind <code>"frame"</code> in that module, not a second crate.</p>
+
+<h2>A parallel runtime</h2>
+<p>The Lua VM is untouched. FrameXML addons still load from TOC files, and <code>FrameScript_SignalEvent</code> still runs every Lua listener first. A WASM package is a second runtime: its own Wasmtime instance, its own linear memory, its own fuel budget. It does not see <code>_G</code>, frame objects, or the Lua stack.</p>
+<p>The host is the only thing that calls into Lua. It does that on the main thread, with <code>lua_pcall</code>, and only for a fixed set of operations:</p>
+<ul>
+<li><strong>Widgets.</strong> <code>CreateFrame</code>, <code>CreateFontString</code>, <code>CreateTexture</code>, then <code>SetWidth</code> / <code>SetHeight</code> / <code>SetPoint</code> / <code>SetText</code> and the other methods in the dictionary below. The guest receives a generation-tagged integer handle. The real frame stays in the Lua registry under <code>UIParent</code>.</li>
+<li><strong>Units.</strong> <code>UnitExists</code>, <code>UnitHealth</code>, <code>UnitHealthMax</code>, <code>UnitPower</code>, <code>UnitPowerMax</code>, <code>UnitPowerType</code>, <code>UnitLevel</code>, <code>UnitClass</code>, <code>UnitRace</code>, and the dead/player checks. The guest gets numbers and flags. <code>UnitName</code> is a separate host call and still never includes a GUID.</li>
+<li><strong>Chat display.</strong> <code>print</code> becomes <code>DEFAULT_CHAT_FRAME:AddMessage</code>. A whisper the player confirms is sent by the host (<code>CGChat::SendNative</code>) after the confirm dialog. The guest never calls <code>SendChatMessage</code>.</li>
+</ul>
+<p>What the guest is allowed to see: opaque UI handles, WEV1 event arguments (<code>nil</code>, bool, number, text, truncated text, or <code>Redacted</code>), unit snapshots (health, power, level, class id, race id, flags), names from the name call, storage bytes it wrote itself, and the text it put on its own widgets. It does not see GUIDs, positions, other addons' memory, or the Lua taint state beyond the host applying a taint scope around those calls.</p>
+
+<h2>Package and build</h2>
+<p>One directory, copied into <code>Interface/WasmAddOns/</code> in the client directory (the host also accepts a top-level <code>WasmAddOns/</code> if <code>Interface/WasmAddOns</code> is absent):</p>
+<pre>MyPort/
+├── addon.toml
+└── addon.wasm</pre>
+<pre>[addon]
+id = "port.example"
+name = "Example"
+version = "0.1.0"
+author = "you"
+api_version = "2"
+
+[permissions]
+ui.create = true
+chat.print = true
+units.read = true
+chat.read = true
+chat.send = true
+storage.read = true
+storage.write = true
+
+[limits]
+memory_mb = 32
+fuel = 20000000
+storage_kb = 1024
+max_ui_handles = 256
+max_events = 128</pre>
+<p><code>api_version</code> must be <code>"2"</code> for this contract. A v1 module relabeled as 2 fails to load. The id is lowercase letters, digits, <code>.</code>, <code>-</code>, and <code>_</code>.</p>
+<p>Permissions in the manifest are a declaration, not a grant. <code>ui.create</code> and <code>chat.print</code> are available when declared. <code>units.read</code>, <code>chat.read</code>, <code>chat.send</code>, <code>storage.read</code>, <code>storage.write</code>, <code>auction.read</code>, <code>auction.write</code>, and <code>combat.read</code> stay denied until the player runs <code>wasmgrant &lt;id&gt; &lt;permission&gt;</code> from the developer console. Grants are stored per addon id and module hash in <code>wasm-permissions.cfg</code> next to the packages. A deny follows the addon id across rebuilds.</p>
+<p>Limit keys are requests. The host clamps them: memory to 256 MB (default 32), fuel per callback to 50,000,000 (default 20,000,000), storage to 4 MB (default 1 MB), UI handles to 256, event subscriptions to 128. Unknown permission names and unknown limit keys reject the manifest.</p>
+<pre>export PATH="$HOME/.cargo/bin:$PATH"
+rustup target add wasm32-unknown-unknown
+cargo build --target wasm32-unknown-unknown --release</pre>
+<p>On this machine the Arch <code>rustc</code> has no wasm standard library. Put <code>~/.cargo/bin</code> first so <code>rustup</code>'s toolchain is the one that runs. Copy <code>target/wasm32-unknown-unknown/release/&lt;crate&gt;.wasm</code> to <code>addon.wasm</code> beside <code>addon.toml</code>. <code>Addons/Wasm/build.sh</code> does that for the in-tree examples and writes packages under <code>Addons/Wasm/dist</code>.</p>
+<p>The crate is a <code>cdylib</code> depending on <code>Addons/Wasm/sdk/wow-addon-sdk</code>. The module must export <code>memory</code>. Imports outside the <code>wow</code> module, including WASI, fail validation.</p>
+
+<h2>Exports</h2>
+<p><code>wow_addon_v2!</code> exports the two required callbacks. <code>wow_on_update</code> is optional and is not part of the macro. <code>wow_alloc</code> and <code>wow_free</code> are <code>#[no_mangle]</code> exports from the SDK crate; the host uses them to copy an event payload into guest memory and to free it afterward. A v2 addon that is missing <code>wow_on_event_v2</code> does not finish loading. Event delivery is skipped if <code>wow_alloc</code> is missing.</p>
+<pre>use wow_addon_sdk::ui::*;
+use wow_addon_sdk::*;
+
+fn on_load() -> i32 {
+    let _ = subscribe("PLAYER_ENTERING_WORLD");
+    0
+}
+
+fn on_event(name: &amp;str, args: &amp;[EventArg]) -> i32 {
+    let _ = (name, args);
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn wow_on_update() -> i32 { 0 }
+
+wow_addon_v2!(on_load, on_event);</pre>
+<p><code>wow_on_load</code> runs once and must return <code>0</code>. A negative return fails the addon. <code>wow_on_event_v2</code> receives a WEV1 blob; the macro decodes it and calls <code>on_event(name, args)</code>. <code>wow_on_update</code>, when exported, is called about five times a second (every 200 ms) on the main thread. Returning from a callback is the only way the guest runs. There is no background thread.</p>
+<p>WEV1 argument tags, as <code>EventArg</code>: <code>Nil</code>, <code>Bool</code>, <code>Number(f64)</code>, <code>Text</code>, <code>Truncated(text, original_len)</code> past 1024 bytes, <code>Redacted</code>. Strings in a payload are capped, and a payload that would pass 4096 bytes collapses the extra argument to <code>Redacted</code>.</p>
+
+<h2>Lua to host</h2>
+<p>Read this as a dictionary, not a compatibility layer. The left column is the 3.3.5 call you already know. The middle column is what the guest calls. The right column is what the host does with it.</p>
+<table>
+<tr><th>Lua</th><th>Guest</th><th>Host</th></tr>
+<tr><td><code>CreateFrame("Frame"|"Button"|"StatusBar"|"EditBox"|"ScrollFrame", nil, parent)</code></td><td><code>ui::spawn(parent, "frame"|"button"|"statusbar"|"editbox"|"scrollframe")</code></td><td><code>CreateFrame</code> of that type. Parent <code>0</code> is <code>UIParent</code>. A status bar also gets <code>Interface\TargetingFrame\UI-StatusBar</code> and a 0..1 range.</td></tr>
+<tr><td><code>parent:CreateFontString</code></td><td><code>ui::spawn(parent, "fontstring")</code></td><td><code>CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")</code>.</td></tr>
+<tr><td><code>parent:CreateTexture</code></td><td><code>ui::spawn(parent, "texture")</code></td><td><code>CreateTexture(nil, "ARTWORK")</code>.</td></tr>
+<tr><td><code>SetSize</code> / <code>SetWidth</code> / <code>SetHeight</code></td><td><code>ui::set_size(handle, w, h)</code></td><td>Style op 1. Host calls <code>SetWidth</code> and <code>SetHeight</code>. Each side is 1..=2000.</td></tr>
+<tr><td><code>SetPoint(point, relative, relPoint, x, y)</code></td><td><code>ui::set_point(handle, point, relative, rel_point, x, y)</code></td><td>Style op 2. Host <code>ClearAllPoints</code> then <code>SetPoint</code>. Anchors: 0 <code>TOPLEFT</code>, 1 <code>TOP</code>, 2 <code>TOPRIGHT</code>, 3 <code>LEFT</code>, 4 <code>CENTER</code>, 5 <code>RIGHT</code>, 6 <code>BOTTOMLEFT</code>, 7 <code>BOTTOM</code>, 8 <code>BOTTOMRIGHT</code>. Relative <code>0</code> is the widget's parent. Offsets are -4000..=4000.</td></tr>
+<tr><td><code>SetAlpha(0..1)</code></td><td>style op 12, <code>i32</code> thousandths 0..=1000</td><td><code>SetAlpha(thousandths / 1000)</code>. 1000 is opaque.</td></tr>
+<tr><td><code>Show</code> / <code>Hide</code></td><td><code>ui::set_shown(handle, true|false)</code></td><td>Style op 4, one byte 0 or 1.</td></tr>
+<tr><td><code>EnableMouse</code></td><td>style op 13, one byte 0 or 1</td><td><code>EnableMouse</code>.</td></tr>
+<tr><td><code>SetBackdrop</code> / <code>SetBackdropColor</code></td><td><code>ui::set_backdrop(handle, r, g, b, a)</code></td><td>Style op 8. The backdrop files are fixed (<code>Interface\ChatFrame\ChatFrameBackground</code> and the tooltip border). The four bytes are <code>SetBackdropColor</code>. Border color is black. Frames, buttons, and status bars only.</td></tr>
+<tr><td><code>SetFrameStrata</code> / <code>SetFrameLevel</code></td><td><code>ui::set_strata</code> / <code>ui::set_level</code></td><td>Ops 11 and 10. Strata byte: 0 <code>BACKGROUND</code>, 1 <code>LOW</code>, 2 <code>MEDIUM</code>, 3 <code>HIGH</code>, 4 <code>DIALOG</code>, 5 <code>FULLSCREEN</code>, 6 <code>FULLSCREEN_DIALOG</code>, 7 <code>TOOLTIP</code>. Level is 0..=128. Not valid on a font string or a texture.</td></tr>
+<tr><td><code>FontString:SetText</code></td><td><code>ui_set_text(handle, text)</code></td><td><code>SetText</code>. Newlines stay. <code>|</code> is replaced with <code>/</code> so a color code cannot be injected. Other control bytes become spaces. Max 4096 bytes.</td></tr>
+<tr><td><code>SetTextColor</code></td><td><code>ui::set_text_color(handle, r, g, b, a)</code></td><td>Style op 9, four bytes, font strings only. Op 3 on a font string also calls <code>SetTextColor</code>.</td></tr>
+<tr><td><code>SetFont(path, size, flags)</code></td><td><code>ui::set_font_size(handle, pixels)</code></td><td>Style op 7. The host always uses <code>Fonts\FRIZQT__.TTF</code> at that size (6..=64). The path and flags are not guest-controlled.</td></tr>
+<tr><td><code>SetJustifyH</code> / <code>SetJustifyV</code></td><td><code>ui::set_justify(handle, h, v)</code></td><td>Style op 6. 0 left/top, 1 center/middle, 2 right/bottom.</td></tr>
+<tr><td><code>SetMinMaxValues</code> + <code>SetValue</code></td><td><code>ui::set_value(handle, value, min, max)</code></td><td>Style op 5, three little-endian <code>i32</code>s. Status bars only. <code>min &lt;= max</code>.</td></tr>
+<tr><td><code>SetStatusBarColor</code></td><td><code>ui::set_color(handle, r, g, b, a)</code></td><td>Style op 3. On a status bar this is <code>SetStatusBarColor</code>. On a texture it is <code>SetVertexColor</code>. On a frame it is <code>SetBackdropColor</code>.</td></tr>
+<tr><td><code>Texture:SetTexture(path)</code></td><td>style op 14, raw path bytes</td><td><code>SetTexture</code>. The path must be under <code>Interface\</code>.</td></tr>
+<tr><td><code>EditBox:GetText</code></td><td><code>ui_get_text(handle, buf) -&gt; length</code></td><td>Copies the edit box text into the guest buffer. Return is the byte length, or a negative error (<code>-7</code> if the buffer is short).</td></tr>
+<tr><td><code>OnEnterPressed</code> / <code>OnEscapePressed</code> / <code>OnTextChanged</code></td><td><code>ui_bind(handle, "enter_pressed"|"escape"|"text_changed")</code></td><td>Subscribe to <code>WASM_UI</code>. Arguments: string event name, number guest handle.</td></tr>
+<tr><td><code>Button OnClick</code> / <code>OnEnter</code> / <code>OnLeave</code></td><td><code>ui_bind(handle, "click"|"enter"|"leave")</code></td><td>Same <code>WASM_UI</code> payload.</td></tr>
+<tr><td><code>frame:RegisterEvent</code> + handler args</td><td><code>subscribe("UNIT_HEALTH")</code>, then <code>on_event</code></td><td>The host already observes <code>FrameScript_SignalEvent</code>. <code>UNIT_*</code>, <code>CHAT_MSG_*</code>, and <code>PLAYER_*</code> names are accepted, plus a small fixed list (<code>BAG_UPDATE</code>, <code>PLAYER_LOGIN</code>, <code>AUCTION_HOUSE_SHOW</code>, <code>WASM_CONFIRM_RESULT</code>, and the combat-log names). Unknown names return <code>-9</code>.</td></tr>
+<tr><td><code>UnitHealth</code> / <code>UnitHealthMax</code> and the rest of the unit snapshot</td><td><code>units::snapshot(&amp;["player", "target"])</code></td><td>One host call, NUL-separated tokens in, fixed records out. Needs <code>units.read</code>. No names and no GUIDs in this blob.</td></tr>
+<tr><td><code>UnitName</code></td><td><code>unit_names(tokens) -&gt; (tokenIndex, name)</code></td><td>Same token allowlist as the snapshot. Needs <code>units.read</code>. Names only. No GUID.</td></tr>
+<tr><td><code>SendChatMessage(text, "WHISPER", nil, target)</code></td><td><code>confirm::chat_send(7, target, message)</code></td><td>Needs <code>chat.send</code>. Queues an in-game confirm. The host sends only after the player accepts. Result arrives as <code>WASM_CONFIRM_RESULT</code>.</td></tr>
+<tr><td><code>SavedVariables</code> / <code>SavedVariablesPerCharacter</code></td><td><code>storage::Scope::Account</code> (0) / <code>storage::Scope::Character</code> (1)</td><td><code>storage::get</code> / <code>set</code> / <code>delete</code>. Reads need <code>storage.read</code>. Writes need <code>storage.write</code>. Keys up to 128 bytes, values up to 64 KB.</td></tr>
+</table>
+
+<h2>Frozen ABI</h2>
+<p>This is the contract the ports are written against. Integers in a style blob are little-endian. Strings are pointer plus length into guest memory. A positive return from <code>ui_spawn</code> is a handle: high 15 bits generation, low 16 bits slot. Do not invent handles. A handle from a previous UI session is <code>-4</code>.</p>
+<p>Every spawn and style call needs <code>ui.create</code>. A parent other than <code>0</code> must be a frame, button, or status bar this addon owns. Font strings and textures cannot be parents. The style blob is at most 64 bytes.</p>
+<table>
+<tr><th>Call</th><th>Contract</th></tr>
+<tr><td><code>ui_spawn(parent, kind)</code></td><td>Kinds: <code>frame</code>, <code>fontstring</code>, <code>texture</code>, <code>statusbar</code>, <code>button</code>, <code>editbox</code>, <code>scrollframe</code>. Parent <code>0</code> is <code>UIParent</code>.</td></tr>
+<tr><td><code>ui_style(handle, op, blob)</code></td><td>Op 1 <code>SetSize</code> (<code>i32</code> w, <code>i32</code> h). Op 2 <code>SetPoint</code> (<code>u8</code> point, <code>u8</code> relPoint, <code>u16</code> 0, <code>i32</code> relHandle, <code>i32</code> x, <code>i32</code> y). Op 3 <code>SetColor</code> rgba. Op 4 <code>SetShown</code> <code>u8</code>. Op 5 <code>SetValue</code> (<code>i32</code> value, min, max). Op 6 <code>SetJustify</code> (<code>u8</code> h, <code>u8</code> v). Op 7 <code>SetFontSize</code> <code>i32</code>. Op 8 <code>SetBackdrop</code> rgba. Op 9 <code>SetTextColor</code> rgba. Op 10 <code>SetLevel</code> <code>i32</code>. Op 11 <code>SetStrata</code> <code>u8</code>. Op 12 <code>SetAlpha</code> <code>i32</code> thousandths 0..=1000. Op 13 <code>SetMouse</code> <code>u8</code>. Op 14 <code>SetTexture</code> raw path bytes.</td></tr>
+<tr><td><code>ui_set_text(handle, text)</code></td><td>Keeps newlines. Strips <code>|</code> by replacing it with <code>/</code>.</td></tr>
+<tr><td><code>ui_bind(handle, event)</code></td><td>Events: <code>click</code>, <code>enter</code>, <code>leave</code>, <code>escape</code>, <code>enter_pressed</code>, <code>text_changed</code>. Also <code>subscribe("WASM_UI")</code>. Payload: string event name, number guest handle.</td></tr>
+<tr><td><code>ui_get_text(handle, buf)</code></td><td>Edit boxes. Returns the byte length written, or a negative error.</td></tr>
+<tr><td><code>unit_names(tokens)</code></td><td>Returns <code>(tokenIndex, name)</code> pairs. Needs <code>units.read</code>. No GUIDs. Same allowlist as <code>units::snapshot</code>.</td></tr>
+<tr><td><code>confirm::chat_send(7, target, message)</code></td><td>Whisper. Needs <code>chat.send</code> and the in-game confirm dialog. <code>CHAT_MSG_*</code> arguments arrive as <code>Redacted</code> unless <code>chat.read</code> is granted. The same is true of <code>UNIT_*</code> without <code>units.read</code>.</td></tr>
+<tr><td><code>storage::Scope</code></td><td><code>Account = 0</code>, <code>Character = 1</code>. Read calls need <code>storage.read</code>. Write and delete need <code>storage.write</code>.</td></tr>
+</table>
+<p>Unit tokens, exact: <code>player</code>, <code>pet</code>, <code>target</code>, <code>focus</code>, <code>mouseover</code>, <code>targettarget</code>. Numbered: <code>party1</code>–<code>party4</code>, <code>partypet1</code>–<code>partypet4</code>, <code>raid1</code>–<code>raid40</code>, <code>raidpet1</code>–<code>raidpet40</code>, <code>boss1</code>–<code>boss5</code>, <code>arena1</code>–<code>arena5</code>. <code>raid</code> alone is rejected. At most 64 tokens per call.</p>
+<p>SDK helpers already encode ops 1–11. Ops 12–14 go through the same <code>ui::style</code>:</p>
+<pre>use wow_addon_sdk::ui::*;
+
+let panel = spawn(0, "frame");
+set_size(panel, 220, 48);
+set_point(panel, TOPLEFT, 0, LEFT, 16, 90);
+set_backdrop(panel, 14, 14, 16, 220);
+set_strata(panel, STRATA_HIGH);
+style(panel, 12, &amp;1000i32.to_le_bytes()); // opaque
+style(panel, 13, &amp;[1]);                   // EnableMouse
+
+let icon = spawn(panel, "texture");
+style(icon, 14, br"Interface\Icons\INV_Misc_QuestionMark");</pre>
+<p>Anchor and justify constants in <code>wow_addon_sdk::ui</code>: <code>TOPLEFT</code>…<code>BOTTOMRIGHT</code> (0–8), <code>JUSTIFY_LEFT</code>/<code>CENTER</code>/<code>RIGHT</code> and <code>JUSTIFY_TOP</code>/<code>MIDDLE</code>/<code>BOTTOM</code>, <code>STRATA_BACKGROUND</code> (0) through <code>STRATA_DIALOG</code> (4). Pass <code>5</code>, <code>6</code>, or <code>7</code> yourself for the three higher strata.</p>
+<p>Binding and names are host imports in module <code>wow</code>, same ptr/len convention as <code>ui_set_text</code> and <code>units::snapshot</code> (NUL-separated tokens):</p>
+<pre>#[link(wasm_import_module = "wow")]
+extern "C" {
+    fn ui_bind(handle: i32, ptr: *const u8, len: u32) -&gt; i32;
+    fn ui_get_text(handle: i32, ptr: *mut u8, cap: u32) -&gt; i32;
+    fn unit_names(ptr: *const u8, len: u32, out: *mut u8, cap: u32) -&gt; i32;
+}</pre>
+<p>After <code>ui_bind</code>, <code>subscribe("WASM_UI")</code>. In <code>on_event</code>, argument 0 is the event name (<code>click</code>, <code>enter</code>, <code>leave</code>, <code>escape</code>, <code>enter_pressed</code>, <code>text_changed</code>) and argument 1 is the guest handle as a number.</p>
+<table>
+<tr><th>Code</th><th>Meaning</th></tr>
+<tr><td><code>0</code></td><td>ok (spawn and some requests return a positive id instead)</td></tr>
+<tr><td><code>-2</code></td><td>permission denied</td></tr>
+<tr><td><code>-3</code></td><td>bad memory (pointer/length outside the guest)</td></tr>
+<tr><td><code>-4</code></td><td>bad handle</td></tr>
+<tr><td><code>-5</code></td><td>bad argument</td></tr>
+<tr><td><code>-6</code></td><td>limit (handles, events, fuel clamp, storage quota, text length)</td></tr>
+<tr><td><code>-7</code></td><td>buffer too small</td></tr>
+<tr><td><code>-8</code></td><td>unavailable (Lua globals not up yet, host call failed)</td></tr>
+<tr><td><code>-9</code></td><td>unknown event</td></tr>
+</table>
+<p>The host also uses <code>-1</code> for a generic failure and <code>-10</code> when a storage key is missing. A trap or an out-of-fuel callback faults only that addon.</p>
+
+<h2>How a port is structured</h2>
+<p>One crate, <code>api_version = "2"</code>, <code>wow_addon_v2!</code>, and <code>wow_on_update</code> for refresh. Build the chrome in <code>on_load</code> with <code>ui.create</code>, which does not need a sensitive grant. If <code>units::snapshot</code> or a chat payload comes back denied or <code>Redacted</code>, leave the placeholders and return <code>0</code>. Do not fail <code>on_load</code> because <code>units.read</code> or <code>chat.read</code> is still denied. After <code>wasmgrant</code>, the next update or event fills the data.</p>
+<pre>fn on_load() -> i32 {
+    if let Err(code) = build_chrome() { return code; }
+    for event in ["PLAYER_ENTERING_WORLD", "UNIT_HEALTH", "CHAT_MSG_WHISPER"] {
+        let code = subscribe(event);
+        if code != 0 { return code; }
+    }
+    refresh()
+}
+
+fn refresh() -> i32 {
+    match units::snapshot(&amp;["player", "target"]) {
+        Ok(list) =&gt; paint(&amp;list),
+        Err(_) =&gt; 0,
+    }
+}
+
+fn on_event(name: &amp;str, args: &amp;[EventArg]) -> i32 {
+    if matches!(args.first(), Some(EventArg::Redacted)) { return 0; }
+    let _ = name;
+    refresh()
+}
+
+#[no_mangle]
+pub extern "C" fn wow_on_update() -> i32 { refresh() }</pre>
+<p><code>build_chrome</code> is ordinary <code>ui::spawn</code> / <code>set_size</code> / <code>set_point</code> / <code>set_backdrop</code>. A whisper reply, once <code>chat.send</code> is granted, is <code>confirm::chat_send(7, who, text)</code>. The player still has to accept the dialog (about 750 ms before Y or Enter works; N or Escape denies). History that must survive a reload goes through <code>storage::set(storage::Scope::Character, key, bytes)</code>.</p>
+
+<h2>Showing ElvUI and WIM</h2>
+<p>This tree ships clean-room ports. They are not the upstream Lua addons and they do not contain that source.</p>
+<table>
+<tr><th>Port</th><th>Path</th><th>Id</th><th>What it draws</th></tr>
+<tr><td>ElvUI</td><td><code>Addons/Wasm/ports/elvui</code></td><td><code>port.elvui</code></td><td>Unit frames for player, target, target-of-target, focus, and party.</td></tr>
+<tr><td>WIM</td><td><code>Addons/Wasm/ports/wim</code></td><td><code>port.wim</code></td><td>Whisper windows: history plus an edit box that sends on enter.</td></tr>
+</table>
+<pre>wasmgrant port.elvui units.read
+wasmgrant port.wim chat.read
+wasmgrant port.wim chat.send
+wasmgrant port.wim storage.read
+wasmgrant port.wim storage.write</pre>
+<p>Without <code>units.read</code>, the ElvUI frames still show and the numbers stay empty. Without <code>chat.read</code>, WIM still shows and whisper text stays redacted. <code>chat.send</code> only queues the confirm dialog; it does not skip it. Storage grants are what let WIM keep history on the character and the account.</p>
+
+<h2>Intentionally not Lua</h2>
+<ul>
+<li>No secure action buttons, no <code>SecureActionButtonTemplate</code>, no macro text, no <code>CastSpellByName</code> from the guest.</li>
+<li>No arbitrary Lua. The guest cannot <code>RunScript</code>, <code>loadstring</code>, or call a FrameXML function by name.</li>
+<li>No WASI, no files, no sockets. <code>network.access</code>, <code>filesystem.access</code>, and <code>process.execute</code> are not a back door; imports outside module <code>wow</code> are rejected.</li>
+<li>No widget XML, no inherited templates, no <code>OnUpdate</code> script on the frame. Refresh is <code>wow_on_update</code> at about 5 Hz, or an event you subscribed to.</li>
+<li>Texture paths are restricted to <code>Interface\</code>. The font file is chosen by the host.</li>
+<li>Unit GUIDs never leave the host. Snapshots and <code>unit_names</code> are tokens, numbers, and display names.</li>
+</ul>
+</body></html>

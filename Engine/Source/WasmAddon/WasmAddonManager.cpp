@@ -146,7 +146,8 @@ bool WasmAddonManager::IsKnownEvent(const std::string& name) {
     if (!IsEventToken(name)) return false;
     static const char* kEvents[] = {"BAG_UPDATE","BAG_UPDATE_DELAYED","PLAYER_LOGIN","PLAYER_LOGOUT",
         "PLAYER_ENTERING_WORLD","ADDON_LOADED","CHAT_MSG_SYSTEM","UNIT_HEALTH","AUCTION_HOUSE_SHOW","WOW_ON_LOAD_TEST",
-        "COMBAT_LOG_EVENT","COMBAT_LOG_EVENT_UNFILTERED","AUCTION_ITEM_LIST_UPDATE","AUCTION_HOUSE_CLOSED","WASM_CONFIRM_RESULT"};
+        "COMBAT_LOG_EVENT","COMBAT_LOG_EVENT_UNFILTERED","AUCTION_ITEM_LIST_UPDATE","AUCTION_HOUSE_CLOSED","WASM_CONFIRM_RESULT",
+        "WASM_UI","WASM_SLASH"};
     for (auto e : kEvents) if (name == e) return true;
     auto starts = [&](const char* prefix) {
         size_t n = std::strlen(prefix);
@@ -365,7 +366,24 @@ WasmAddonManager::UiHandle* WasmAddonManager::FindUi(Addon& addon, int64_t guest
 }
 
 static bool CanParent(UiKind kind) {
-    return kind == UiKind::Frame || kind == UiKind::StatusBar || kind == UiKind::Button;
+    return kind == UiKind::Frame || kind == UiKind::StatusBar || kind == UiKind::Button
+        || kind == UiKind::EditBox || kind == UiKind::ScrollFrame;
+}
+
+static bool IsUiBindEvent(const std::string& event) {
+    static const char* kEvents[] = {"click", "enter", "leave", "escape", "enter_pressed", "text_changed"};
+    for (auto e : kEvents) if (event == e) return true;
+    return false;
+}
+
+// ʕ •ᴥ•ʔ✿ Texture paths stay inside Interface and cannot smuggle links or parent traversal ✿ ʕ •ᴥ•ʔ
+static bool IsUiTexturePath(const std::string& path) {
+    if (path.empty() || path.size() > 128) return false;
+    if (path.compare(0, 10, "Interface\\") != 0 && path.compare(0, 10, "Interface/") != 0) return false;
+    if (path.find("..") != std::string::npos || path.find('|') != std::string::npos) return false;
+    for (unsigned char c : path)
+        if (c < 0x20 || c > 0x7e) return false;
+    return true;
 }
 
 static int32_t ReadI32(const uint8_t* p) { return (int32_t)GetU32(p); }
@@ -475,6 +493,8 @@ int64_t WasmAddonManager::HandleHostCall(Addon& addon, IWasmInstance& instance, 
             else if (kind == "texture") kindId = UiKind::Texture;
             else if (kind == "statusbar") kindId = UiKind::StatusBar;
             else if (kind == "button") kindId = UiKind::Button;
+            else if (kind == "editbox") kindId = UiKind::EditBox;
+            else if (kind == "scrollframe") kindId = UiKind::ScrollFrame;
             else return ErrInvalidArgument;
             uint64_t parentHost = 0;
             if (args[0] != 0) {
@@ -495,7 +515,9 @@ int64_t WasmAddonManager::HandleHostCall(Addon& addon, IWasmInstance& instance, 
         }
         case HostFn::UiStyle: {
             if (!HasPermission(addon, PermUiCreate, fn)) return ErrPermissionDenied;
-            if (args.size() < 4 || args[1] < 0 || args[2] < 0 || args[3] < 0 || args[3] > 64) return ErrInvalidArgument;
+            if (args.size() < 4 || args[1] < 0 || args[2] < 0 || args[3] < 0) return ErrInvalidArgument;
+            // ʕ •ᴥ•ʔ✿ Texture paths are longer than the other style blobs ✿ ʕ •ᴥ•ʔ
+            if ((uint64_t)args[3] > ((int32_t)args[1] == (int32_t)UiOp::SetTexture ? 128u : 64u)) return ErrInvalidArgument;
             UiHandle* widget = FindUi(addon, args[0]);
             if (!widget) return ErrInvalidHandle;
             std::string raw;
@@ -553,6 +575,15 @@ int64_t WasmAddonManager::HandleHostCall(Addon& addon, IWasmInstance& instance, 
                 case UiOp::SetStrata:
                     if (!need(1) || blob[0] > 7) return ErrInvalidArgument;
                     break;
+                case UiOp::SetAlpha:
+                    if (!need(4) || !InRange(ReadI32(blob.data()), 0, 1000)) return ErrInvalidArgument;
+                    break;
+                case UiOp::SetMouse:
+                    if (!need(1) || blob[0] > 1) return ErrInvalidArgument;
+                    break;
+                case UiOp::SetTexture:
+                    if (!IsUiTexturePath(std::string(blob.begin(), blob.end()))) return ErrInvalidArgument;
+                    break;
                 default:
                     return ErrInvalidArgument;
             }
@@ -568,6 +599,28 @@ int64_t WasmAddonManager::HandleHostCall(Addon& addon, IWasmInstance& instance, 
             if (!instance.ReadMemory((uint32_t)args[1], (uint32_t)args[2], text)) return ErrInvalidMemory;
             text = SanitizeUiText(text);
             return m_host && m_host->UiSetText(widget->hostHandle, text) ? Ok : ErrUnavailable;
+        }
+        case HostFn::UiBind: {
+            if (!HasPermission(addon, PermUiCreate, fn)) return ErrPermissionDenied;
+            if (args.size() < 3 || args[1] < 0 || args[2] < 0 || args[2] > 4096) return ErrInvalidArgument;
+            UiHandle* widget = FindUi(addon, args[0]);
+            if (!widget) return ErrInvalidHandle;
+            std::string event;
+            if (!instance.ReadMemory((uint32_t)args[1], (uint32_t)args[2], event)) return ErrInvalidMemory;
+            if (!IsUiBindEvent(event)) return ErrInvalidArgument;
+            return m_host && m_host->UiBind(widget->hostHandle, (int32_t)args[0], event) ? Ok : ErrUnavailable;
+        }
+        case HostFn::UiGetText: {
+            if (!HasPermission(addon, PermUiCreate, fn)) return ErrPermissionDenied;
+            if (args.size() < 3 || args[1] < 0 || args[2] < 0) return ErrInvalidArgument;
+            UiHandle* widget = FindUi(addon, args[0]);
+            if (!widget) return ErrInvalidHandle;
+            if (!m_host) return ErrUnavailable;
+            std::string text;
+            if (!m_host->UiGetText(widget->hostHandle, text)) return ErrUnavailable;
+            if ((uint64_t)args[2] < text.size()) return ErrBufferTooSmall;
+            if (!text.empty() && !instance.WriteMemory((uint32_t)args[1], text.data(), (uint32_t)text.size())) return ErrInvalidMemory;
+            return (int64_t)text.size();
         }
         case HostFn::PerfQuery: {
             if (!HasPermission(addon, PermProfilingRead, fn)) return ErrPermissionDenied;
@@ -675,6 +728,38 @@ int64_t WasmAddonManager::HandleHostCall(Addon& addon, IWasmInstance& instance, 
             if ((uint64_t)args[3] < bytes.size()) return ErrBufferTooSmall;
             if (!instance.WriteMemory((uint32_t)args[2], bytes.data(), (uint32_t)bytes.size())) return ErrInvalidMemory;
             RecordActivity(addon.info.manifest.id, "units.read", std::to_string(records.size()) + " units");
+            return (int64_t)bytes.size();
+        }
+        case HostFn::UnitNames: {
+            if (!HasPermission(addon, PermUnitsRead, fn)) return ErrPermissionDenied;
+            std::string blob;
+            if (!readString(0, 1, blob)) return ErrInvalidMemory;
+            std::vector<std::string> tokens;
+            size_t pos = 0;
+            while (pos <= blob.size()) {
+                size_t nul = blob.find('\0', pos);
+                std::string token = blob.substr(pos, nul == std::string::npos ? nul : nul - pos);
+                if (!token.empty()) tokens.push_back(token);
+                if (nul == std::string::npos) break;
+                pos = nul + 1;
+            }
+            if (tokens.empty() || tokens.size() > 64) return ErrInvalidArgument;
+            for (auto& token : tokens) if (!IsValidUnitToken(token)) return ErrInvalidArgument;
+            if (!m_host || args.size() < 4 || args[2] < 0 || args[3] < 0) return ErrInvalidArgument;
+            std::vector<std::pair<uint32_t, std::string>> records;
+            if (!m_host->GetUnitNames(tokens, records)) return ErrUnavailable;
+            std::vector<uint8_t> bytes;
+            PutU32(bytes, (uint32_t)records.size());
+            for (auto& rec : records) {
+                std::string name = SanitizeDisplayText(rec.second);
+                if (name.size() > 64) name.resize(64);
+                PutU32(bytes, rec.first);
+                PutU16(bytes, (uint16_t)name.size());
+                bytes.insert(bytes.end(), name.begin(), name.end());
+            }
+            if ((uint64_t)args[3] < bytes.size()) return ErrBufferTooSmall;
+            if (!instance.WriteMemory((uint32_t)args[2], bytes.data(), (uint32_t)bytes.size())) return ErrInvalidMemory;
+            RecordActivity(addon.info.manifest.id, "units.names", std::to_string(records.size()) + " names");
             return (int64_t)bytes.size();
         }
         case HostFn::AuctionSnapshot: {

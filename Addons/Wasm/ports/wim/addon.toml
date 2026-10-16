@@ -1,0 +1,17 @@
+[addon]
+id = "port.wim"
+name = "WIM"
+version = "0.1.0"
+author = "wowdecomp"
+api_version = "2"
+
+[permissions]
+ui.create = true
+chat.read = true
+chat.send = true
+chat.print = true
+storage.read = true
+storage.write = true
+
+[limits]
+memory_mb = 32

@@ -69,11 +69,17 @@ struct MockHost final : IWasmHostServices {
     }
     bool UiStyle(uint64_t handle, int32_t op, const uint8_t* data, uint32_t len) override {
         if (!ui.count(handle)) return false;
+        // ป •ᴥ•ʔ✿ Any opcode is recorded, including ones the manager has not named yet ✿ ป •ᴥ•ʔ
         styles.push_back({handle, op, std::vector<uint8_t>(data, data + len)});
         return true;
     }
     bool UiSetText(uint64_t h, const std::string& t) override { if (!ui.count(h) && h >= nextUi) return false; ui[h] = t; return true; }
     void UiDestroy(uint64_t h) override { ui.erase(h); }
+    std::vector<std::string> binds;
+    bool UiBind(uint64_t, int32_t, const std::string& event) override { binds.push_back(event); return true; }
+    bool UiGetText(uint64_t, std::string& out) override { out = ""; return true; }
+    bool GetUnitNames(const std::vector<std::string>& tokens, std::vector<std::pair<uint32_t, std::string>>& out) override {
+        out.clear(); for (size_t i = 0; i < tokens.size(); i++) out.push_back({(uint32_t)i, "U" + std::to_string(i)}); return true; }
 };
 
 static InspectorInfo Find(WasmAddonManager& m, const std::string& id) {
@@ -647,6 +653,34 @@ int main(int argc, char** argv) {
         bool saw = false;
         for (auto& [h, text] : host.ui) if (text.find("Thrall: hey there") != std::string::npos) saw = true;
         CHECK(saw);
+        m.Shutdown();
+    }
+
+    {   // ʕ •ᴥ•ʔ✿ Lua parity: spawn, style, bind, unit names, then a WASM_UI payload ✿ ʕ •ᴥ•ʔ
+        MockHost host; WasmAddonManager m; m.Initialize(tmp.string(), &host);
+        CHECK(m.LoadAddon((dist / "lua-parity").string()));
+        // ʕ •ᴥ•ʔ✿ units.read is sensitive, so the granted reload is what fills wow_names ✿ ʕ •ᴥ•ʔ
+        CHECK(m.GrantSensitive("test.lua-parity", PermUnitsRead));
+        CHECK(m.UnloadAddon("test.lua-parity"));
+        CHECK(m.LoadAddon((dist / "lua-parity").string()));
+        CHECK(Find(m, "test.lua-parity").state == AddonState::Running);
+        int64_t frame = 0, edit = 0, alpha = 0, mouse = 0, tex = 0, bind = 0, gettext = 0, names = 0, uiEvent = 0;
+        CHECK(m.CallExportInt("test.lua-parity", "wow_frame", frame) && frame > 0);
+        CHECK(m.CallExportInt("test.lua-parity", "wow_edit", edit) && edit > 0);
+        CHECK(m.CallExportInt("test.lua-parity", "wow_alpha", alpha) && alpha == 0);
+        CHECK(m.CallExportInt("test.lua-parity", "wow_mouse", mouse) && mouse == 0);
+        CHECK(m.CallExportInt("test.lua-parity", "wow_tex", tex) && tex == 0);
+        CHECK(m.CallExportInt("test.lua-parity", "wow_bind", bind) && bind == 0);
+        CHECK(m.CallExportInt("test.lua-parity", "wow_gettext", gettext) && gettext == 0);
+        CHECK(m.CallExportInt("test.lua-parity", "wow_names", names) && names > 0);
+        bool sawEnter = false;
+        for (auto& ev : host.binds) if (ev == "enter_pressed") sawEnter = true;
+        CHECK(sawEnter);
+        EventPayloadWriter ui("WASM_UI", 0);
+        ui.String("enter_pressed", 13);
+        ui.Number((double)edit);
+        m.DispatchEvent("WASM_UI", ui.Finish());
+        CHECK(m.CallExportInt("test.lua-parity", "wow_ui_event", uiEvent) && uiEvent == 1);
         m.Shutdown();
     }
 

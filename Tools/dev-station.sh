@@ -23,6 +23,9 @@ LIVE_ADDONS=(
     unit-auction-test
     confirm-test
     host-edge
+    elvui
+    wim
+    lua-parity
 )
 
 usage() {

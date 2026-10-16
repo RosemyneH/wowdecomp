@@ -15,6 +15,7 @@
 #include "Engine/Source/lua-5.1/src/lua.h"
 #include "Engine/Source/lua-5.1/src/lauxlib.h"
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <map>
 
@@ -99,6 +100,31 @@ public:
         return lua_cpcall(L, &TrampUiStyle, &ctx) == 0 && ctx.ok;
     }
 
+    bool UiBind(uint64_t handle, int32_t guestHandle, const std::string& event) override {
+        lua_State* L = FrameScript_GetContext();
+        if (!L) return false;
+        HostCallCtx ctx{this, nullptr, &event, handle, nullptr};
+        ctx.guest = guestHandle;
+        return lua_cpcall(L, &TrampUiBind, &ctx) == 0 && ctx.ok;
+    }
+
+    bool UiGetText(uint64_t handle, std::string& out) override {
+        lua_State* L = FrameScript_GetContext();
+        if (!L) return false;
+        HostCallCtx ctx{this, nullptr, nullptr, handle, nullptr};
+        ctx.textOut = &out;
+        return lua_cpcall(L, &TrampUiGetText, &ctx) == 0 && ctx.ok;
+    }
+
+    bool GetUnitNames(const std::vector<std::string>& tokens, std::vector<std::pair<uint32_t, std::string>>& out) override {
+        lua_State* L = FrameScript_GetContext();
+        if (!L) return false;
+        HostCallCtx ctx{this, nullptr, nullptr, 0, nullptr};
+        ctx.tokens = &tokens;
+        ctx.names = &out;
+        return lua_cpcall(L, &TrampUnitNames, &ctx) == 0 && ctx.ok;
+    }
+
     void UiDestroy(uint64_t handle) override {
         auto it = m_ui.find(handle);
         lua_State* L = FrameScript_GetContext();
@@ -175,6 +201,9 @@ private:
         int32_t op = 0;
         const uint8_t* bytes = nullptr;
         uint32_t byteLen = 0;
+        std::vector<std::pair<uint32_t, std::string>>* names = nullptr;
+        std::string* textOut = nullptr;
+        int32_t guest = 0;
     };
     static int TrampChat(lua_State* L) { auto* c = (HostCallCtx*)lua_touserdata(L, 1); c->ok = c->self->DoChatPrint(L, *c->s1, *c->s2); return 0; }
     static int TrampInventory(lua_State* L) { auto* c = (HostCallCtx*)lua_touserdata(L, 1); c->ok = c->self->DoInventory(L, *c->items); return 0; }
@@ -184,6 +213,9 @@ private:
     static int TrampUiSetText(lua_State* L) { auto* c = (HostCallCtx*)lua_touserdata(L, 1); c->ok = c->self->DoUiSetText(L, c->handle, *c->s2); return 0; }
     static int TrampUnits(lua_State* L) { auto* c = (HostCallCtx*)lua_touserdata(L, 1); c->ok = c->self->DoUnits(L, *c->tokens, *c->units); return 0; }
     static int TrampAuction(lua_State* L) { auto* c = (HostCallCtx*)lua_touserdata(L, 1); c->ok = c->self->DoAuction(L, (int32_t)c->handle, *c->auction); return 0; }
+    static int TrampUiBind(lua_State* L) { auto* c = (HostCallCtx*)lua_touserdata(L, 1); c->ok = c->self->DoUiBind(L, c->handle, c->guest, *c->s2); return 0; }
+    static int TrampUiGetText(lua_State* L) { auto* c = (HostCallCtx*)lua_touserdata(L, 1); c->ok = c->self->DoUiGetText(L, c->handle, *c->textOut); return 0; }
+    static int TrampUnitNames(lua_State* L) { auto* c = (HostCallCtx*)lua_touserdata(L, 1); c->ok = c->self->DoUnitNames(L, *c->tokens, *c->names); return 0; }
 
     static double UnitCall(lua_State* L, const char* fn, const std::string& token, int32_t retIndex, bool* isBool = nullptr) {
         int top = lua_gettop(L);
@@ -222,6 +254,34 @@ private:
             }
             out.push_back(record);
         }
+        return true;
+    }
+
+    // ʕ •ᴥ•ʔ✿ UnitName's later returns are realm; only a string name leaves the host ✿ ʕ •ᴥ•ʔ
+    static std::string UnitNameOf(lua_State* L, const std::string& token) {
+        int top = lua_gettop(L);
+        lua_getfield(L, LUA_GLOBALSINDEX, "UnitName");
+        lua_pushstring(L, token.c_str());
+        std::string name;
+        if (lua_pcall(L, 1, LUA_MULTRET, 0) == 0 && lua_type(L, top + 1) == LUA_TSTRING) {
+            size_t len = 0;
+            const char* text = lua_tolstring(L, top + 1, &len);
+            if (text && len) {
+                char buf[64];
+                size_t n = len < sizeof(buf) ? len : sizeof(buf);
+                std::memcpy(buf, text, n);
+                name = WasmAddon::SanitizeDisplayText(std::string(buf, buf + n));
+            }
+        }
+        lua_settop(L, top);
+        return name;
+    }
+
+    bool DoUnitNames(lua_State* L, const std::vector<std::string>& tokens, std::vector<std::pair<uint32_t, std::string>>& out) {
+        TaintScope taint("units");
+        out.clear();
+        for (size_t i = 0; i < tokens.size(); i++)
+            out.emplace_back((uint32_t)i, UnitNameOf(L, tokens[i]));
         return true;
     }
 
@@ -395,13 +455,43 @@ private:
         return luaL_ref(L, LUA_REGISTRYINDEX);
     }
 
-    static bool MakeChildFrame(lua_State* L, const char* type, bool statusBar, int32_t& ref) {
+    static bool MakeChildFrame(lua_State* L, const char* type, bool statusBar, bool editBox, int32_t& ref) {
         int parent = lua_gettop(L);
         lua_getfield(L, LUA_GLOBALSINDEX, "CreateFrame");
         lua_pushstring(L, type);
         lua_pushnil(L);
         lua_pushvalue(L, parent);
         if (lua_pcall(L, 3, 1, 0) != 0) return false;
+        if (editBox) {
+            lua_getfield(L, -1, "SetFont");
+            if (lua_isfunction(L, -1)) {
+                lua_pushvalue(L, -2);
+                lua_pushstring(L, "Fonts\\FRIZQT__.TTF");
+                lua_pushnumber(L, 12);
+                if (lua_pcall(L, 3, 0, 0) != 0) lua_pop(L, 1);
+            } else {
+                lua_pop(L, 1);
+            }
+            lua_getfield(L, -1, "SetAutoFocus");
+            if (lua_isfunction(L, -1)) {
+                lua_pushvalue(L, -2);
+                lua_pushboolean(L, 0);
+                if (lua_pcall(L, 2, 0, 0) != 0) lua_pop(L, 1);
+            } else {
+                lua_pop(L, 1);
+            }
+            lua_getfield(L, -1, "SetTextInsets");
+            if (lua_isfunction(L, -1)) {
+                lua_pushvalue(L, -2);
+                lua_pushnumber(L, 0);
+                lua_pushnumber(L, 0);
+                lua_pushnumber(L, 0);
+                lua_pushnumber(L, 0);
+                if (lua_pcall(L, 5, 0, 0) != 0) lua_pop(L, 1);
+            } else {
+                lua_pop(L, 1);
+            }
+        }
         if (statusBar) {
             lua_getfield(L, -1, "SetStatusBarTexture");
             lua_pushvalue(L, -2);
@@ -433,10 +523,18 @@ private:
             ref = MakeChildTexture(L);
             ok = ref != LUA_NOREF;
             wk = WidgetKind::Texture;
-        } else if (kind == "frame" || kind == "statusbar" || kind == "button") {
-            const char* type = kind == "statusbar" ? "StatusBar" : kind == "button" ? "Button" : "Frame";
-            ok = MakeChildFrame(L, type, kind == "statusbar", ref);
-            wk = kind == "statusbar" ? WidgetKind::StatusBar : kind == "button" ? WidgetKind::Button : WidgetKind::Frame;
+        } else if (kind == "frame" || kind == "statusbar" || kind == "button" || kind == "editbox" || kind == "scrollframe") {
+            const char* type = "Frame";
+            if (kind == "statusbar") type = "StatusBar";
+            else if (kind == "button") type = "Button";
+            else if (kind == "editbox") type = "EditBox";
+            else if (kind == "scrollframe") type = "ScrollFrame";
+            ok = MakeChildFrame(L, type, kind == "statusbar", kind == "editbox", ref);
+            if (kind == "statusbar") wk = WidgetKind::StatusBar;
+            else if (kind == "button") wk = WidgetKind::Button;
+            else if (kind == "editbox") wk = WidgetKind::EditBox;
+            else if (kind == "scrollframe") wk = WidgetKind::ScrollFrame;
+            else wk = WidgetKind::Frame;
         }
         lua_settop(L, top);
         if (!ok || ref == LUA_NOREF) {
@@ -444,7 +542,8 @@ private:
             return 0;
         }
         uint64_t handle = m_nextHandle++;
-        m_ui[handle] = {ref, wk == WidgetKind::FontString ? ref : LUA_NOREF, wk};
+        int32_t textRef = (wk == WidgetKind::FontString || wk == WidgetKind::EditBox) ? ref : LUA_NOREF;
+        m_ui[handle] = {ref, textRef, wk};
         return handle;
     }
 
@@ -601,8 +700,106 @@ private:
                 static const char* kStrata[] = {"BACKGROUND", "LOW", "MEDIUM", "HIGH", "DIALOG", "FULLSCREEN", "FULLSCREEN_DIALOG", "TOOLTIP"};
                 return CallOn(L, widget.mainRef, "SetFrameStrata", 1, [&](lua_State* S) { lua_pushstring(S, kStrata[data[0]]); });
             }
+            case WasmAddon::UiOp::SetAlpha:
+                if (len < 4) return false;
+                return CallOn(L, widget.mainRef, "SetAlpha", 1, [&](lua_State* S) { lua_pushnumber(S, ReadI32(data) / 1000.0); });
+            case WasmAddon::UiOp::SetMouse:
+                if (len < 1) return false;
+                return CallOn(L, widget.mainRef, "EnableMouse", 1, [&](lua_State* S) {
+                    if (data[0]) lua_pushnumber(S, 1);
+                    else lua_pushnil(S);
+                });
+            case WasmAddon::UiOp::SetTexture: {
+                if (widget.kind != WidgetKind::Texture || len < 1) return false;
+                std::string path(reinterpret_cast<const char*>(data), len);
+                return CallOn(L, widget.mainRef, "SetTexture", 1, [&](lua_State* S) { lua_pushlstring(S, path.data(), path.size()); });
+            }
         }
         return false;
+    }
+
+    // ʕ •ᴥ•ʔ✿ Curry the signal in a fixed chunk so addon text never becomes Lua source ✿ ʕ •ᴥ•ʔ
+    bool InstallUiSignal(lua_State* L, int32_t ref, const char* scriptName, int32_t guest, const std::string& event) {
+        int top = lua_gettop(L);
+        if (luaL_loadstring(L, "return function(h, ev) return function() WasmAddon_UiSignal(h, ev) end end") != 0) {
+            lua_settop(L, top);
+            return false;
+        }
+        if (lua_pcall(L, 0, 1, 0) != 0) { lua_settop(L, top); return false; }
+        lua_pushnumber(L, (lua_Number)guest);
+        lua_pushlstring(L, event.data(), event.size());
+        if (lua_pcall(L, 2, 1, 0) != 0 || !lua_isfunction(L, -1)) { lua_settop(L, top); return false; }
+        int closure = lua_gettop(L);
+        lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+        if (!lua_istable(L, -1) && !lua_isuserdata(L, -1)) { lua_settop(L, top); return false; }
+        int self = lua_gettop(L);
+        lua_getfield(L, self, "SetScript");
+        if (!lua_isfunction(L, -1)) { lua_settop(L, top); return false; }
+        lua_pushvalue(L, self);
+        lua_pushstring(L, scriptName);
+        lua_pushvalue(L, closure);
+        bool ok = lua_pcall(L, 3, 0, 0) == 0;
+        lua_settop(L, top);
+        return ok;
+    }
+
+    bool DoUiBind(lua_State* L, uint64_t handle, int32_t guest, const std::string& event) {
+        auto it = m_ui.find(handle);
+        if (it == m_ui.end()) return false;
+        TaintScope taint("ui");
+        TrackState(L);
+        it = m_ui.find(handle);
+        if (it == m_ui.end()) return false;
+        const char* script = nullptr;
+        bool mouse = false;
+        bool keyboard = false;
+        if (event == "click") { script = "OnClick"; mouse = true; }
+        else if (event == "enter") { script = "OnEnter"; mouse = true; }
+        else if (event == "leave") { script = "OnLeave"; mouse = true; }
+        else if (event == "escape") { script = "OnEscapePressed"; keyboard = true; }
+        else if (event == "enter_pressed") { script = "OnEnterPressed"; keyboard = true; }
+        else if (event == "text_changed") { script = "OnTextChanged"; keyboard = true; }
+        else return false;
+        WidgetKind kind = it->second.kind;
+        bool frameLike = kind == WidgetKind::Frame || kind == WidgetKind::Button || kind == WidgetKind::StatusBar
+            || kind == WidgetKind::EditBox || kind == WidgetKind::ScrollFrame;
+        if (!frameLike) return false;
+        if (keyboard && kind != WidgetKind::EditBox) return false;
+        if (event == "click" && kind != WidgetKind::Button && kind != WidgetKind::Frame && kind != WidgetKind::EditBox
+            && kind != WidgetKind::ScrollFrame && kind != WidgetKind::StatusBar) return false;
+        int32_t ref = it->second.mainRef;
+        if (mouse && !CallOn(L, ref, "EnableMouse", 1, [](lua_State* S) { lua_pushnumber(S, 1); })) return false;
+        if (keyboard) {
+            if (!CallOn(L, ref, "EnableKeyboard", 1, [](lua_State* S) { lua_pushnumber(S, 1); })) return false;
+            if (!CallOn(L, ref, "EnableMouse", 1, [](lua_State* S) { lua_pushnumber(S, 1); })) return false;
+        }
+        return InstallUiSignal(L, ref, script, guest, event);
+    }
+
+    bool DoUiGetText(lua_State* L, uint64_t handle, std::string& out) {
+        auto it = m_ui.find(handle);
+        if (it == m_ui.end()) return false;
+        TaintScope taint("ui");
+        TrackState(L);
+        it = m_ui.find(handle);
+        if (it == m_ui.end()) return false;
+        out.clear();
+        int32_t ref = it->second.textRef != LUA_NOREF ? it->second.textRef : it->second.mainRef;
+        int top = lua_gettop(L);
+        lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+        if (lua_istable(L, -1) || lua_isuserdata(L, -1)) {
+            lua_getfield(L, -1, "GetText");
+            if (lua_isfunction(L, -1)) {
+                lua_pushvalue(L, -2);
+                if (lua_pcall(L, 1, 1, 0) == 0 && lua_type(L, -1) == LUA_TSTRING) {
+                    size_t len = 0;
+                    const char* text = lua_tolstring(L, -1, &len);
+                    if (text) out.assign(text, len);
+                }
+            }
+        }
+        lua_settop(L, top);
+        return true;
     }
 
     bool DoUiSetText(lua_State* L, uint64_t handle, const std::string& text) {
@@ -628,7 +825,7 @@ private:
         if (m_seenState && L != m_seenState) m_ui.clear();
         m_seenState = L;
     }
-    enum class WidgetKind : uint8_t { Frame, FontString, Texture, StatusBar, Button };
+    enum class WidgetKind : uint8_t { Frame, FontString, Texture, StatusBar, Button, EditBox, ScrollFrame };
     struct UiRefs { int32_t mainRef = LUA_NOREF; int32_t textRef = LUA_NOREF; WidgetKind kind = WidgetKind::Frame; };
     lua_State* m_seenState = nullptr;
     std::map<uint64_t, UiRefs> m_ui;
@@ -722,6 +919,17 @@ bool OnEventInterest(uint32_t index) {
     if (index >= NUM_SCRIPT_EVENTS) return false;
     const char* name = g_scriptEvents[index];
     return name && s_manager.HasSubscriber(name);
+}
+
+int32_t Script_WasmAddonUiSignal(lua_State* L) {
+    if (lua_type(L, 1) != LUA_TNUMBER || lua_type(L, 2) != LUA_TSTRING) return 0;
+    size_t len = 0;
+    const char* event = lua_tolstring(L, 2, &len);
+    WasmAddon::EventPayloadWriter writer("WASM_UI", 0);
+    writer.String(event ? event : "", event ? len : 0);
+    writer.Number(lua_tonumber(L, 1));
+    s_manager.DispatchEvent("WASM_UI", writer.Finish());
+    return 0;
 }
 
 int32_t Script_WasmAddonInspector(lua_State* L) {
@@ -905,12 +1113,14 @@ void WasmAddonClient_RegisterScripts() {
     FrameScript_RegisterFunction("WasmAddonInspectorText", Script_WasmAddonInspector);
     FrameScript_RegisterFunction("WasmAddon_GetNumAddOns", Script_WasmAddonGetNumAddOns);
     FrameScript_RegisterFunction("WasmAddon_GetAddOnInfo", Script_WasmAddonGetAddOnInfo);
+    FrameScript_RegisterFunction("WasmAddon_UiSignal", Script_WasmAddonUiSignal);
 }
 void WasmAddonClient_UnregisterScripts() {
     if (!s_initialized) return;
     FrameScript_UnregisterFunction("WasmAddonInspectorText");
     FrameScript_UnregisterFunction("WasmAddon_GetNumAddOns");
     FrameScript_UnregisterFunction("WasmAddon_GetAddOnInfo");
+    FrameScript_UnregisterFunction("WasmAddon_UiSignal");
 }
 
 // ʕ •ᴥ•ʔ✿ Loading mirrors LoadAddOns: UI/chat/inventory services only exist once the game UI is up ✿ ʕ •ᴥ•ʔ

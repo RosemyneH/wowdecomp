@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace WasmAddon {
@@ -254,9 +255,10 @@ struct ConfirmExecResult {
 enum class UiOp : int32_t {
     SetSize = 1, SetPoint = 2, SetColor = 3, SetShown = 4, SetValue = 5, SetJustify = 6,
     SetFontSize = 7, SetBackdrop = 8, SetTextColor = 9, SetLevel = 10, SetStrata = 11,
+    SetAlpha = 12, SetMouse = 13, SetTexture = 14,
 };
 
-enum class UiKind : uint8_t { None = 0, Frame = 1, FontString = 2, Texture = 3, StatusBar = 4, Button = 5 };
+enum class UiKind : uint8_t { None = 0, Frame = 1, FontString = 2, Texture = 3, StatusBar = 4, Button = 5, EditBox = 6, ScrollFrame = 7 };
 
 class IWasmHostServices {
 public:
@@ -269,6 +271,9 @@ public:
     virtual uint64_t UiSpawn(const std::string& addonId, uint64_t parentHost, const std::string& kind) { (void)addonId; (void)parentHost; (void)kind; return 0; }
     virtual bool UiStyle(uint64_t hostHandle, int32_t op, const uint8_t* data, uint32_t len) { (void)hostHandle; (void)op; (void)data; (void)len; return false; }
     virtual bool UiSetText(uint64_t hostHandle, const std::string& text) { (void)hostHandle; (void)text; return false; }
+    virtual bool UiBind(uint64_t hostHandle, int32_t guestHandle, const std::string& event) { (void)hostHandle; (void)guestHandle; (void)event; return false; }
+    virtual bool UiGetText(uint64_t hostHandle, std::string& out) { (void)hostHandle; (void)out; return false; }
+    virtual bool GetUnitNames(const std::vector<std::string>& tokens, std::vector<std::pair<uint32_t, std::string>>& out) { (void)tokens; (void)out; return false; }
     virtual void UiDestroy(uint64_t hostHandle) { (void)hostHandle; }
     virtual void Log(const std::string& message) { (void)message; }
     virtual void ConfirmShow(const ConfirmRequest& request) { (void)request; }
@@ -280,7 +285,7 @@ public:
 
 enum class HostFn : uint32_t {
     ApiVersion = 0, Ping, ChatPrint, EventSubscribe, InventorySnapshot, UiCreate, UiSetText, PerfQuery,
-    StorageGet, StorageLen, StorageKeys, StorageUsage, StorageSet, StorageDelete, UnitSnapshot, AuctionSnapshot, ChatSendRequest, AuctionBidRequest, UiSpawn, UiStyle, Count
+    StorageGet, StorageLen, StorageKeys, StorageUsage, StorageSet, StorageDelete, UnitSnapshot, AuctionSnapshot, ChatSendRequest, AuctionBidRequest, UiSpawn, UiStyle, UiBind, UiGetText, UnitNames, Count
 };
 static_assert((uint32_t)HostFn::Count <= 32, "hostCallsByFn array too small");
 
