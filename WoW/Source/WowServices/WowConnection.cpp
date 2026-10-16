@@ -566,6 +566,23 @@ void WowConnection::DoExceptions() {
 bool WowConnection::Connect(uint32_t address, uint16_t port, int32_t timeout) {
     this->m_connectAddress = address;
     this->m_connectPort = port;
+
+    if (!address) {
+        this->SetState(WOWC_ERROR);
+        this->AddRef();
+        this->AcquireResponseRef();
+
+        WowConnectionResponse* response = this->m_response;
+
+        if (response) {
+            response->WCCantConnect(this, OsGetAsyncTimeMs(), &this->m_peer);
+        }
+
+        this->ReleaseResponseRef();
+        this->Release();
+        return true;
+    }
+
     this->StartConnect();
 
     return true;
