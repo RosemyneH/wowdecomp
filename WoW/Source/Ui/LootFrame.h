@@ -38,7 +38,7 @@ class CGLootInfo {
     public:
     static uint32_t m_itemsPending;
     static uint32_t m_lootType;
-    static LootSlot m_slots[18];
+    static ::LootSlot m_slots[18];
     static int32_t m_coins;
     static WOWGUID m_lootObj;
     static int32_t m_autolooted;

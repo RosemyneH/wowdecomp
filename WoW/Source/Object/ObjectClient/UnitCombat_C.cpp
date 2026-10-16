@@ -1,4 +1,5 @@
 #include "UnitCombat_C.h"
+#include <cmath>
 #include "Engine/Source/Base/CDataStore.h"
 #include "Engine/Source/FrameScript/FrameScript.h"
 #include "Engine/Source/Model2/M2Model.h"

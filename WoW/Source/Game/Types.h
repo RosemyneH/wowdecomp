@@ -3,7 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <windows.h>
+#include "Engine/Source/Base/OsTypes.h"
 
 struct LoadedWardenModule {
     /* 0000 */ void* m_imageBase;

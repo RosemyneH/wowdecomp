@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include "WoW/Source/Types.h"
+#include "Engine/Source/Gx/Types.h"
 
 class CGxFormat;
 struct CVar;
@@ -13,6 +14,9 @@ enum OPTION_PAGE {
     OPTION_PAGE_2 = 2,
     NUM_OPTION_PAGES = 3,
 };
+
+EGxApi ConsoleDeviceApi();
+EGxApi ConsoleDeviceRequestedApi(bool* fromCmdLine);
 
 extern DefaultSettings s_defaults;
 extern CGxFormat s_desktopFormat;

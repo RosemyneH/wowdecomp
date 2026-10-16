@@ -3,7 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <windows.h>
+#include "Engine/Source/Base/OsTypes.h"
 
 class SpellCast {
     public:

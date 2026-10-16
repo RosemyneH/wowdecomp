@@ -100,6 +100,7 @@
 #include "WoW/Source/Ui/DuelInfo.h"
 #include "WoW/Source/Ui/EquipmentManager.h"
 #include "WoW/Source/Ui/GameUI.h"
+#include "WoW/Source/WasmAddonClient.h"
 #include "WoW/Source/Ui/GlyphInfo.h"
 #include "WoW/Source/Ui/GMSurveyInfo.h"
 #include "WoW/Source/Ui/GMTicketInfo.h"
@@ -6565,11 +6566,13 @@ void LoadScriptFunctions() {
     EquipmentManagerRegisterScriptFunctions();
     GMTicketInfoRegisterScriptFunctions();
     BattlenetUI_RegisterScriptFunctions();
+    WasmAddonClient_RegisterScripts();
 }
 
 // VERIFY: ce499890 manual
 // OFFSET: 0x00512280
 void UnloadScriptFunctions() {
+    WasmAddonClient_UnregisterScripts();
     UnregisterSimpleFrameScriptMethods();
     CGTooltip::DestroyScriptMetaTable();
     CGCooldown::DestroyScriptMetaTable();

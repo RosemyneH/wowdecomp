@@ -1,5 +1,6 @@
 #include "WoW/Source/Battlenet/GeneralFunction.h"
 #include <cstdlib>
+#include "Engine/Source/Base/OsCrt.h"
 
 // INLINED
 GeneralFunction::Arg::Arg() {

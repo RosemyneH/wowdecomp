@@ -2,6 +2,7 @@
 #include "Engine/Source/Base/ConvertUTF.h"
 #include <cstring>
 #include <typeinfo>
+#include "Engine/Source/Base/OsCrt.h"
 #include "Engine/Source/Base/Coordinate.h"
 #include "Engine/Source/Base/Status.h"
 #include "Engine/Source/ConsoleBase/ConsoleVar.h"
@@ -1265,7 +1266,7 @@ CGWorldFrame::CGWorldFrame(CSimpleFrame* parent) : CSimpleFrame(parent) {
 // VERIFY: 74e81b7f auto
 // OFFSET: 0x0050F3F0
 CSimpleFrame* CGWorldFrame::Create(CSimpleFrame* parent) {
-    void* data = CGWorldFrame::s_worldFrameHeap.GetData(0, typeid(CGWorldFrame).raw_name(), SLOG_OBJECT);
+    void* data = CGWorldFrame::s_worldFrameHeap.GetData(0, RAW_TYPE_NAME(CGWorldFrame), SLOG_OBJECT);
     return data ? new (data) CGWorldFrame(parent) : nullptr;
 }
 

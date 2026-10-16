@@ -930,7 +930,7 @@ int32_t Script_GetNumAddOns(lua_State* L) {
 
 // VERIFY: 9ab1ae8b auto
 // OFFSET: 0x004DCAD0
-static int32_t Script_ResetAddOns(lua_State* L) {
+int32_t Script_ResetAddOns(lua_State* L) {
     LoadAddOnEnableState(nullptr);
     return 0;
 }
@@ -951,14 +951,14 @@ int32_t Script_GetLocale(lua_State* L) {
 
 // VERIFY: ac7e3070 auto
 // OFFSET: 0x004DDA90
-static int32_t Script_PatchDownloadProgress(lua_State* L) {
+int32_t Script_PatchDownloadProgress(lua_State* L) {
     lua_pushnumber(L, CGlueMgr::m_patchDownloadProgress);
     return 1;
 }
 
 // VERIFY: e963f241 auto
 // OFFSET: 0x004DC150
-static int32_t Script_PlayCreditsMusic(lua_State* L) {
+int32_t Script_PlayCreditsMusic(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: PlayCreditsMusic( \"Sound kit name\" )");
         return 0;
@@ -970,7 +970,7 @@ static int32_t Script_PlayCreditsMusic(lua_State* L) {
 
 // VERIFY: dab7aa7c manual
 // OFFSET: 0x004DDBD0
-static int32_t Script_GetBillingTimeRemaining(lua_State* L) {
+int32_t Script_GetBillingTimeRemaining(lua_State* L) {
     uint32_t remaining = ClientServices::Connection()->m_billingTimeRemaining;
 
     if (ClientServices::Connection()->m_billingFlags & 0x2) {
@@ -983,7 +983,7 @@ static int32_t Script_GetBillingTimeRemaining(lua_State* L) {
 
 // VERIFY: 2dd7ddc5 auto
 // OFFSET: 0x004DDC60
-static int32_t Script_GetBillingPlan(lua_State* L) {
+int32_t Script_GetBillingPlan(lua_State* L) {
     uint32_t flags = ClientServices::Connection()->m_billingFlags;
     uint32_t plan = flags & 0x16;
     int32_t type = 0;
@@ -1013,7 +1013,7 @@ static int32_t Script_Screenshot(lua_State* L) {
 
 // VERIFY: 0aa14818 auto
 // OFFSET: 0x004DC7C0
-static int32_t Script_GetAddOnEnableState(lua_State* L) {
+int32_t Script_GetAddOnEnableState(lua_State* L) {
     if ((!lua_isstring(L, 1) && lua_type(L, 1)) || !lua_isnumber(L, 2)) {
         luaL_error(L, "Usage: GetAddOnEnableState(\"character\", index)");
         return 0;

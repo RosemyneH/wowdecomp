@@ -45,6 +45,7 @@
 #include "WoW/Source/Game/GameClient/FFXEffects.h"
 #include "WoW/Source/Game/ValidateName.h"
 #include "WoW/Source/Glue/CharacterCreation.h"
+#include "WoW/Source/WasmAddonClient.h"
 #include "WoW/Source/Glue/CharacterSelection.h"
 #include "WoW/Source/Glue/CSimpleModelFFX.h"
 #include "WoW/Source/Glue/CWOWClientStatus.h"
@@ -704,6 +705,7 @@ void CGlueMgr::Resume() {
     control->UpdateMouseMode(1);
 
     FrameScript_Flush();
+    WasmAddonClient_OnScriptReset();
     SystemRegisterFunctions();
     RegisterSimpleFrameScriptMethods();
     GlueScriptEventsRegisterFunctions();

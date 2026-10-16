@@ -149,6 +149,8 @@ class CGAuctionHouse {
     static void SortOwnedList(int32_t column);
     static void SortBidderList(int32_t column);
     static void SetAuctioneer(WOWGUID auctioneer, int32_t auctionHouseID);
+    // ʕ •ᴥ•ʔ✿ listKind: 0 browse, 1 owner, 2 bidder. index is 0-based. 0 sent, >0 rejected ✿ ʕ •ᴥ•ʔ
+    static int32_t PlaceBidNative(int32_t listKind, uint32_t index, uint32_t bid);
     static void AddOutbidID(int32_t auctionHouseID, int32_t auctionID);
     static void AuctionItemExpired(int32_t auctionID);
 };

@@ -185,6 +185,79 @@ AuctionItemInfo* GetBidderAuction(uint32_t index) {
     return &CGAuctionHouse::m_bidderList.m_data[index];
 }
 
+int32_t CGAuctionHouse::PlaceBidNative(int32_t listKind, uint32_t index, uint32_t bid) {
+    if (!CGGameUI::CanPerformAction(8)) {
+        return 1;
+    }
+
+    AuctionItemInfo* auction = nullptr;
+    if (listKind == 0) {
+        auction = GetListAuction(index);
+    } else if (listKind == 1) {
+        auction = GetOwnerAuction(index);
+    } else if (listKind == 2) {
+        auction = GetBidderAuction(index);
+    }
+
+    CGPlayer_C* player = ClntObjMgrGetActivePlayerObj();
+    WOWGUID auctioneer = CGAuctionHouse::m_auctioneer;
+
+    if (!auction || !player || !auctioneer) {
+        return 1;
+    }
+
+    if (auction->m_buyout && bid > auction->m_buyout) {
+        bid = auction->m_buyout;
+    }
+
+    if (bid < auction->m_minBid) {
+        CGGameUI::DisplayError(ERR_AUCTION_MIN_BID);
+        return 2;
+    }
+
+    if (bid <= auction->m_bid) {
+        CGGameUI::DisplayError(ERR_AUCTION_HIGHER_BID);
+        return 3;
+    }
+
+    if (auction->m_bid && bid < auction->m_bid + auction->m_minIncrement && (!auction->m_buyout || bid < auction->m_buyout)) {
+        CGGameUI::DisplayError(ERR_AUCTION_BID_INCREMENT);
+        return 4;
+    }
+
+    if (bid > 2000000000 && bid > auction->m_bid + auction->m_minIncrement) {
+        return 5;
+    }
+
+    uint32_t cost = bid;
+
+    if (auction->m_bidder == player->m_obj->m_guid) {
+        cost = bid - auction->m_bid;
+    }
+
+    if (player->GetCoinage() < cost) {
+        CGGameUI::DisplayError(ERR_NOT_ENOUGH_MONEY);
+        return 6;
+    }
+
+    WOWGUID none = WOWGUID();
+    ItemStats_C* stats = g_itemDBCache.GetRecord(auction->m_itemID, none, nullptr, nullptr, false);
+
+    if (stats && !player->GetBag()->ItemCountValid(auction->m_itemID, stats, auction->m_count, true)) {
+        return 7;
+    }
+
+    CDataStore msg;
+    msg.Put(static_cast<uint32_t>(CMSG_AUCTION_PLACE_BID));
+    msg.Put(auctioneer.m_guid);
+    msg.Put(auction->m_auctionID);
+    msg.Put(bid);
+    msg.Finalize();
+    ClientServices::Send2(&msg);
+    CGAuctionHouse::m_lastBidAmount = bid;
+    return 0;
+}
+
 // VERIFY: 1c82549b auto
 // OFFSET: 0x0059DFB0
 void CGAuctionHouse::EnterWorld() {

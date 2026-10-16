@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include "Engine/Source/Tempest/C3Vector.h"
-#include <windows.h>
+#include "Engine/Source/Base/OsTypes.h"
 
 enum CHAR_CUSTOMIZATION_TYPE {
     CHAR_CUSTOMIZATION_SKIN = 0,
@@ -47,7 +47,7 @@ enum CharEnumFlags : uint32_t {
     CHARACTER_FLAG_UNK29 = 0x10000000,
     CHARACTER_FLAG_UNK30 = 0x20000000,
     CHARACTER_FLAG_UNK31 = 0x40000000,
-    CHARACTER_FLAG_UNK32 = 0xFFFFFFFF80000000,
+    CHARACTER_FLAG_UNK32 = 0x80000000,
 };
 
 struct CharacterPreferences {

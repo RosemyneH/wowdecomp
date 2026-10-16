@@ -908,84 +908,20 @@ static int32_t Script_PlaceAuctionBid(lua_State* L) {
         return 0;
     }
 
-    if (!CGGameUI::CanPerformAction(8)) {
-        return 0;
-    }
-
     const char* type = lua_tolstring(L, 1, nullptr);
-    uint32_t index = static_cast<uint32_t>(lua_tonumber(L, 2)) - 1;
-    AuctionItemInfo* auction = nullptr;
-    uint32_t bid = static_cast<uint32_t>(lua_tonumber(L, 3));
+    int32_t kind = -1;
 
-    if (!SStrCmpI(type, "owner", STORM_MAX_STR)) {
-        auction = GetOwnerAuction(index);
+    if (!SStrCmpI(type, "list", STORM_MAX_STR)) {
+        kind = 0;
+    } else if (!SStrCmpI(type, "owner", STORM_MAX_STR)) {
+        kind = 1;
     } else if (!SStrCmpI(type, "bidder", STORM_MAX_STR)) {
-        auction = GetBidderAuction(index);
-    } else if (!SStrCmpI(type, "list", STORM_MAX_STR)) {
-        auction = GetListAuction(index);
-    }
-
-    CGPlayer_C* player = ClntObjMgrGetActivePlayerObj();
-
-    if (!auction || !player) {
+        kind = 2;
+    } else {
         return 0;
     }
 
-    WOWGUID auctioneer = CGAuctionHouse::m_auctioneer;
-
-    if (!auctioneer) {
-        return 0;
-    }
-
-    if (auction->m_buyout && bid > auction->m_buyout) {
-        bid = auction->m_buyout;
-    }
-
-    if (bid < auction->m_minBid) {
-        CGGameUI::DisplayError(ERR_AUCTION_MIN_BID);
-        return 0;
-    }
-
-    if (bid <= auction->m_bid) {
-        CGGameUI::DisplayError(ERR_AUCTION_HIGHER_BID);
-        return 0;
-    }
-
-    if (auction->m_bid && bid < auction->m_bid + auction->m_minIncrement && (!auction->m_buyout || bid < auction->m_buyout)) {
-        CGGameUI::DisplayError(ERR_AUCTION_BID_INCREMENT);
-        return 0;
-    }
-
-    if (bid > 2000000000 && bid > auction->m_bid + auction->m_minIncrement) {
-        return 0;
-    }
-
-    uint32_t cost = bid;
-
-    if (auction->m_bidder == player->m_obj->m_guid) {
-        cost = bid - auction->m_bid;
-    }
-
-    if (player->GetCoinage() < cost) {
-        CGGameUI::DisplayError(ERR_NOT_ENOUGH_MONEY);
-        return 0;
-    }
-
-    WOWGUID none = WOWGUID();
-    ItemStats_C* stats = g_itemDBCache.GetRecord(auction->m_itemID, none, nullptr, nullptr, false);
-
-    if (stats && !player->GetBag()->ItemCountValid(auction->m_itemID, stats, auction->m_count, true)) {
-        return 0;
-    }
-
-    CDataStore msg;
-    msg.Put(static_cast<uint32_t>(CMSG_AUCTION_PLACE_BID));
-    msg.Put(auctioneer.m_guid);
-    msg.Put(auction->m_auctionID);
-    msg.Put(bid);
-    msg.Finalize();
-    ClientServices::Send2(&msg);
-    CGAuctionHouse::m_lastBidAmount = bid;
+    CGAuctionHouse::PlaceBidNative(kind, static_cast<uint32_t>(lua_tonumber(L, 2)) - 1, static_cast<uint32_t>(lua_tonumber(L, 3)));
     return 0;
 }
 

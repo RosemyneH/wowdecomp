@@ -111,7 +111,9 @@
 #include "WoW/Source/WowSvcs/WowSvcsClient/AccountData.h"
 #include "WoW/Source/WowSvcs/WowSvcsClient/ClientServices.h"
 #include "WoW/Source/WowSvcs/WowSvcsClient/FriendList.h"
+#include "WoW/Source/Ui/WasmConfirmOverlay.h"
 #include "WoW/Source/WowSysMessageOutput.h"
+#include "WoW/Source/WasmAddonClient.h"
 
 namespace {
 
@@ -145,6 +147,7 @@ static const _ARGLIST s_wowArgList[] = {
     { 0, CMD_WINDOWED, "windowed", nullptr },
     { 0, CMD_HW_DETECT, "hwdetect", nullptr },
     { 0, CMD_CONSOLE, "console", nullptr },
+    { 0, CMD_CONSOLE_LOG, "consolelog", nullptr },
     { 0x20000, CMD_GX_OVERRIDE, "gxoverride", nullptr },
 };
 
@@ -524,9 +527,11 @@ static void WowClientDestroy() {
     ComSatClient_Shutdown();
     ObjectEffectSystem_ShutDown();
     SI2::ShutDown(0);
+    WasmAddonClient_Shutdown();
     FrameScript_Destroy();
     g_soundCache.Clear();
     LoadingScreenShutdown();
+    WasmConfirmOverlay_Shutdown();
     WowSysMessageOutput::Shutdown();
     ConsoleCommandUnregister("reloadUI");
     ConsoleCommandUnregister("perf");
@@ -1007,10 +1012,12 @@ static void InitializeClient() {
     EventRegister(EVENT_ID_UPDATE, EnableCallback);
     SysMsgInitialize();
     WowSysMessageOutput::Initialize();
+    WasmConfirmOverlay_Initialize();
     ClientRegisterConsoleCommands();
     ClientDBInitialize();
     LoadingScreenInitialize();
     FrameScript_Initialize(0);
+    WasmAddonClient_Initialize();
     SI2::Init(0);
     ObjectEffectSystem_Initialize();
     FrameXML_RegisterDefault();
@@ -1673,6 +1680,7 @@ void ForEveryRunOnceWTF::Execute(int32_t (*callback)(const char*)) {
 bool InitializeGlobal() {
     SCmdRegisterArgList(s_wowArgList, sizeof(s_wowArgList) / sizeof(s_wowArgList[0]));
     CmdLineProcess();
+    ConsoleSetLogTee(CmdLineGetBool(static_cast<CMDOPT>(CMD_CONSOLE_LOG)));
     LoadMFIL("WoW.mfil");
 
     if (s_unk_B2FA10 != 2) {

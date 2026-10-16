@@ -375,31 +375,9 @@ void ConsoleDeviceInitialize(const char* title, bool unused_a2, bool unused_a3) 
         SetGxCVars(s_requestedFormat);
     }
 
-    EGxApi api = GxDefaultApi();
+    bool apiFromCmdLine;
+    EGxApi api = ConsoleDeviceRequestedApi(&apiFromCmdLine);
     CVar* apiVar = CVar::Lookup("gxApi");
-
-    if (apiVar) {
-        const char* apiName = apiVar->m_stringValue.m_str;
-
-        for (int32_t i = GxApi_OpenGl; i < GxApis_Last; i++) {
-            if (GxApiSupported(static_cast<EGxApi>(i)) && !SStrCmpI(apiName, g_gxApiNames[i], STORM_MAX_STR)) {
-                api = static_cast<EGxApi>(i);
-                break;
-            }
-        }
-    }
-
-    if (CmdLineGetBool(CMD_OPENGL) && GxApiSupported(GxApi_OpenGl)) {
-        api = GxApi_OpenGl;
-    }
-
-    if (CmdLineGetBool(CMD_D3D) && GxApiSupported(GxApi_D3d9)) {
-        api = GxApi_D3d9;
-    }
-
-    if (CmdLineGetBool(CMD_D3D9EX) && GxApiSupported(GxApi_D3d9Ex)) {
-        api = GxApi_D3d9Ex;
-    }
 
     s_requestedFormat.m_fixLag = s_cvGxFixLag->m_intValue != 0;
     s_requestedFormat.m_hwTnL = !CmdLineGetBool(CMD_SW_TNL);
@@ -416,6 +394,7 @@ void ConsoleDeviceInitialize(const char* title, bool unused_a2, bool unused_a3) 
     s_desktopFormat.m_window = window;
 
     bool desktopTried = false;
+    bool fallbackTried = false;
     CGxFormat format = s_requestedFormat;
     ValidateFormatMonitor(format);
 
@@ -434,7 +413,22 @@ void ConsoleDeviceInitialize(const char* title, bool unused_a2, bool unused_a3) 
                 format.m_depthFormat = static_cast<CGxFormat::Format>(format.m_depthFormat - 1);
             }
         } else {
-            if (desktopTried) {
+            // ʕ •ᴥ•ʔ✿ One cross-API retry before giving up: Vulkan -> D3D9 on Windows ✿ ʕ •ᴥ•ʔ
+            EGxApi fallback = api;
+#if defined(WOWDECOMP_VULKAN) && defined(_WIN32)
+            if (api == GxApi_Vulkan) fallback = GxApi_D3d9;
+#endif
+            if (!fallbackTried && fallback != api && GxApiSupported(fallback)) {
+                GxLog("ConsoleDeviceInitialize(): %s unavailable, falling back to %s", g_gxApiNames[api], g_gxApiNames[fallback]);
+                api = fallback;
+                fallbackTried = true;
+                format = s_requestedFormat;
+                desktopTried = false;
+
+                if (apiVar && !apiFromCmdLine) {
+                    apiVar->Set(g_gxApiNames[api], true, false, false, true);
+                }
+            } else if (desktopTried) {
                 GxLog("ConsoleDeviceInitialize(): no output device available!");
 
                 Startup_StringsRec* titleRec = g_startup_StringsDB.GetRecord(1);

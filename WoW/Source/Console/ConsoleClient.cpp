@@ -1,7 +1,10 @@
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
+#include <csignal>
+#if !defined(__APPLE__)
 #include <malloc.h>
+#endif
 #include <new>
 #include <typeinfo>
 #include "ConsoleClient.h"
@@ -512,7 +515,7 @@ static void EnforceMaxLines() {
     }
 
     node->~CONSOLELINE();
-    SMemFree(node, typeid(CONSOLELINE).raw_name(), SLOG_OBJECT, 0);
+    SMemFree(node, RAW_TYPE_NAME(CONSOLELINE), SLOG_OBJECT, 0);
     s_NumLines--;
 }
 
@@ -857,8 +860,39 @@ static int32_t OnKeyDownRepeat(const void* data, void* param) {
 
 // VERIFY: ed71f29f manual
 // OFFSET: 0x00765270
+static int32_t s_consoleLogTee = 0;
+void ConsoleSetLogTee(int32_t enabled) {
+    s_consoleLogTee = enabled;
+#if !defined(_WIN32)
+    // ʕ ●ᴥ●ʔ✿ A dead pipe reader must not kill the client via SIGPIPE ✿ ʕ ●ᴥ●ʔ
+    if (enabled) signal(SIGPIPE, SIG_IGN);
+#endif
+}
+int32_t ConsoleLogTeeEnabled() { return s_consoleLogTee; }
+
 void ConsoleWrite(const char* str, COLOR_T color) {
-    if (!str || !*str || !ConsoleDeviceExists() || !s_textFont) {
+    if (!str || !*str) {
+        return;
+    }
+
+    if (s_consoleLogTee) {
+        // ʕ ◕ᴥ◕ ʔ✿ One locked write per line so worker threads cannot interleave ✿ ʕ ◕ᴥ◕ ʔ
+#if defined(_WIN32)
+        _lock_file(stdout);
+#else
+        flockfile(stdout);
+#endif
+        fputs(str, stdout);
+        if (!*str || str[SStrLen(str) - 1] != '\n') fputc('\n', stdout);
+        fflush(stdout);
+#if defined(_WIN32)
+        _unlock_file(stdout);
+#else
+        funlockfile(stdout);
+#endif
+    }
+
+    if (!ConsoleDeviceExists() || !s_textFont) {
         return;
     }
 
@@ -890,7 +924,7 @@ void ConsoleWrite(const char* str, COLOR_T color) {
 // VERIFY: 7dcf8eb5 auto
 // OFFSET: 0x00765360
 void ConsoleWriteA(const char* format, COLOR_T color, ...) {
-    if (!format || !*format || !ConsoleDeviceExists()) {
+    if (!format || !*format || (!ConsoleDeviceExists() && !s_consoleLogTee)) {
         return;
     }
 
@@ -905,7 +939,7 @@ void ConsoleWriteA(const char* format, COLOR_T color, ...) {
 // VERIFY: da6ae03f auto
 // OFFSET: 0x007653B0
 void ConsolePrintf(const char* format, ...) {
-    if (!format || !*format || !ConsoleDeviceExists()) {
+    if (!format || !*format || (!ConsoleDeviceExists() && !s_consoleLogTee)) {
         return;
     }
 

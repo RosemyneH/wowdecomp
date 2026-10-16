@@ -1,4 +1,5 @@
 #include "MailInfo.h"
+#include <cmath>
 #include <cstdint>
 #include "Engine/Source/FrameScript/FrameScript.h"
 #include "Engine/Source/FrameScript/FrameScript_Object.h"

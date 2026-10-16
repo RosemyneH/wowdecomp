@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstring>
 #include "ConsoleDevice.h"
+#include "Engine/Source/Base/CmdLine.h"
 #include "Engine/Source/ConsoleBase/ConsoleVar.h"
 #include "Engine/Source/ConsoleBase/IConsole.h"
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
@@ -156,7 +157,66 @@ static bool CVGxTripleBufferCallback(CVar* var, const char* oldValue, const char
 
 // VERIFY: 1b35a664 auto
 // OFFSET: 0x007693B0
+static bool GxApiFromName(const char* name, EGxApi& api) {
+    for (int32_t i = GxApi_OpenGl; i < GxApis_Last; i++) {
+        if (name && !SStrCmpI(name, g_gxApiNames[i], STORM_MAX_STR)) {
+            api = static_cast<EGxApi>(i);
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool GxApiPortable(EGxApi api) {
+    return api == GxApi_OpenGl || api == GxApi_D3d9 || api == GxApi_D3d9Ex
+#if defined(WOWDECOMP_VULKAN)
+        || api == GxApi_Vulkan
+#endif
+    ;
+}
+
+EGxApi ConsoleDeviceRequestedApi(bool* fromCmdLine) {
+    if (fromCmdLine) *fromCmdLine = false;
+    static const struct { CMDOPT opt; EGxApi api; } kCmdLine[] = {
+        { CMD_D3D9EX, GxApi_D3d9Ex },
+        { CMD_D3D, GxApi_D3d9 },
+#if defined(WOWDECOMP_VULKAN)
+        { CMD_VULKAN, GxApi_Vulkan },
+#endif
+        { CMD_OPENGL, GxApi_OpenGl },
+    };
+    for (auto& entry : kCmdLine) {
+        if (CmdLineGetBool(entry.opt) && GxApiSupported(entry.api)) {
+            if (fromCmdLine) *fromCmdLine = true;
+            return entry.api;
+        }
+    }
+    EGxApi api;
+    if (s_cvGxApi && GxApiFromName(s_cvGxApi->m_stringValue.m_str, api) && GxApiSupported(api)) {
+        return api;
+    }
+    return GxDefaultApi();
+}
+
+EGxApi ConsoleDeviceApi() {
+    return g_theGxDevicePtr ? g_theGxDevicePtr->DeviceApi() : ConsoleDeviceRequestedApi(nullptr);
+}
+
 static bool CVGxApiCallback(CVar* var, const char* oldValue, const char* value, void* arg) {
+    EGxApi requested;
+    if (GxApiFromName(value, requested)) {
+        if (GxApiSupported(requested)) {
+            ConsoleWrite("GxApi set pending gxRestart", DEFAULT_COLOR);
+            return true;
+        }
+#if defined(WOWDECOMP_UNIX) || defined(WOWDECOMP_VULKAN)
+        // ʕ ◕ᴥ◕ ʔ✿ Config.wtf is shared across platforms: keep foreign names, the helper maps them locally ✿ ʕ ◕ᴥ◕ ʔ
+        if (GxApiPortable(requested)) {
+            return true;
+        }
+#endif
+    }
+
     for (int32_t api = GxApi_OpenGl; api < GxApis_Last; api++) {
         if (GxApiSupported(static_cast<EGxApi>(api)) && !SStrCmpI(value, g_gxApiNames[api], STORM_MAX_STR)) {
             ConsoleWrite("GxApi set pending gxRestart", DEFAULT_COLOR);

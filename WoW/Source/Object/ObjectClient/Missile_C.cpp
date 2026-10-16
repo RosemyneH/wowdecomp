@@ -1,6 +1,7 @@
 #include "Missile_C.h"
 #include <cfloat>
 #include <cmath>
+#include "Engine/Source/Base/OsCrt.h"
 #include "Engine/Source/Base/ObjectAlloc.h"
 #include "Engine/Source/Os/TimeManager.h"
 #include "Engine/Source/Storm/H/storm.h"

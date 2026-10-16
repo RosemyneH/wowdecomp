@@ -1,6 +1,8 @@
 #include "World.h"
+#include <cfloat>
 #include <cstdlib>
 #include <new>
+#include "Engine/Source/Base/OsCrt.h"
 #include <algorithm>
 #include <cmath>
 #include "Engine/Source/BlizzardCore/SFile2-Core.h"

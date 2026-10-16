@@ -399,6 +399,8 @@ class CGChat {
     static int32_t IsPaused();
     static int32_t IsVoiceChatAllowed();
     static void ProcessThrottledChat();
+    // ʕ •ᴥ•ʔ✿ 0 sent or queued, >0 rejected, <0 caller error (whisper/channel/escape/utf-8) ✿ ʕ •ᴥ•ʔ
+    static int32_t SendNative(int32_t type, uint32_t language, const char* target, const char* text);
     static void LeaveWorld();
     static void Pause();
     static void Resume();

@@ -1,6 +1,9 @@
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#if !defined(__APPLE__)
 #include <malloc.h>
+#endif
 #include "Engine/Source/Base/Coordinate.h"
 #include "Engine/Source/Base/Handle.h"
 #include "Engine/Source/ConsoleBase/ConsoleCommand.h"

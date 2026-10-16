@@ -797,7 +797,7 @@ static int32_t Script_AppendToFile(lua_State* L) {
 
 // VERIFY: d91418ed manual
 // OFFSET: 0x0060E740
-static int32_t Script_UnitName(lua_State* L) {
+int32_t Script_UnitName(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: UnitName(\"unit\")");
         return 0;
@@ -879,7 +879,7 @@ static int32_t Script_UnitName(lua_State* L) {
 
 // VERIFY: 5bacc158 manual
 // OFFSET: 0x0060ED40
-static int32_t Script_UnitPower(lua_State* L) {
+int32_t Script_UnitPower(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: UnitPower(\"unit\"[, type])");
         return 0;
@@ -926,7 +926,7 @@ static int32_t Script_UnitPower(lua_State* L) {
 
 // VERIFY: 8b4655cb manual
 // OFFSET: 0x0060EF40
-static int32_t Script_UnitPowerMax(lua_State* L) {
+int32_t Script_UnitPowerMax(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: UnitPowerMax(\"unit\"[, type])");
         return 0;
@@ -971,7 +971,7 @@ static int32_t Script_UnitPowerMax(lua_State* L) {
 
 // VERIFY: 9354ea30 manual
 // OFFSET: 0x0060F100
-static int32_t Script_UnitPowerType(lua_State* L) {
+int32_t Script_UnitPowerType(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: UnitPowerType(\"unit\"[, index])");
         return 0;
@@ -1028,7 +1028,7 @@ static int32_t Script_UnitPowerType(lua_State* L) {
 
 // VERIFY: bf5f66ea manual
 // OFFSET: 0x0060D0A0
-static int32_t Script_UnitFactionGroup(lua_State* L) {
+int32_t Script_UnitFactionGroup(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: UnitFactionGroup(\"unit\")");
         return 0;
@@ -1098,7 +1098,7 @@ static int32_t Script_UnitFactionGroup(lua_State* L) {
 
 // VERIFY: 6fdf06f2 auto
 // OFFSET: 0x0060A450
-static int32_t Script_IsLoggedIn(lua_State* L) {
+int32_t Script_IsLoggedIn(lua_State* L) {
     if (CGGameUI::m_loggingIn) {
         lua_pushnil(L);
     } else {
@@ -1110,7 +1110,7 @@ static int32_t Script_IsLoggedIn(lua_State* L) {
 
 // VERIFY: af10718e auto
 // OFFSET: 0x00608580
-static int32_t Script_CanSwitchVehicleSeat(lua_State* L) {
+int32_t Script_CanSwitchVehicleSeat(lua_State* L) {
     CGInputControl* inputControl = CGInputControl::GetActive();
 
     if (inputControl) {
@@ -1124,7 +1124,7 @@ static int32_t Script_CanSwitchVehicleSeat(lua_State* L) {
 
 // VERIFY: 775130e4 manual
 // OFFSET: 0x00614140
-static int32_t Script_IsXPUserDisabled(lua_State* L) {
+int32_t Script_IsXPUserDisabled(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (!player) {
@@ -1137,7 +1137,7 @@ static int32_t Script_IsXPUserDisabled(lua_State* L) {
 
 // VERIFY: 40c866c6 manual
 // OFFSET: 0x0060DB20
-static int32_t Script_IsInGuild(lua_State* L) {
+int32_t Script_IsInGuild(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player && player->m_player->m_playerGuildid) {
@@ -1151,7 +1151,7 @@ static int32_t Script_IsInGuild(lua_State* L) {
 
 // VERIFY: b1cb14d5 manual
 // OFFSET: 0x0060DF30
-static int32_t Script_GetDodgeChance(lua_State* L) {
+int32_t Script_GetDodgeChance(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player) {
@@ -1165,7 +1165,7 @@ static int32_t Script_GetDodgeChance(lua_State* L) {
 
 // VERIFY: a0d343c0 manual
 // OFFSET: 0x0060DF90
-static int32_t Script_GetBlockChance(lua_State* L) {
+int32_t Script_GetBlockChance(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player) {
@@ -1179,7 +1179,7 @@ static int32_t Script_GetBlockChance(lua_State* L) {
 
 // VERIFY: ea63cefb manual
 // OFFSET: 0x0060E070
-static int32_t Script_GetParryChance(lua_State* L) {
+int32_t Script_GetParryChance(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player) {
@@ -1193,7 +1193,7 @@ static int32_t Script_GetParryChance(lua_State* L) {
 
 // VERIFY: 053898a7 manual
 // OFFSET: 0x0060E0D0
-static int32_t Script_GetCritChance(lua_State* L) {
+int32_t Script_GetCritChance(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player) {
@@ -1207,7 +1207,7 @@ static int32_t Script_GetCritChance(lua_State* L) {
 
 // VERIFY: 3461ae9d manual
 // OFFSET: 0x0060E230
-static int32_t Script_GetRangedCritChance(lua_State* L) {
+int32_t Script_GetRangedCritChance(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player) {
@@ -1221,7 +1221,7 @@ static int32_t Script_GetRangedCritChance(lua_State* L) {
 
 // VERIFY: a05d6e3f manual
 // OFFSET: 0x0060E3B0
-static int32_t Script_GetSpellBonusHealing(lua_State* L) {
+int32_t Script_GetSpellBonusHealing(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player) {
@@ -1235,7 +1235,7 @@ static int32_t Script_GetSpellBonusHealing(lua_State* L) {
 
 // VERIFY: 1d179dfa manual
 // OFFSET: 0x0060E410
-static int32_t Script_GetPetSpellBonusDamage(lua_State* L) {
+int32_t Script_GetPetSpellBonusDamage(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player) {
@@ -1249,7 +1249,7 @@ static int32_t Script_GetPetSpellBonusDamage(lua_State* L) {
 
 // VERIFY: 8eff02c1 manual
 // OFFSET: 0x00612300
-static int32_t Script_IsIndoors(lua_State* L) {
+int32_t Script_IsIndoors(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player && !player->IsOutdoors()) {
@@ -1263,7 +1263,7 @@ static int32_t Script_IsIndoors(lua_State* L) {
 
 // VERIFY: 35e28049 manual
 // OFFSET: 0x00612360
-static int32_t Script_IsOutdoors(lua_State* L) {
+int32_t Script_IsOutdoors(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player && player->IsOutdoors()) {
@@ -1277,7 +1277,7 @@ static int32_t Script_IsOutdoors(lua_State* L) {
 
 // VERIFY: 283ecf8d manual
 // OFFSET: 0x006124A0
-static int32_t Script_IsSwimming(lua_State* L) {
+int32_t Script_IsSwimming(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player && (player->m_clientFlags & 0x200000)) {
@@ -1291,7 +1291,7 @@ static int32_t Script_IsSwimming(lua_State* L) {
 
 // VERIFY: e6af303d manual
 // OFFSET: 0x00612610
-static int32_t Script_IsStealthed(lua_State* L) {
+int32_t Script_IsStealthed(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player && (player->m_unit->m_unitFieldBytes1[2] & 2)) {
@@ -1305,7 +1305,7 @@ static int32_t Script_IsStealthed(lua_State* L) {
 
 // VERIFY: d4ae0785 manual
 // OFFSET: 0x0060DB80
-static int32_t Script_IsGuildLeader(lua_State* L) {
+int32_t Script_IsGuildLeader(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player && player->m_player->m_playerGuildid && !player->m_player->m_playerGuildrank) {
@@ -1319,7 +1319,7 @@ static int32_t Script_IsGuildLeader(lua_State* L) {
 
 // VERIFY: 3c7dfaa2 manual
 // OFFSET: 0x0060DD40
-static int32_t Script_IsResting(lua_State* L) {
+int32_t Script_IsResting(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player && (player->m_player->m_playerFlags & 0x20)) {
@@ -1333,7 +1333,7 @@ static int32_t Script_IsResting(lua_State* L) {
 
 // VERIFY: 447b42ee manual
 // OFFSET: 0x0060E470
-static int32_t Script_GetSpellPenetration(lua_State* L) {
+int32_t Script_GetSpellPenetration(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player) {
@@ -1347,7 +1347,7 @@ static int32_t Script_GetSpellPenetration(lua_State* L) {
 
 // VERIFY: 4aef4c33 manual
 // OFFSET: 0x00611600
-static int32_t Script_HasFullControl(lua_State* L) {
+int32_t Script_HasFullControl(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player && !(player->m_combatModeFlags & 1) && player->m_unit->m_unitFieldHealth > 0 && CGGameUI::m_hasControl) {
@@ -1361,7 +1361,7 @@ static int32_t Script_HasFullControl(lua_State* L) {
 
 // VERIFY: ca04b914 manual
 // OFFSET: 0x00611C40
-static int32_t Script_UnitPVPRank(lua_State* L) {
+int32_t Script_UnitPVPRank(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: UnitPVPRank(\"unit\")");
         return 0;
@@ -1374,7 +1374,7 @@ static int32_t Script_UnitPVPRank(lua_State* L) {
 
 // VERIFY: 2bbe9059 manual
 // OFFSET: 0x006123C0
-static int32_t Script_IsOutOfBounds(lua_State* L) {
+int32_t Script_IsOutOfBounds(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player && (player->m_player->m_playerFlags & 0x4000)) {
@@ -1388,7 +1388,7 @@ static int32_t Script_IsOutOfBounds(lua_State* L) {
 
 // VERIFY: b246aef0 manual
 // OFFSET: 0x00612430
-static int32_t Script_IsFalling(lua_State* L) {
+int32_t Script_IsFalling(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player) {
@@ -1406,7 +1406,7 @@ static int32_t Script_IsFalling(lua_State* L) {
 
 // VERIFY: daa462e7 manual
 // OFFSET: 0x006125A0
-static int32_t Script_IsMounted(lua_State* L) {
+int32_t Script_IsMounted(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (!player || player->m_mountDisplayId <= 0 || (player->m_clientFlags & 0x10000000)) {
@@ -1420,7 +1420,7 @@ static int32_t Script_IsMounted(lua_State* L) {
 
 // VERIFY: 8334ae2c auto
 // OFFSET: 0x0060C920
-static int32_t Script_UnitInParty(lua_State* L) {
+int32_t Script_UnitInParty(lua_State* L) {
     const char* token = lua_tolstring(L, 1, nullptr);
     WOWGUID guid = WOWGUID();
     Script_GetGUIDFromToken(token, guid, false);
@@ -1437,7 +1437,7 @@ static int32_t Script_UnitInParty(lua_State* L) {
 
 // VERIFY: 2c33b711 manual
 // OFFSET: 0x0060D8F0
-static int32_t Script_PlayerCanTeleport(lua_State* L) {
+int32_t Script_PlayerCanTeleport(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
     uint32_t flags = player->m_unit->m_unitFieldFlags;
 
@@ -1452,7 +1452,7 @@ static int32_t Script_PlayerCanTeleport(lua_State* L) {
 
 // VERIFY: 734bc0d8 manual
 // OFFSET: 0x0060DBF0
-static int32_t Script_IsInArenaTeam(lua_State* L) {
+int32_t Script_IsInArenaTeam(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player) {
@@ -1470,7 +1470,7 @@ static int32_t Script_IsInArenaTeam(lua_State* L) {
 
 // VERIFY: 5eae70e6 manual
 // OFFSET: 0x0060DFF0
-static int32_t Script_GetShieldBlock(lua_State* L) {
+int32_t Script_GetShieldBlock(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player) {
@@ -1484,7 +1484,7 @@ static int32_t Script_GetShieldBlock(lua_State* L) {
 
 // VERIFY: f607142d manual
 // OFFSET: 0x0060E290
-static int32_t Script_GetSpellCritChance(lua_State* L) {
+int32_t Script_GetSpellCritChance(lua_State* L) {
     uint32_t school = static_cast<uint32_t>(lua_tonumber(L, 1)) - 1;
 
     if (school > 6) {
@@ -1499,7 +1499,7 @@ static int32_t Script_GetSpellCritChance(lua_State* L) {
 
 // VERIFY: d473dac8 auto
 // OFFSET: 0x00611130
-static int32_t Script_UnitIsTapped(lua_State* L) {
+int32_t Script_UnitIsTapped(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: UnitIsTapped(\"unit\")");
         return 0;
@@ -1518,7 +1518,7 @@ static int32_t Script_UnitIsTapped(lua_State* L) {
 
 // VERIFY: f2910353 auto
 // OFFSET: 0x006111B0
-static int32_t Script_UnitIsTappedByPlayer(lua_State* L) {
+int32_t Script_UnitIsTappedByPlayer(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: UnitIsTappedByPlayer(\"unit\")");
         return 0;
@@ -1537,7 +1537,7 @@ static int32_t Script_UnitIsTappedByPlayer(lua_State* L) {
 
 // VERIFY: a3119ea8 auto
 // OFFSET: 0x00611230
-static int32_t Script_UnitIsTappedByAllThreatList(lua_State* L) {
+int32_t Script_UnitIsTappedByAllThreatList(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: UnitIsTappedByAllThreatList(\"unit\")");
         return 0;
@@ -1556,7 +1556,7 @@ static int32_t Script_UnitIsTappedByAllThreatList(lua_State* L) {
 
 // VERIFY: f25aca66 auto
 // OFFSET: 0x006112B0
-static int32_t Script_UnitIsTrivial(lua_State* L) {
+int32_t Script_UnitIsTrivial(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: UnitIsTrivial(\"unit\")");
         return 0;
@@ -1575,7 +1575,7 @@ static int32_t Script_UnitIsTrivial(lua_State* L) {
 
 // VERIFY: 335afb42 manual
 // OFFSET: 0x0060C770
-static int32_t Script_UnitIsPartyLeader(lua_State* L) {
+int32_t Script_UnitIsPartyLeader(lua_State* L) {
     const char* token = lua_tolstring(L, 1, nullptr);
     WOWGUID guid = WOWGUID();
     Script_GetGUIDFromToken(token, guid, false);
@@ -1592,7 +1592,7 @@ static int32_t Script_UnitIsPartyLeader(lua_State* L) {
 
 // VERIFY: 66591369 manual
 // OFFSET: 0x0060CF20
-static int32_t Script_UnitIsPVPSanctuary(lua_State* L) {
+int32_t Script_UnitIsPVPSanctuary(lua_State* L) {
     const char* token = lua_tolstring(L, 1, nullptr);
     WOWGUID guid;
     CGUnit_C* unit;
@@ -1608,7 +1608,7 @@ static int32_t Script_UnitIsPVPSanctuary(lua_State* L) {
 
 // VERIFY: e6da71ac auto
 // OFFSET: 0x0060D330
-static int32_t Script_UnitIsEnemy(lua_State* L) {
+int32_t Script_UnitIsEnemy(lua_State* L) {
     if (!lua_isstring(L, 1) || !lua_isstring(L, 2)) {
         luaL_error(L, "Usage: UnitIsEnemy(\"unit\", \"otherUnit\")");
         return 0;
@@ -1628,7 +1628,7 @@ static int32_t Script_UnitIsEnemy(lua_State* L) {
 
 // VERIFY: 9977228e auto
 // OFFSET: 0x0060D690
-static int32_t Script_UnitCanAssist(lua_State* L) {
+int32_t Script_UnitCanAssist(lua_State* L) {
     if (!lua_isstring(L, 1) || !lua_isstring(L, 2)) {
         luaL_error(L, "Usage: UnitCanAssist(\"unit\", \"otherUnit\")");
         return 0;
@@ -1648,7 +1648,7 @@ static int32_t Script_UnitCanAssist(lua_State* L) {
 
 // VERIFY: 2b7d1365 auto
 // OFFSET: 0x0060D730
-static int32_t Script_UnitCanAttack(lua_State* L) {
+int32_t Script_UnitCanAttack(lua_State* L) {
     if (!lua_isstring(L, 1) || !lua_isstring(L, 2)) {
         luaL_error(L, "Usage: UnitCanAttack(\"unit\", \"otherUnit\")");
         return 0;
@@ -1668,7 +1668,7 @@ static int32_t Script_UnitCanAttack(lua_State* L) {
 
 // VERIFY: 55248fe1 auto
 // OFFSET: 0x00611780
-static int32_t Script_UnitCreatureType(lua_State* L) {
+int32_t Script_UnitCreatureType(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: UnitCreatureType(\"unit\")");
         return 0;
@@ -1689,7 +1689,7 @@ static int32_t Script_UnitCreatureType(lua_State* L) {
 
 // VERIFY: b49f7e06 auto
 // OFFSET: 0x00611820
-static int32_t Script_UnitCreatureFamily(lua_State* L) {
+int32_t Script_UnitCreatureFamily(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: UnitCreatureFamily(\"unit\")");
         return 0;
@@ -1710,7 +1710,7 @@ static int32_t Script_UnitCreatureFamily(lua_State* L) {
 
 // VERIFY: 3baa631d manual
 // OFFSET: 0x00612500
-static int32_t Script_IsFlying(lua_State* L) {
+int32_t Script_IsFlying(lua_State* L) {
     CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (unit && unit->m_vehiclePassenger && unit->m_vehiclePassenger->m_state == 3) {
@@ -1728,7 +1728,7 @@ static int32_t Script_IsFlying(lua_State* L) {
 
 // VERIFY: 18aba385 manual
 // OFFSET: 0x00612870
-static int32_t Script_GetUnitMaxHealthModifier(lua_State* L) {
+int32_t Script_GetUnitMaxHealthModifier(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: GetUnitMaxHealthModifier(\"unit\")");
         return 0;
@@ -1747,7 +1747,7 @@ static int32_t Script_GetUnitMaxHealthModifier(lua_State* L) {
 
 // VERIFY: 7c1ca0c5 manual
 // OFFSET: 0x00612CB0
-static int32_t Script_GetExpertisePercent(lua_State* L) {
+int32_t Script_GetExpertisePercent(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player) {
@@ -1763,7 +1763,7 @@ static int32_t Script_GetExpertisePercent(lua_State* L) {
 
 // VERIFY: ed117708 auto
 // OFFSET: 0x00613290
-static int32_t Script_GetUnitSpeed(lua_State* L) {
+int32_t Script_GetUnitSpeed(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: GetUnitSpeed(\"unit\")");
         return 0;
@@ -1779,7 +1779,7 @@ static int32_t Script_GetUnitSpeed(lua_State* L) {
 
 // VERIFY: beaa5d8a auto
 // OFFSET: 0x00613330
-static int32_t Script_GetUnitPitch(lua_State* L) {
+int32_t Script_GetUnitPitch(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: GetUnitPitch(\"unit\")");
         return 0;
@@ -1795,7 +1795,7 @@ static int32_t Script_GetUnitPitch(lua_State* L) {
 
 // VERIFY: 5733704d manual
 // OFFSET: 0x00613570
-static int32_t Script_UnitControllingVehicle(lua_State* L) {
+int32_t Script_UnitControllingVehicle(lua_State* L) {
     const char* token = lua_tolstring(L, 1, nullptr);
     int32_t controlling = 0;
     WOWGUID guid;
@@ -1814,7 +1814,7 @@ static int32_t Script_UnitControllingVehicle(lua_State* L) {
 
 // VERIFY: 5df6566b manual
 // OFFSET: 0x00613830
-static int32_t Script_UnitVehicleSeatCount(lua_State* L) {
+int32_t Script_UnitVehicleSeatCount(lua_State* L) {
     const char* token = lua_tolstring(L, 1, nullptr);
     WOWGUID guid;
     CGUnit_C* unit;
@@ -1831,7 +1831,7 @@ static int32_t Script_UnitVehicleSeatCount(lua_State* L) {
 
 // VERIFY: 8fd44e43 manual
 // OFFSET: 0x00613C90
-static int32_t Script_UnitIsControlling(lua_State* L) {
+int32_t Script_UnitIsControlling(lua_State* L) {
     const char* token = lua_tolstring(L, 1, nullptr);
     WOWGUID guid;
 
@@ -1854,7 +1854,7 @@ static int32_t Script_UnitIsControlling(lua_State* L) {
 
 // VERIFY: 3718aa54 manual
 // OFFSET: 0x006082C0
-static int32_t Script_GetMaxCombatRatingBonus(lua_State* L) {
+int32_t Script_GetMaxCombatRatingBonus(lua_State* L) {
     if (!lua_isnumber(L, 1)) {
         luaL_error(L, "Usage: GetMaxCombatRatingBonus(ratingIndex)");
         return 0;
@@ -1873,7 +1873,7 @@ static int32_t Script_GetMaxCombatRatingBonus(lua_State* L) {
 
 // VERIFY: fe45ad25 auto
 // OFFSET: 0x0060D280
-static int32_t Script_UnitReaction(lua_State* L) {
+int32_t Script_UnitReaction(lua_State* L) {
     if (!lua_isstring(L, 1) || !lua_isstring(L, 2)) {
         luaL_error(L, "Usage: UnitReaction(\"unit\", \"otherUnit\")");
         return 0;
@@ -1893,7 +1893,7 @@ static int32_t Script_UnitReaction(lua_State* L) {
 
 // VERIFY: 0b0e6f1d manual
 // OFFSET: 0x00612A90
-static int32_t Script_GetManaRegen(lua_State* L) {
+int32_t Script_GetManaRegen(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (!player || player->m_unit->m_unitFieldBytes0[3]) {
@@ -1909,7 +1909,7 @@ static int32_t Script_GetManaRegen(lua_State* L) {
 
 // VERIFY: e854f343 manual
 // OFFSET: 0x00612B40
-static int32_t Script_GetPowerRegen(lua_State* L) {
+int32_t Script_GetPowerRegen(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player) {
@@ -1926,7 +1926,7 @@ static int32_t Script_GetPowerRegen(lua_State* L) {
 
 // VERIFY: 8ec56229 manual
 // OFFSET: 0x0060DDB0
-static int32_t Script_GetCombatRating(lua_State* L) {
+int32_t Script_GetCombatRating(lua_State* L) {
     if (!lua_isnumber(L, 1)) {
         luaL_error(L, "Usage: GetCombatRating(ratingIndex)");
         return 0;
@@ -1952,7 +1952,7 @@ static int32_t Script_GetCombatRating(lua_State* L) {
 
 // VERIFY: ccddb858 manual
 // OFFSET: 0x00612BF0
-static int32_t Script_GetExpertise(lua_State* L) {
+int32_t Script_GetExpertise(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player) {
@@ -1968,7 +1968,7 @@ static int32_t Script_GetExpertise(lua_State* L) {
 
 // VERIFY: 4960208f manual
 // OFFSET: 0x00611A20
-static int32_t Script_GetPVPSessionStats(lua_State* L) {
+int32_t Script_GetPVPSessionStats(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player) {
@@ -1984,7 +1984,7 @@ static int32_t Script_GetPVPSessionStats(lua_State* L) {
 
 // VERIFY: ccc92036 manual
 // OFFSET: 0x00611AD0
-static int32_t Script_GetPVPYesterdayStats(lua_State* L) {
+int32_t Script_GetPVPYesterdayStats(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player) {
@@ -2000,7 +2000,7 @@ static int32_t Script_GetPVPYesterdayStats(lua_State* L) {
 
 // VERIFY: 22d944ac manual
 // OFFSET: 0x00611B80
-static int32_t Script_GetPVPLifetimeStats(lua_State* L) {
+int32_t Script_GetPVPLifetimeStats(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (player) {
@@ -2017,7 +2017,7 @@ static int32_t Script_GetPVPLifetimeStats(lua_State* L) {
 
 // VERIFY: ebbf2e24 manual
 // OFFSET: 0x0060DC70
-static int32_t Script_IsArenaTeamCaptain(lua_State* L) {
+int32_t Script_IsArenaTeamCaptain(lua_State* L) {
     if (!lua_isnumber(L, 1)) {
         luaL_error(L, "Usage: IsArenaTeamCaptain(index)");
         return 0;
@@ -2038,7 +2038,7 @@ static int32_t Script_IsArenaTeamCaptain(lua_State* L) {
 
 // VERIFY: 7f2ce3f2 auto
 // OFFSET: 0x0060CD50
-static int32_t Script_UnitIsDND(lua_State* L) {
+int32_t Script_UnitIsDND(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: UnitIsDND(\"unit\")");
         return 0;
@@ -2075,7 +2075,7 @@ static int32_t Script_UnitIsDND(lua_State* L) {
 
 // VERIFY: 8f807614 auto
 // OFFSET: 0x006133D0
-static int32_t Script_UnitInVehicle(lua_State* L) {
+int32_t Script_UnitInVehicle(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: UnitInVehicle(\"unit\")");
         return 0;
@@ -2107,7 +2107,7 @@ static int32_t Script_UnitInVehicle(lua_State* L) {
 
 // VERIFY: 51ed5491 auto
 // OFFSET: 0x006134A0
-static int32_t Script_UnitUsingVehicle(lua_State* L) {
+int32_t Script_UnitUsingVehicle(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: UnitUsingVehicle(\"unit\")");
         return 0;
@@ -2139,7 +2139,7 @@ static int32_t Script_UnitUsingVehicle(lua_State* L) {
 
 // VERIFY: c07d67c2 manual
 // OFFSET: 0x00611330
-static int32_t Script_UnitHasRelicSlot(lua_State* L) {
+int32_t Script_UnitHasRelicSlot(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: UnitHasRelicSlot(\"unit\")");
         return 0;
@@ -2159,7 +2159,7 @@ static int32_t Script_UnitHasRelicSlot(lua_State* L) {
 
 // VERIFY: 2eaf7430 auto
 // OFFSET: 0x0060E9A0
-static int32_t Script_UnitPVPName(lua_State* L) {
+int32_t Script_UnitPVPName(lua_State* L) {
     char buffer[1024];
 
     if (!lua_isstring(L, 1)) {
@@ -2183,7 +2183,7 @@ static int32_t Script_UnitPVPName(lua_State* L) {
 
 // VERIFY: 76f248a9 manual
 // OFFSET: 0x0060CFB0
-static int32_t Script_UnitIsPVPFreeForAll(lua_State* L) {
+int32_t Script_UnitIsPVPFreeForAll(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: UnitIsPVPFreeForAll(\"unit\")");
         return 0;
@@ -2220,7 +2220,7 @@ static int32_t Script_UnitIsPVPFreeForAll(lua_State* L) {
 
 // VERIFY: dbf9a69d manual
 // OFFSET: 0x00610EC0
-static int32_t Script_UnitArmor(lua_State* L) {
+int32_t Script_UnitArmor(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: UnitArmor(\"unit\")");
         return 0;
@@ -2247,7 +2247,7 @@ static int32_t Script_UnitArmor(lua_State* L) {
 
 // VERIFY: 0d546523 auto
 // OFFSET: 0x00613D20
-static int32_t Script_CanEjectPassengerFromSeat(lua_State* L) {
+int32_t Script_CanEjectPassengerFromSeat(lua_State* L) {
     int32_t canEject = 0;
 
     if (!lua_isnumber(L, 1)) {
@@ -2273,7 +2273,7 @@ static int32_t Script_CanEjectPassengerFromSeat(lua_State* L) {
 
 // VERIFY: cef8c43a manual
 // OFFSET: 0x00610300
-static int32_t Script_UnitStat(lua_State* L) {
+int32_t Script_UnitStat(lua_State* L) {
     if (!lua_isstring(L, 1) || !lua_isnumber(L, 2)) {
         luaL_error(L, "Usage: UnitStat(\"unit\", statIndex)");
         return 0;
@@ -2304,7 +2304,7 @@ static int32_t Script_UnitStat(lua_State* L) {
 
 // VERIFY: dbe049a8 manual
 // OFFSET: 0x006101A0
-static int32_t Script_UnitResistance(lua_State* L) {
+int32_t Script_UnitResistance(lua_State* L) {
     if (!lua_isstring(L, 1) || !lua_isnumber(L, 2)) {
         luaL_error(L, "Usage: UnitResistance(\"unit\", resistanceIndex)");
         return 0;
@@ -2343,7 +2343,7 @@ static int32_t Script_UnitResistance(lua_State* L) {
 
 // VERIFY: 7fbda2e6 manual
 // OFFSET: 0x00610DE0
-static int32_t Script_UnitDefense(lua_State* L) {
+int32_t Script_UnitDefense(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: UnitDefense(\"unit\")");
         return 0;
@@ -2368,7 +2368,7 @@ static int32_t Script_UnitDefense(lua_State* L) {
 
 // VERIFY: bc7e1a11 manual
 // OFFSET: 0x00610450
-static int32_t Script_UnitAttackBothHands(lua_State* L) {
+int32_t Script_UnitAttackBothHands(lua_State* L) {
     int32_t bonus[2];
     int32_t rank[2];
 
@@ -2404,7 +2404,7 @@ static int32_t Script_UnitAttackBothHands(lua_State* L) {
 
 // VERIFY: 1de5d643 manual
 // OFFSET: 0x00611DF0
-static int32_t Script_UnitCastingInfo(lua_State* L) {
+int32_t Script_UnitCastingInfo(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: UnitCastingInfo(\"unit\")");
         return 0;
@@ -2484,7 +2484,7 @@ static int32_t Script_UnitCastingInfo(lua_State* L) {
 
 // VERIFY: 4a66dce9 manual
 // OFFSET: 0x00613140
-static int32_t Script_GetRuneCount(lua_State* L) {
+int32_t Script_GetRuneCount(lua_State* L) {
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (!player) {
@@ -2820,7 +2820,7 @@ static int32_t Script_UnitCharacterPoints(lua_State* L) {
 
 // VERIFY: 82224133 manual
 // OFFSET: 0x00612090
-static int32_t Script_UnitChannelInfo(lua_State* L) {
+int32_t Script_UnitChannelInfo(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: UnitChannelInfo(\"unit\")");
         return 0;
@@ -2871,7 +2871,7 @@ static int32_t Script_UnitChannelInfo(lua_State* L) {
 
 // VERIFY: 34158845 auto
 // OFFSET: 0x00611670
-static int32_t Script_GetComboPoints(lua_State* L) {
+int32_t Script_GetComboPoints(lua_State* L) {
     if (!lua_isstring(L, 1)) {
         luaL_error(L, "Usage: GetComboPoints(\"unit\"[, \"target\"]");
         return 0;
@@ -2900,7 +2900,7 @@ static int32_t Script_GetComboPoints(lua_State* L) {
 
 // VERIFY: 59cf42d0 manual
 // OFFSET: 0x00611CB0
-static int32_t Script_GetPVPRankInfo(lua_State* L) {
+int32_t Script_GetPVPRankInfo(lua_State* L) {
     if (!lua_isnumber(L, 1)) {
         luaL_error(L, "Usage: GetPVPRankInfo(rank [, unit])");
         return 0;
@@ -3124,7 +3124,7 @@ static void PortraitQueryCallback(int32_t id, const WOWGUID& guid, void* param, 
 
 // VERIFY: 7dcbffec manual
 // OFFSET: 0x006113E0
-static int32_t Script_SetPortraitTexture(lua_State* L) {
+int32_t Script_SetPortraitTexture(lua_State* L) {
     CSimpleTexture* texture = static_cast<CSimpleTexture*>(FrameScript_GetObjectThis(L, CSimpleTexture::GetObjectType()));
 
     if (!lua_isstring(L, 2)) {

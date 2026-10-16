@@ -875,7 +875,7 @@ void SendCombatLogEvents() {
             FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_LOG_EVENT, L, count + 1);
         }
 
-        if (!FrameScript_GetEventListeners(g_scriptEvents[567])->Head()) {
+        if (!FrameScript_GetEventListeners(g_scriptEvents[567])->Head() && !FrameScript_ObserverWants(SCRIPT_EVENT_COMBAT_LOG_EVENT_UNFILTERED)) {
             lua_settop(L, -1 - count);
         } else {
             lua_pushstring(L, g_scriptEvents[567]);

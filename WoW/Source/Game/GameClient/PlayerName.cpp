@@ -1,4 +1,5 @@
 #include "PlayerName.h"
+#include <cmath>
 #include <typeinfo>
 #include "Engine/Source/Base/CDataAllocator.h"
 #include "Engine/Source/Base/Handle.h"
@@ -79,7 +80,7 @@ void PlayerNameShutdown() {
     s_playerNameFont = nullptr;
     GxuFontDestroyBatch(s_playerNameBatch);
     s_playerNameBatch = nullptr;
-    s_freePlayerNames.Clear(typeid(PLAYERNAMEDESC).raw_name(), SLOG_OBJECT, 1);
+    s_freePlayerNames.Clear(RAW_TYPE_NAME(PLAYERNAMEDESC), SLOG_OBJECT, 1);
     ConsoleCommandUnregister("PlayerNames");
 
     if (s_playerNameIcons) {

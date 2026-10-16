@@ -93,6 +93,7 @@
 #include "WoW/Source/Ui/DuelInfo.h"
 #include "WoW/Source/Ui/EquipmentManager.h"
 #include "WoW/Source/Ui/GameUI.h"
+#include "WoW/Source/WasmAddonClient.h"
 #include "WoW/Source/Ui/GlyphInfo.h"
 #include "WoW/Source/Ui/GMSurveyInfo.h"
 #include "WoW/Source/Ui/GMTicketInfo.h"
@@ -1797,6 +1798,7 @@ void CGGameUI::InitializeFrameXML() {
 
     BugReportRegister();
     LoadAddOns(&status);
+    WasmAddonClient_LoadWorldAddOns();
     FrameXML_RegisterLoadProgressCallback(nullptr, nullptr, 0);
     CGGameUI::Initialize();
     LoadSavedVariables(&status);
@@ -1993,6 +1995,7 @@ int32_t CGGameUI::Idle(const void* data, void* param) {
 
     lua_State* L = FrameScript_GetContext();
     lua_taintexpected = 0;
+    WasmAddonClient_ServiceConfirms();
 
     if (lua_gettop(FrameScript_GetContext())) {
         SErrDisplayAppFatalMessage("", "", 0);
@@ -7182,6 +7185,7 @@ void CGGameUI::ShutdownGame() {
     CGGMTicketInfo::ShutdownGame();
     CGGMSurveyInfo::ShutdownGame();
     FrameScript_Flush();
+    WasmAddonClient_OnScriptReset();
 
     for (uint32_t i = 0; i < sizeof(s_readOnlyCVars) / sizeof(s_readOnlyCVars[0]); i++) {
         CVar* var = CVar::Lookup(s_readOnlyCVars[i]);
@@ -7520,6 +7524,7 @@ void CGGameUI::Shutdown() {
     CVar::SaveAll();
     CVar::DeleteCharacterCVars();
     AccountDataFlush();
+    WasmAddonClient_UnloadWorldAddOns();
     UnloadAddOns();
     SaveAddOnEnableState();
 

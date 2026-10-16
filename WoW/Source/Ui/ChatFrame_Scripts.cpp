@@ -40,66 +40,37 @@ static const char* s_channelCategories[3] = { "CHANNEL_CATEGORY_GROUP", "CHANNEL
 
 // VERIFY: 3ea62573 manual
 // OFFSET: 0x0050D170
-static int32_t Script_SendChatMessage(lua_State* L) {
+int32_t CGChat::SendNative(int32_t type, uint32_t language, const char* target, const char* text) {
     if (!CGGameUI::CanPerformAction(10)) {
-        return 0;
+        return 1;
     }
 
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
 
     if (!player) {
-        return 0;
+        return 1;
     }
 
-    if (!lua_isstring(L, 1)) {
-        luaL_error(L, "Usage: SendChatMessage(text [,type] [,language] [,targetPlayer])");
-    }
-
-    const char* text = lua_tolstring(L, 1, nullptr);
-    int32_t type = CHAT_MSG_SAY;
-
-    if (lua_isstring(L, 2)) {
-        if (!StringToChatType(lua_tolstring(L, 2, nullptr), &type)) {
-            luaL_error(L, "SendChatMessage(): Unknown chat type");
-        }
+    if (language == 0xFFFFFFFEu) {
+        language = player->GetDefaultLanguage();
     }
 
     if ((!text || !*text) && type != CHAT_MSG_DND && type != CHAT_MSG_AFK) {
-        return 0;
+        return 8;
     }
 
-    if (!ValidateStringIsUTF8(text)) {
-        luaL_error(L, "SendChatMessage(): Chat message must be UTF-8 text");
-    }
-
-    const char* target = nullptr;
-    uint32_t language = player->GetDefaultLanguage();
-
-    if (lua_isstring(L, 3)) {
-        if (!StringToLanguage(lua_tolstring(L, 3, nullptr), &language)) {
-            luaL_error(L, "SendChatMessage(): Unknown language");
-        }
-
-        uint32_t skill;
-
-        if (!player->GetLanguageSkill(language, skill)) {
-            CGGameUI::DisplayError(ERR_CANT_SPEAK_LANGAGE);
-            return 0;
-        }
-    }
-
-    if (lua_isstring(L, 4)) {
-        target = lua_tolstring(L, 4, nullptr);
+    if (!text || !ValidateStringIsUTF8(text)) {
+        return -4;
     }
 
     if (type == CHAT_MSG_WHISPER) {
         if (!target || !*target) {
-            luaL_error(L, "SendChatMessage(): Whisper message missing target player!");
+            return -1;
         }
     } else if (type == CHAT_MSG_PARTY) {
         if (!CGPartyInfo::InParty() && (!CGRaidInfo::m_numMembers || !CGRaidInfo::IsPVPRaid())) {
             CGGameUI::DisplayError(ERR_NOT_IN_GROUP);
-            return 0;
+            return 2;
         }
 
         if (CGPartyInfo::m_leader.m_guid == player->m_obj->m_guid.m_guid) {
@@ -109,20 +80,20 @@ static int32_t Script_SendChatMessage(lua_State* L) {
         if (!CGRaidInfo::m_numMembers) {
             if (!CGPartyInfo::InParty()) {
                 CGGameUI::DisplayError(ERR_NOT_IN_GROUP);
-                return 0;
+                return 2;
             }
         } else {
             WOWGUID guid = player->m_obj->m_guid;
 
             if (!CGRaidInfo::IsPlayerRaidOfficer(guid)) {
                 CGGameUI::DisplayError(ERR_NOT_LEADER);
-                return 0;
+                return 3;
             }
         }
     } else if (type == CHAT_MSG_RAID || type == CHAT_MSG_BATTLEGROUND) {
         if (!CGRaidInfo::m_numMembers) {
             CGGameUI::DisplayError(type != CHAT_MSG_BATTLEGROUND ? ERR_NOT_IN_RAID : ERR_NOT_IN_BATTLEGROUND);
-            return 0;
+            return type != CHAT_MSG_BATTLEGROUND ? 4 : 5;
         }
 
         if (type == CHAT_MSG_RAID) {
@@ -134,19 +105,19 @@ static int32_t Script_SendChatMessage(lua_State* L) {
         }
     } else if (type == CHAT_MSG_CHANNEL) {
         if (!target || !*target) {
-            luaL_error(L, "SendChatMessage(): Channel send missing channel number");
+            return -2;
         }
 
         int32_t number = SStrToInt(target);
 
         if (number < 1 || number > static_cast<int32_t>(CGChat::s_channels.Count())) {
-            return 0;
+            return 6;
         }
 
         ChatChannel* channel = &CGChat::s_channels.m_data[number - 1];
 
         if (channel->m_channelNumber != number || channel->m_unk9C) {
-            return 0;
+            return 6;
         }
 
         target = channel->m_name;
@@ -184,7 +155,7 @@ static int32_t Script_SendChatMessage(lua_State* L) {
 
     if (player->IsDeadOrGhost() && type != CHAT_MSG_WHISPER && type != CHAT_MSG_PARTY && type != CHAT_MSG_PARTY_LEADER && type != CHAT_MSG_RAID && type != CHAT_MSG_RAID_LEADER && type != CHAT_MSG_RAID_WARNING && type != CHAT_MSG_GUILD && type != CHAT_MSG_OFFICER && type != CHAT_MSG_CHANNEL && type != CHAT_MSG_DND && type != CHAT_MSG_BATTLEGROUND && type != CHAT_MSG_BATTLEGROUND_LEADER) {
         CGGameUI::DisplayError(ERR_CHAT_WHILE_DEAD);
-        return 0;
+        return 7;
     }
 
     CGTutorial::FlagTutorial(22);
@@ -208,7 +179,7 @@ static int32_t Script_SendChatMessage(lua_State* L) {
             next = escape + 2;
         } else {
             if (escape[1] != 'c') {
-                luaL_error(L, "SendChatMessage(): Invalid escape code in chat message");
+                return -3;
             }
 
             char* end = SStrStr(escape, "|r");
@@ -262,6 +233,74 @@ static int32_t Script_SendChatMessage(lua_State* L) {
     msg.PutString(message);
     msg.Finalize();
     ClientServices::Send2(&msg);
+    return 0;
+}
+
+static int32_t Script_SendChatMessage(lua_State* L) {
+    if (!CGGameUI::CanPerformAction(10)) {
+        return 0;
+    }
+
+    CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
+
+    if (!player) {
+        return 0;
+    }
+
+    if (!lua_isstring(L, 1)) {
+        luaL_error(L, "Usage: SendChatMessage(text [,type] [,language] [,targetPlayer])");
+    }
+
+    const char* text = lua_tolstring(L, 1, nullptr);
+    int32_t type = CHAT_MSG_SAY;
+
+    if (lua_isstring(L, 2)) {
+        if (!StringToChatType(lua_tolstring(L, 2, nullptr), &type)) {
+            luaL_error(L, "SendChatMessage(): Unknown chat type");
+        }
+    }
+
+    if ((!text || !*text) && type != CHAT_MSG_DND && type != CHAT_MSG_AFK) {
+        return 0;
+    }
+
+    if (!ValidateStringIsUTF8(text)) {
+        luaL_error(L, "SendChatMessage(): Chat message must be UTF-8 text");
+    }
+
+    const char* target = nullptr;
+    uint32_t language = player->GetDefaultLanguage();
+
+    if (lua_isstring(L, 3)) {
+        if (!StringToLanguage(lua_tolstring(L, 3, nullptr), &language)) {
+            luaL_error(L, "SendChatMessage(): Unknown language");
+        }
+
+        uint32_t skill;
+
+        if (!player->GetLanguageSkill(language, skill)) {
+            CGGameUI::DisplayError(ERR_CANT_SPEAK_LANGAGE);
+            return 0;
+        }
+    }
+
+    if (lua_isstring(L, 4)) {
+        target = lua_tolstring(L, 4, nullptr);
+    }
+
+    int32_t rc = CGChat::SendNative(type, language, target, text);
+
+    if (rc == -1) {
+        luaL_error(L, "SendChatMessage(): Whisper message missing target player!");
+    }
+
+    if (rc == -2) {
+        luaL_error(L, "SendChatMessage(): Channel send missing channel number");
+    }
+
+    if (rc == -3) {
+        luaL_error(L, "SendChatMessage(): Invalid escape code in chat message");
+    }
 
     return 0;
 }
