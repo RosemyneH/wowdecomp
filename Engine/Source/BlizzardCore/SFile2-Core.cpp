@@ -1012,6 +1012,18 @@ bool System_SFile2::FindFile(const char* name, char* path, uint32_t size, uint32
         return true;
     }
 
+    // ʕ •ᴥ•ʔ✿ Addon files live on disk under Interface/. The archive hash does not have to know them first ✿ ʕ •ᴥ•ʔ
+    bool addonPath = Blizzard::String::FindI(name, "Interface\\AddOns\\", 0x7FFFFFFF) || Blizzard::String::FindI(name, "Interface/AddOns/", 0x7FFFFFFF) || Blizzard::String::FindI(name, "Interface\\WasmAddOns\\", 0x7FFFFFFF) || Blizzard::String::FindI(name, "Interface/WasmAddOns/", 0x7FFFFFFF);
+    if (addonPath) {
+        Blizzard::File::StreamRecord* stream = nullptr;
+        if (Blizzard::File::Open(name, 0x1005, stream)) {
+            Blizzard::File::Close(stream);
+            Blizzard::String::Copy(path, name, size);
+            *type = 0;
+            return true;
+        }
+    }
+
     return false;
 }
 

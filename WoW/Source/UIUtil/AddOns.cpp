@@ -26,6 +26,8 @@
 // ʕ •ᴥ•ʔ✿ Wasm packages keep the whole addon in Interface\WasmAddOns\<Name>. The loader reads that folder ✿ ʕ •ᴥ•ʔ
 static std::unordered_map<std::string, std::string> s_addonFileRoot;
 
+static void RebuildAddOnList();
+
 static void FormatAddonFile(char* out, size_t outLen, const char* name, const char* file) {
     auto it = s_addonFileRoot.find(name);
     const char* root = it == s_addonFileRoot.end() ? "Interface\\AddOns" : it->second.c_str();
@@ -773,15 +775,7 @@ void SetAddOnInfoRequest(CDataStore* msg) {
 
     DestroyBannedAddOns();
 
-    s_addOnInfo.SetCount(0);
-
-    for (UIADDON* addon = s_addons.m_fulllist.Head(); addon; addon = s_addons.m_fulllist.Next(addon)) {
-        if (!addon->m_blizzard) {
-            *s_addOnInfo.New() = addon->m_key.m_str;
-        }
-    }
-
-    qsort(s_addOnInfo.m_data, s_addOnInfo.Count(), sizeof(const char*), QSortAddOns);
+    RebuildAddOnList();
 }
 
 // VERIFY: 6c736269 manual
@@ -1453,17 +1447,33 @@ static void RegisterWasmPackage(const char* name) {
     if (value[0]) addon->SetMetadata("Version", value);
 }
 
+static bool LooseFile(const char* path) {
+    if (OsFileExists(path)) return true;
+    char alt[260];
+    SStrCopy(alt, path, sizeof(alt));
+    for (char* p = alt; *p; p++) if (*p == '\\') *p = '/';
+    return OsFileExists(alt) != 0;
+}
+
+static void RebuildAddOnList() {
+    s_addOnInfo.SetCount(0);
+    for (UIADDON* addon = s_addons.m_fulllist.Head(); addon; addon = s_addons.m_fulllist.Next(addon)) {
+        if (!addon->m_blizzard) *s_addOnInfo.New() = addon->m_key.m_str;
+    }
+    qsort(s_addOnInfo.m_data, s_addOnInfo.Count(), sizeof(const char*), QSortAddOns);
+}
+
 static int32_t EnumWasmPackages(OS_FILE_DATA& data, void* param) {
     if (!(data.flags & 0x10) || data.fileName[0] == '.') return 0;
     char path[260];
     SStrPrintf(path, sizeof(path), "Interface\\WasmAddOns\\%s\\%s.toc", data.fileName, data.fileName);
-    if (SFile::FileExists(path)) {
+    if (LooseFile(path)) {
         s_addonFileRoot[data.fileName] = "Interface\\WasmAddOns";
         LoadAddOnInfo(data.fileName);
         return 0;
     }
     SStrPrintf(path, sizeof(path), "Interface\\WasmAddOns\\%s\\addon.toml", data.fileName);
-    if (SFile::FileExists(path)) RegisterWasmPackage(data.fileName);
+    if (LooseFile(path)) RegisterWasmPackage(data.fileName);
     return 0;
 }
 
@@ -1483,6 +1493,8 @@ void InitializeAddOns() {
             }
         }
     }
+
+    RebuildAddOnList();
 }
 
 // VERIFY: 0f76c1b3 auto
