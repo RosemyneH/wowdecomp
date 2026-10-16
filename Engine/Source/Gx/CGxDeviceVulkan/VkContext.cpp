@@ -695,8 +695,9 @@ void VkContext::PrepareFrame() {
     uint64_t timeout = frame.fenceUnsignaled ? 100 * 1000000ull : UINT64_MAX;
     if (vkWaitForFences(this->m_device, 1, &frame.fence, VK_TRUE, timeout) == VK_SUCCESS) {
         frame.fenceUnsignaled = 0;
+        // ʕ •ᴥ•ʔ✿ Retired buffers stay live until this fence signals; a timeout means earlier submits may still sample them ✿ ʕ •ᴥ•ʔ
+        this->Collect(frame);
     }
-    this->Collect(frame);
     for (VkDescriptorPool pool : frame.descriptorPools) vkResetDescriptorPool(this->m_device, pool, 0);
     frame.descriptorPoolCursor = 0;
     frame.sets.clear();
