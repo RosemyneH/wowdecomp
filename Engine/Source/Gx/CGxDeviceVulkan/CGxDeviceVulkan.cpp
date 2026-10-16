@@ -1076,7 +1076,9 @@ VkSampler CGxDeviceVulkan::ISampler(const CGxTexFlags& flags) {
     info.maxLod = flags.m_filter <= GxTex_Linear ? 0.25f : VK_LOD_CLAMP_NONE;
 
     VkSampler sampler = VK_NULL_HANDLE;
-    vkCreateSampler(this->m_vk.m_device, &info, nullptr, &sampler);
+    if (vkCreateSampler(this->m_vk.m_device, &info, nullptr, &sampler) != VK_SUCCESS) {
+        return VK_NULL_HANDLE;
+    }
     this->m_samplers[key] = sampler;
 
     return sampler;
@@ -1222,6 +1224,10 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
 
         views[tmu] = texture->image.view;
         samplers[tmu] = this->ISampler(texId ? texId->m_flags : CGxTexFlags());
+
+        if (!samplers[tmu]) {
+            return;
+        }
     }
 
     VkDrawUniforms uniforms;
