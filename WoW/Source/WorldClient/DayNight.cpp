@@ -2300,6 +2300,10 @@ void DayNight::DNClouds::SetLOD(uint32_t lod, uint32_t rowsPerUpdate) {
     this->m_textures[1] = TextureCreate(this->m_size, this->m_size, this->m_texFormat, GxTex_Argb8888, flags, this->m_texels.m_data, DayNight::DNClouds::Callback_GxTex, "DNClouds1", 0);
     this->m_row = 0;
     this->m_fullUpdate = 1;
+
+    if (this->m_enabled) {
+        this->UpdateTextureAnimation();
+    }
 }
 
 // VERIFY: 92e57f89 auto
@@ -2551,6 +2555,7 @@ void DayNight::LoadMap(int32_t mapId) {
     DayNight::g_clouds.m_density = static_cast<uint8_t>((1.0f - density) * 255.0f);
     DayNight::g_clouds.SetSharpness(0.95999998f);
     DayNight::g_clouds.m_enabled = 1;
+    DayNight::g_clouds.Update();
     DayNight::GlareBase::m_masterEnable = 1;
     DayNight::InitSunGlare();
     DayNight::InitMoonGlare();

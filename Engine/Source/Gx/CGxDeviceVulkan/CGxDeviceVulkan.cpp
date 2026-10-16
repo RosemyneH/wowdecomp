@@ -1583,13 +1583,20 @@ void CGxDeviceVulkan::ITexCreate(CGxTex* texId) {
     } else {
         texture->layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         VkContext::Barrier(upload, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+        VkImageSubresourceRange range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, texture->levels, 0, 1 };
+        VkClearColorValue clear = {};
+        vkCmdClearColorImage(upload, texture->image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear, 1, &range);
+        VkContext::Barrier(upload, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        texture->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        texture->initialized = 1;
     }
 
     texId->m_apiSpecificData = texture;
     texId->m_needsCreation = 0;
 }
 
-void CGxDeviceVulkan::ITexUpload(CGxTex* texId) {
+int32_t CGxDeviceVulkan::ITexUpload(CGxTex* texId) {
     uint32_t texelStrideInBytes;
     const void* texels = nullptr;
     texId->m_userFunc(GxTex_Lock, texId->m_width, texId->m_height, 0, 0, texId->m_userArg, texelStrideInBytes, texels);
@@ -1605,12 +1612,14 @@ void CGxDeviceVulkan::ITexUpload(CGxTex* texId) {
     if (!cmd) {
         texels = nullptr;
         texId->m_userFunc(GxTex_Unlock, texId->m_width, texId->m_height, 0, 0, texId->m_userArg, texelStrideInBytes, texels);
-        return;
+        return 0;
     }
     int32_t compressed = texId->m_dataFormat >= GxTex_Dxt1 && texId->m_dataFormat <= GxTex_Dxt5;
     int32_t destCompressed = texId->m_format >= GxTex_Dxt1 && texId->m_format <= GxTex_Dxt5;
+    int32_t copied = 0;
 
     VkContext::Barrier(cmd, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, texture->layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    texture->layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 
     uint32_t mipWidth = width;
     uint32_t mipHeight = height;
@@ -1669,6 +1678,7 @@ void CGxDeviceVulkan::ITexUpload(CGxTex* texId) {
                 region.imageOffset = { left, top, 0 };
                 region.imageExtent = { static_cast<uint32_t>(size.x), static_cast<uint32_t>(size.y), 1 };
                 vkCmdCopyBufferToImage(cmd, staging.buffer, texture->image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+                copied = 1;
             }
         }
 
@@ -1676,11 +1686,19 @@ void CGxDeviceVulkan::ITexUpload(CGxTex* texId) {
         mipHeight = std::max(mipHeight >> 1, 1u);
     }
 
-    VkContext::Barrier(cmd, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    texture->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    if (copied) {
+        VkContext::Barrier(cmd, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        texture->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        texture->initialized = 1;
+    } else if (texture->initialized) {
+        VkContext::Barrier(cmd, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        texture->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    }
 
     texels = nullptr;
     texId->m_userFunc(GxTex_Unlock, texId->m_width, texId->m_height, 0, 0, texId->m_userArg, texelStrideInBytes, texels);
+
+    return copied;
 }
 
 void CGxDeviceVulkan::ITexMarkAsUpdated(CGxTex* texId) {
@@ -1694,10 +1712,9 @@ void CGxDeviceVulkan::ITexMarkAsUpdated(CGxTex* texId) {
 
     if (!texId->m_needsCreation && texId->m_apiSpecificData) {
         if (texId->m_userFunc) {
-            if (!this->m_vk.UploadCmd()) {
+            if (!this->ITexUpload(texId)) {
                 return;
             }
-            this->ITexUpload(texId);
         }
 
         CGxDevice::ITexMarkAsUpdated(texId);

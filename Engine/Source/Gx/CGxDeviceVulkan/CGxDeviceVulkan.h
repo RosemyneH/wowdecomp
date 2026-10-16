@@ -16,6 +16,7 @@ struct VkTexture {
     VkFramebuffer framebuffer;
     uint32_t depthGeneration;
     VkImageLayout layout;
+    uint8_t initialized;
 };
 
 struct VkDrawUniforms {
@@ -203,7 +204,7 @@ class CGxDeviceVulkan : public CGxDevice {
     char* IBufLock(CGxBuf* buf);
     void IBufUnlock(CGxBuf* buf);
     void ITexCreate(CGxTex* texId);
-    void ITexUpload(CGxTex* texId);
+    int32_t ITexUpload(CGxTex* texId);
     void ITexRelease(CGxTex* texId);
     void ITexForceRecreation(int32_t all);
     VkTexture* ITexReady(CGxTex* texId);
