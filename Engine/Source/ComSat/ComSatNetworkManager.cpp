@@ -38,6 +38,9 @@ uint32_t ComSat::Network::ComputeSignature(const uint8_t (&key)[16], const uint8
 // OFFSET: 0x008853D0
 ComSat::Network::Manager::Manager(const ComSat::Initialization& init, ComSat::Allocator& allocator) : m_allocator(&allocator), m_sessions(allocator) {
     this->m_socket = ComSat::Network::Socket::Create(allocator);
+    if (!this->m_socket) {
+        return;
+    }
     this->m_socket->Bind(init.m_port);
 }
 
@@ -58,6 +61,9 @@ ComSat::Network::Manager::~Manager() {
 // VERIFY: 0d1cf108 auto
 // OFFSET: 0x00885410
 void ComSat::Network::Manager::Work(uint32_t time) {
+    if (!this->m_socket) {
+        return;
+    }
     ComSat::Network::Address from;
     ComSat::Network::Packet packet;
     uint32_t size;
@@ -103,6 +109,9 @@ void ComSat::Network::Manager::DestroySession(ComSat::Network::Session* session)
 // VERIFY: ddf7f762 manual
 // OFFSET: 0x00885590
 bool ComSat::Network::Manager::Send(uint16_t networkId, uint8_t talker, const uint8_t (&key)[16], const ComSat::Network::Address& address, const uint8_t* data, uint32_t size) {
+    if (!this->m_socket) {
+        return false;
+    }
     ComSat::Network::Packet packet;
     uint32_t length = size + 7;
     if (length > sizeof(packet)) {
