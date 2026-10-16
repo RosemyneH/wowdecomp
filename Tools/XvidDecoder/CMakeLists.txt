@@ -1,7 +1,19 @@
-add_library(XvidDecoder SHARED
-    XvidDecoder.cpp
-    XvidDecoder.def
-)
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|aarch64")
+    add_library(XvidDecoder SHARED
+        XvidDecoderWoA.cpp
+        XvidDecoder.def
+    )
+else ()
+    add_library(XvidDecoder SHARED
+        XvidDecoder.cpp
+        XvidDecoder.def
+    )
+
+    target_link_libraries(XvidDecoder
+        PRIVATE
+            ${CMAKE_SOURCE_DIR}/ThirdParty/xvidcore/lib/x64/libxvidcore.lib
+    )
+endif ()
 
 set_target_properties(XvidDecoder PROPERTIES
     OUTPUT_NAME XvidDecoder
@@ -17,9 +29,4 @@ target_include_directories(XvidDecoder
     PRIVATE
         ${CMAKE_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/ThirdParty/xvidcore/include
-)
-
-target_link_libraries(XvidDecoder
-    PRIVATE
-        ${CMAKE_SOURCE_DIR}/ThirdParty/xvidcore/lib/x64/libxvidcore.lib
 )
