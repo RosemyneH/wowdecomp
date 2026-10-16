@@ -711,7 +711,27 @@ void WowConnection::StartConnect() {
     int32_t sock = socket(AF_INET, SOCK_STREAM, 0);
 
     if (sock < 0) {
-        SErrDisplayErrorFmt(0x85100000, __FILE__, __LINE__, 0, 1, "socket() returned %d, reason: %s", sock, "can't create socket (No network connection available?)");
+        this->m_sock = -1;
+        this->SetState(WOWC_ERROR);
+        this->AddRef();
+        this->AcquireResponseRef();
+
+        WowConnectionResponse* response = this->m_response;
+        this->m_lock.Leave();
+
+        if (response) {
+            response->WCCantConnect(this, OsGetAsyncTimeMs(), &this->m_peer);
+        }
+
+        if (!SErrIsDisplayingError()) {
+            SErrDisplayErrorFmt(0x85100000, __FILE__, __LINE__, 0, 1, "socket() returned %d, reason: %s", sock, "can't create socket (No network connection available?)");
+        }
+
+        this->m_lock.Enter();
+        this->ReleaseResponseRef();
+        this->m_lock.Leave();
+        this->Release();
+        return;
     }
 
     WowConnection::MarkSocketId(sock);
