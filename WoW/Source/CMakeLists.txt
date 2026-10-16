@@ -20,6 +20,11 @@ else ()
     add_executable(Wow ${PRIVATE_SOURCES} ${PLATFORM_SOURCES})
 endif ()
 
+if (WOWDECOMP_APPLE)
+    # ʕ •ᴥ•ʔ✿ Darwin runs the client on the main thread (no ucontext fiber), so guarantee its stack ✿ ʕ •ᴥ•ʔ
+    target_link_options(Wow PRIVATE "-Wl,-stack_size,0x800000")
+endif ()
+
 if (WOWDECOMP_ARCH_64)
     set(WOW_OUTPUT_NAME Wow64)
 else ()
