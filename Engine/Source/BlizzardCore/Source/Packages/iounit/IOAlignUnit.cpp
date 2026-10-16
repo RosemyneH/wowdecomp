@@ -63,6 +63,11 @@ void IOAlignUnit::AllocateBuffer() {
 
     uint32_t count = this->m_blockCount;
     this->m_buffer = SMemAlloc(count * this->m_blockSize + this->m_bufferAlign - 1, __FILE__, __LINE__, SMEM_FLAG_ZEROMEMORY);
+
+    if (!this->m_buffer) {
+        return;
+    }
+
     this->m_alignedBuffer = reinterpret_cast<uint8_t*>(~static_cast<uintptr_t>(this->m_bufferAlign - 1) & (reinterpret_cast<uintptr_t>(this->m_buffer) + this->m_bufferAlign - 1));
 
     for (uint32_t i = 0; i < count; i++) {
@@ -117,6 +122,10 @@ bool IOAlignUnit::CleanCacheEntry(uint32_t index) {
 // OFFSET: 0x004308C0
 uint8_t* IOAlignUnit::GetCachedBlock(int64_t offset, bool dirty) {
     this->AllocateBuffer();
+
+    if (!this->m_buffer) {
+        return nullptr;
+    }
 
     uint32_t count = this->m_blockCount;
     uint32_t index = 0;
