@@ -595,7 +595,7 @@ int32_t ComSatClient_GetCurrentSessionType() {
 // VERIFY: 706dd5de manual
 // OFFSET: 0x007DB5E0
 const char* ComSatClient_GetCurrentSessionName() {
-    if (s_currentSession >= 0) {
+    if (s_currentSession >= 0 && s_currentSession < 32) {
         return s_comsatData[s_currentSession].m_name;
     }
 
@@ -835,7 +835,7 @@ void ComSatClient_LeaveAllSessions(WOWGUID guid) {
 // VERIFY: 02135c1e manual
 // OFFSET: 0x007DB580
 int32_t ComSatClient_IsCurrentSession(uint64_t session) {
-    return s_currentSession >= 0 && s_comsatData[s_currentSession].m_sessionID == session;
+    return s_currentSession >= 0 && s_currentSession < 32 && s_comsatData[s_currentSession].m_sessionID == session;
 }
 
 // VERIFY: 242ea58b manual
