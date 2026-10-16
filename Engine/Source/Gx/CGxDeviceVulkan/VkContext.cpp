@@ -248,7 +248,10 @@ int32_t VkContext::CreateDeviceResources() {
     VkCommandPoolCreateInfo poolInfo = { VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO };
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     poolInfo.queueFamilyIndex = this->m_queueFamily;
-    if (vkCreateCommandPool(this->m_device, &poolInfo, nullptr, &this->m_commandPool) != VK_SUCCESS) return 0;
+    if (vkCreateCommandPool(this->m_device, &poolInfo, nullptr, &this->m_commandPool) != VK_SUCCESS) {
+        this->m_commandPool = VK_NULL_HANDLE;
+        return 0;
+    }
 
     for (VkFrame& frame : this->m_frames) {
         VkCommandBufferAllocateInfo cmdInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
@@ -257,16 +260,26 @@ int32_t VkContext::CreateDeviceResources() {
         cmdInfo.commandBufferCount = 2;
 
         VkCommandBuffer cmds[2];
-        if (vkAllocateCommandBuffers(this->m_device, &cmdInfo, cmds) != VK_SUCCESS) return 0;
+        if (vkAllocateCommandBuffers(this->m_device, &cmdInfo, cmds) != VK_SUCCESS) {
+            cmds[0] = VK_NULL_HANDLE;
+            cmds[1] = VK_NULL_HANDLE;
+            return 0;
+        }
         frame.cmd = cmds[0];
         frame.uploadCmd = cmds[1];
 
         VkFenceCreateInfo fenceInfo = { VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
         fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-        if (vkCreateFence(this->m_device, &fenceInfo, nullptr, &frame.fence) != VK_SUCCESS) return 0;
+        if (vkCreateFence(this->m_device, &fenceInfo, nullptr, &frame.fence) != VK_SUCCESS) {
+            frame.fence = VK_NULL_HANDLE;
+            return 0;
+        }
 
         VkSemaphoreCreateInfo semaphoreInfo = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
-        if (vkCreateSemaphore(this->m_device, &semaphoreInfo, nullptr, &frame.imageAvailable) != VK_SUCCESS) return 0;
+        if (vkCreateSemaphore(this->m_device, &semaphoreInfo, nullptr, &frame.imageAvailable) != VK_SUCCESS) {
+            frame.imageAvailable = VK_NULL_HANDLE;
+            return 0;
+        }
 
         VkDescriptorPool pool = this->CreateDescriptorPool();
         if (!pool) return 0;
@@ -362,6 +375,10 @@ VkRenderPass VkContext::CreateRenderPass(VkFormat color, VkAttachmentLoadOp load
 }
 
 int32_t VkContext::CreateSwapchain(uint32_t width, uint32_t height, int32_t vsync) {
+    if (!this->m_device || !this->m_surface) {
+        return 0;
+    }
+
     vkDeviceWaitIdle(this->m_device);
 
     VkSurfaceCapabilitiesKHR caps;
@@ -437,7 +454,15 @@ int32_t VkContext::CreateSwapchain(uint32_t width, uint32_t height, int32_t vsyn
     info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | (caps.supportedUsageFlags & (VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT));
     info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     info.preTransform = caps.currentTransform;
-    info.compositeAlpha = (caps.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) ? VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR : static_cast<VkCompositeAlphaFlagBitsKHR>(caps.supportedCompositeAlpha & -caps.supportedCompositeAlpha);
+
+    if (caps.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) {
+        info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    } else if (caps.supportedCompositeAlpha) {
+        info.compositeAlpha = static_cast<VkCompositeAlphaFlagBitsKHR>(caps.supportedCompositeAlpha & -static_cast<int32_t>(caps.supportedCompositeAlpha));
+    } else {
+        info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    }
+
     info.clipped = VK_TRUE;
     info.oldSwapchain = this->m_swapchain;
 
