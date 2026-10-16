@@ -35,6 +35,9 @@ test/
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
+# ʕ •ᴥ•ʔ✿ Squad notes live here. The log/ rule above would hide them. ✿ ʕ •ᴥ•ʔ
+!docs/perf-squads/log/
+!docs/perf-squads/log/**
 [Oo]ut/
 
 # Visual Studio 2015/2017 cache/options directory
