@@ -782,14 +782,17 @@ void NETEVENTQUEUE::AddEvent(EVENTID eventId, void* connection, NetClient* clien
 
     NETEVENTQUEUENODE* node = this->m_eventQueue.NewNode(2, 0, 8);
     node->m_eventId = eventId;
+    node->m_data = nullptr;
+    node->m_dataSize = 0;
 
-    if (size) {
-        node->m_data = SMemAlloc(size, __FILE__, __LINE__, 0);
-        memcpy(node->m_data, data, size);
-        node->m_dataSize = size;
-    } else {
-        node->m_data = nullptr;
-        node->m_dataSize = 0;
+    if (size && data) {
+        void* payload = SMemAlloc(size, __FILE__, __LINE__, 0);
+
+        if (payload) {
+            memcpy(payload, data, size);
+            node->m_data = payload;
+            node->m_dataSize = size;
+        }
     }
 
     node->m_timeReceived = OsGetAsyncTimeMs();
