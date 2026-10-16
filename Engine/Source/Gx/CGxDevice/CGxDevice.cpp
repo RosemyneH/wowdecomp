@@ -1159,6 +1159,31 @@ void CGxDevice::BufDestroy(CGxBuf*& buf) {
         return;
     }
 
+    // ʕ •ᴥ•ʔ✿ Draw still holds this buf after a terrain pool rebuild. The next indexed draw would read the freed pool ✿ ʕ •ᴥ•ʔ
+    if (this->m_primIndexBuf == buf) {
+        this->m_primIndexBuf = nullptr;
+        this->m_primIndexDirty = 1;
+    }
+
+    if (this->m_primVertexBuf == buf) {
+        this->m_primVertexBuf = nullptr;
+    }
+
+    for (uint32_t i = 0; i < sizeof(this->m_primVertexFormatBuf) / sizeof(this->m_primVertexFormatBuf[0]); ++i) {
+        if (this->m_primVertexFormatBuf[i] == buf) {
+            this->m_primVertexFormatBuf[i] = nullptr;
+            this->m_primVertexDirty |= 1u << i;
+        }
+    }
+
+    if (this->m_bufLocked[0] == buf) {
+        this->m_bufLocked[0] = nullptr;
+    }
+
+    if (this->m_bufLocked[1] == buf) {
+        this->m_bufLocked[1] = nullptr;
+    }
+
     if (buf->m_pool) {
         buf->m_pool->UnlinkBuf(buf);
     }

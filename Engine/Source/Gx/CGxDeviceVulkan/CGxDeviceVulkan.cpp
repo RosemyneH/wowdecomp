@@ -1818,6 +1818,16 @@ void CGxDeviceVulkan::IReleasePool(CGxPool* pool) {
     VkBufferAlloc* alloc = static_cast<VkBufferAlloc*>(pool->m_apiSpecific);
 
     if (alloc) {
+        if (alloc->buffer == this->m_boundIndexBuffer) {
+            this->m_boundIndexBuffer = VK_NULL_HANDLE;
+        }
+
+        for (uint32_t i = 0; i < MaxBindings; ++i) {
+            if (this->m_boundBuffers[i] == alloc->buffer) {
+                this->m_boundBuffers[i] = VK_NULL_HANDLE;
+            }
+        }
+
         if (!alloc->borrowed) {
             this->m_vk.RetireBuffer(*alloc);
         }
