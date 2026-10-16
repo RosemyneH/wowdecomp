@@ -11,6 +11,10 @@
 #include <ctime>
 #include <initializer_list>
 #include <new>
+#if defined(__APPLE__)
+#include <climits>
+#include <mach-o/dyld.h>
+#endif
 #include <pthread.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
@@ -220,6 +224,25 @@ static int32_t MakeDirectory(const char* path) {
     return errno == EEXIST && !stat(path, &info) && S_ISDIR(info.st_mode);
 }
 
+static void GetExecutablePath(char* buffer, uint32_t buffersize) {
+#if defined(__APPLE__)
+    char executable[PATH_MAX];
+    char resolved[PATH_MAX];
+    uint32_t length = sizeof(executable);
+
+    if (_NSGetExecutablePath(executable, &length)) {
+        buffer[0] = 0;
+        return;
+    }
+
+    const char* path = realpath(executable, resolved);
+    SStrCopy(buffer, path ? path : executable, buffersize);
+#else
+    ssize_t length = readlink("/proc/self/exe", buffer, buffersize - 1);
+    buffer[length > 0 ? length : 0] = 0;
+#endif
+}
+
 static FILE* CreateErrorLogFile(const char* suffix, const char* ext, char* logpath, uint32_t logpathchars, const SYSTEMTIME* time) {
     char logfilename[MAX_PATH];
     char exefullpath[MAX_PATH];
@@ -228,8 +251,7 @@ static FILE* CreateErrorLogFile(const char* suffix, const char* ext, char* logpa
         suffix = " Log";
     }
 
-    ssize_t length = readlink("/proc/self/exe", exefullpath, sizeof(exefullpath) - 1);
-    exefullpath[length > 0 ? length : 0] = 0;
+    GetExecutablePath(exefullpath, sizeof(exefullpath));
     SStrCopy(logpath, exefullpath, logpathchars);
 
     char* slash = SStrChrR(logpath, '/');
@@ -430,8 +452,7 @@ int32_t STORMAPI SErrDisplayError(uint32_t errorcode, const char* filename, int3
     s_displaying = 1;
 
     static char appfilename[MAX_PATH];
-    ssize_t length = readlink("/proc/self/exe", appfilename, sizeof(appfilename) - 1);
-    appfilename[length > 0 ? length : 0] = 0;
+    GetExecutablePath(appfilename, sizeof(appfilename));
 
     static char errorstr[256];
     errorstr[0] = 0;
