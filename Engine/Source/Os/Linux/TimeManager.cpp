@@ -1,3 +1,4 @@
+#include <cerrno>
 #include <cstdint>
 #include <ctime>
 #include <new>
@@ -141,6 +142,6 @@ void OsSleep(uint32_t milliseconds) {
     duration.tv_sec = milliseconds / 1000;
     duration.tv_nsec = static_cast<long>(milliseconds % 1000) * 1000000;
 
-    while (nanosleep(&duration, &duration)) {
+    while (nanosleep(&duration, &duration) != 0 && errno == EINTR) {
     }
 }
