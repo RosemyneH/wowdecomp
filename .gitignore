@@ -25,10 +25,13 @@ x64/
 x86/
 [Ww][Ii][Nn]32/
 !Engine/**/[Ww]in32/
+!WoW/**/[Ww]in32/
+!ThirdParty/**/x64/
 [Aa][Rr][Mm]/
 [Aa][Rr][Mm]64/
 bld/
 [Bb]in/
+test/
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
@@ -410,3 +413,11 @@ FodyWeavers.xsd
 
 # Local Visual Studio CMake settings (absolute paths to re/tools)
 CMakeSettings.json
+/build/
+
+# Cursor / agent orchestration (local instructions, not product source)
+.cursor/
+AGENTS.md
+.cursorrules
+docs/wasm-addon-progress.md
+docs/multiplatform.html
