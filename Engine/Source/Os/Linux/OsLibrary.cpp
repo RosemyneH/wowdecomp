@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <dlfcn.h>
 #include "Engine/Source/Os/OsLibrary.h"
 
@@ -10,5 +11,8 @@ void OsFreeLibrary(void* module) {
 }
 
 void* OsGetLibraryEntryPoint(void* module, const char* name) {
+    if (reinterpret_cast<uintptr_t>(name) < 0x10000) {
+        return nullptr;
+    }
     return dlsym(module, name);
 }
