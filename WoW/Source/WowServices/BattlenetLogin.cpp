@@ -22,6 +22,7 @@
 #include "WoW/Source/Ui/BattlenetUI.h"
 #include "WoW/Source/Ui/GameUI.h"
 #include "WoW/Source/WowServices/LoginResponse.h"
+#include "WoW/Source/WowServices/WowConnectionNet.h"
 
 // STATIC: 0x00B24B94
 BattlenetAllocator s_battlenetAllocator;
@@ -76,6 +77,9 @@ BattlenetApplication::~BattlenetApplication() {
     if (this->m_wowConnection) {
         this->m_wowConnection->Disconnect();
         this->m_wowConnection->SetResponse(nullptr, false);
+        if (WowConnection::s_network && this->m_wowConnection->m_netLink.IsLinked()) {
+            WowConnection::s_network->Remove(this->m_wowConnection);
+        }
         this->m_wowConnection->Release();
         this->m_wowConnection = nullptr;
     }
