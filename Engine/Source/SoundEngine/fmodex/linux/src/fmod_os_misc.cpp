@@ -49,6 +49,11 @@ static unsigned long long FMOD_OS_Time_GetMonotonicUs()
 // OFFSET: 0x008D1CB0
 void *FMOD_OS_Memory_Alloc(int size, FMOD_MEMORY_TYPE type)
 {
+    if (size < 0)
+    {
+        return 0;
+    }
+
     return malloc(size);
 }
 
