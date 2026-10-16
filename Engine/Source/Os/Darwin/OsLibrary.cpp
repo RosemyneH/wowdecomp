@@ -1,9 +1,22 @@
 #include <cstdint>
+#include <cstring>
+#include <string>
 #include <dlfcn.h>
 #include "Engine/Source/Os/OsLibrary.h"
 
 void* OsLoadLibrary(const char* fileName) {
-    return dlopen(fileName, RTLD_NOW | RTLD_LOCAL);
+    if (!fileName || !std::strchr(fileName, '\\')) {
+        return dlopen(fileName, RTLD_NOW | RTLD_LOCAL);
+    }
+
+    std::string path(fileName);
+    for (char& c : path) {
+        if (c == '\\') {
+            c = '/';
+        }
+    }
+
+    return dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
 }
 
 void OsFreeLibrary(void* module) {
