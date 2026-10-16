@@ -399,7 +399,14 @@ void STORMAPI SBigMod(BigData* a, const BigData* b, const BigData* c) {
 // VERIFY: 028bbc8d manual
 // OFFSET: 0x0077BF20
 void STORMAPI SBigNew(BigData** num) {
-    *num = new (SMemAlloc(sizeof(BigData), __FILE__, __LINE__, 0)) BigData;
+    void* mem = SMemAlloc(sizeof(BigData), __FILE__, __LINE__, 0);
+
+    if (!mem) {
+        *num = nullptr;
+        return;
+    }
+
+    *num = new (mem) BigData;
 }
 
 // VERIFY: 79d5340d manual
