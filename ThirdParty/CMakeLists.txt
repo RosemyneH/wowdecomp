@@ -1,3 +1,13 @@
+if (WOWDECOMP_ENABLE_VULKAN)
+    # ʕ ◕ᴥ◕ ʔ✿ volk 1.4.321 + Vulkan-Headers 1.4.357 (system SDK copy), MIT/Apache-2.0 ✿ ʕ ◕ᴥ◕ ʔ
+    add_library(volk STATIC volk/volk.c)
+    target_include_directories(volk PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/volk ${CMAKE_CURRENT_SOURCE_DIR}/Vulkan-Headers/include)
+    target_compile_definitions(volk PUBLIC VK_NO_PROTOTYPES $<$<BOOL:${WIN32}>:VK_USE_PLATFORM_WIN32_KHR>)
+    if (UNIX)
+        target_link_libraries(volk PRIVATE dl)
+    endif ()
+endif ()
+
 add_library(zlib STATIC
     zlib/adler32.c
     zlib/compress.c
@@ -101,9 +111,17 @@ target_compile_definitions(expat
     PUBLIC
         _STATIC
     PRIVATE
-        COMPILED_FROM_DSP
         _LIB
 )
+
+if (WIN32)
+    target_compile_definitions(expat PRIVATE COMPILED_FROM_DSP)
+else ()
+    file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/expat/expat_config.h
+        "#pragma once\n#include <string.h>\n#define XML_NS 1\n#define XML_DTD 1\n#define XML_CONTEXT_BYTES 1024\n#define BYTEORDER 1234\n#define HAVE_MEMMOVE\n"
+    )
+    target_include_directories(expat PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/expat)
+endif ()
 
 target_include_directories(expat
     PUBLIC
@@ -137,7 +155,7 @@ target_include_directories(DivxDecoder
         ${CMAKE_CURRENT_SOURCE_DIR}/DivxDecoder
 )
 
-if (WOWDECOMP_ARCH_32)
+if (WIN32 AND WOWDECOMP_ARCH_32)
     set(DIVXDECODER_IMPORT_LIB ${CMAKE_CURRENT_BINARY_DIR}/DivxDecoder.lib)
 
     execute_process(
@@ -168,7 +186,33 @@ if (WOWDECOMP_ARCH_32)
     else ()
         message(WARNING "DivxDecoder: ${DIVXDECODER_DLL} is missing. Copy DivxDecoder.dll from a 3.3.5a (12340) client there; Win32 builds need it next to the executables.")
     endif ()
+elseif (WIN32)
+    target_link_libraries(DivxDecoder
+        INTERFACE
+            XvidDecoder
+    )
 else ()
+    find_path(XVID_INCLUDE_DIR xvid.h
+        HINTS ${CMAKE_CURRENT_SOURCE_DIR}/xvidcore/include
+        REQUIRED
+    )
+    find_library(XVID_LIBRARY xvidcore REQUIRED)
+
+    add_library(XvidDecoder STATIC
+        ${CMAKE_SOURCE_DIR}/Tools/XvidDecoder/XvidDecoder.cpp
+    )
+
+    target_include_directories(XvidDecoder
+        PRIVATE
+            ${CMAKE_SOURCE_DIR}
+            ${XVID_INCLUDE_DIR}
+    )
+
+    target_link_libraries(XvidDecoder
+        PUBLIC
+            ${XVID_LIBRARY}
+    )
+
     target_link_libraries(DivxDecoder
         INTERFACE
             XvidDecoder
