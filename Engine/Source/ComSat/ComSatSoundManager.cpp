@@ -440,7 +440,7 @@ uint32_t ComSat::Sound::Manager::CalculateTotalVoicePriorityForRemoteTalkerInSes
 // OFFSET: 0x00882700
 bool ComSat::Sound::Manager::DecodeVoicePacket(uint8_t player, int32_t channel, ComSat::Sound::Manager::VoicePacket* packet, uint32_t* size) {
     LocalPlayer* localPlayer;
-    if (!this->m_localPlayers.Get(ComSat::MapKey<uint8_t>(player), localPlayer)) {
+    if (!this->m_codec || !this->m_localPlayers.Get(ComSat::MapKey<uint8_t>(player), localPlayer)) {
         return false;
     }
     *size = sizeof(localPlayer->m_buffer);
@@ -659,7 +659,7 @@ void ComSat::Sound::Manager::AssignTalkersToChannelsForLocalPlayer(uint8_t playe
 // OFFSET: 0x008831C0
 void ComSat::Sound::Manager::GenerateAndWriteSilenceToHeadsetDeviceBuffer(uint8_t player, int32_t channel, float frames, double rate) {
     LocalPlayer* localPlayer;
-    if (!this->m_localPlayers.Get(ComSat::MapKey<uint8_t>(player), localPlayer)) {
+    if (!this->m_codec || !this->m_localPlayers.Get(ComSat::MapKey<uint8_t>(player), localPlayer)) {
         return;
     }
     this->m_codec->GenerateSilence(localPlayer->m_buffer, ComSat::Sound::CODECIPMR6000::s_bytesPerFrame);
