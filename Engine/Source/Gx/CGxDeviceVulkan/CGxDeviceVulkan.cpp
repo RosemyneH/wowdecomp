@@ -656,6 +656,11 @@ void CGxDeviceVulkan::ScenePresent() {
         } else {
             this->WaitForFPSCap();
         }
+
+        if (this->m_format.m_fixLag) {
+            vkQueueWaitIdle(this->m_vk.m_queue);
+        }
+
         this->ISceneEnd();
         // ʕ •ᴥ•ʔ✿ While invisible no frame ends; don't let uploads and garbage accumulate ✿ ʕ •ᴥ•ʔ
         this->m_vk.FlushUploads();
