@@ -43,7 +43,10 @@
 #include "WoW/Source/WorldClient/MapLight.h"
 #include "WoW/Source/WorldClient/DayNight__DNInfo.h"
 #include "WoW/Source/WorldClient/DayNight.h"
+#include "WoW/Source/WorldClient/SortTable.h"
+#include "Engine/Source/Base/Job/JobSystem.h"
 #include "Engine/Source/Model2/M2Light.h"
+#include <vector>
 
 // STATIC: 0x00A3FBB8
 static const uint16_t s_bitMask[8] = { 0x1, 0x2, 0x4, 0x8, 0x10, 0x20, 0x40, 0x80 };
@@ -72,6 +75,12 @@ static const int32_t s_subVertexTriangles[12] = { 17, 9, 0, 9, 1, 0, 9, 17, 18, 
 // STATIC: 0x00A40618
 static const int32_t s_subVertexIndexFlat[5] = { 0, 9, 17, 1, 18 };
 
+static int32_t s_vertexColorFormat;
+
+namespace {
+void DropQueuedVisibility(CMapChunk* chunk);
+}
+
 // VERIFY: ed4a5d5b manual
 // OFFSET: 0x00790520
 void CMapChunk::GetVertexPosition(int32_t index, C3Vector* pos) {
@@ -83,6 +92,8 @@ void CMapChunk::GetVertexPosition(int32_t index, C3Vector* pos) {
 // VERIFY: d0968beb manual
 // OFFSET: 0x007C3370
 void CMapChunk::Purge() {
+    DropQueuedVisibility(this);
+
     if (this->m_renderChunk) {
         CMap::FreeRenderChunk(this->m_renderChunk);
         this->m_renderChunk = nullptr;
@@ -326,32 +337,274 @@ int16_t CMapChunk::CreateIndices(char* buf, int32_t baseVertex) {
     return totalIndices;
 }
 
-// VERIFY: 44a339cb manual
-// OFFSET: 0x007C3E70
-void __fastcall CWorldScene::AddMapChunk(CMapChunk* mapChunk) {
-    if (CWorldScene::FrustumCull(&mapChunk->m_bbox)) {
+namespace {
+
+struct VisRequest {
+    CMapChunk* chunk;
+    int32_t linkChunk;
+    int32_t wantLiquids;
+};
+
+struct VisSnapshot {
+    CFrustum frustum;
+    C4Plane camPlane;
+    C4Plane camPlaneXY;
+    C3Vector camTarget;
+    C3Vector activeView;
+    int32_t farCorner;
+    float camZ;
+    int32_t valid;
+};
+
+struct VisJob {
+    CMapChunk* chunk;
+    int32_t linkChunk;
+    int32_t wantLiquids;
+    int32_t rejected;
+    float dist;
+    C3Vector corner;
+    uint32_t liquidBegin;
+    uint32_t liquidCount;
+};
+
+struct LiquidOut {
+    CChunkLiquid* liquid;
+    int32_t visible;
+    C3Vector corner;
+};
+
+struct VisBatch {
+    CFrustum frustum;
+    C4Plane camPlane;
+    C3Vector camTarget;
+    C3Vector activeView;
+    int32_t farCorner;
+    float camZ;
+    VisJob* jobs;
+    LiquidOut* liquids;
+};
+
+static VisSnapshot s_visSnap;
+static std::vector<VisRequest> s_visQueue;
+
+void DropQueuedVisibility(CMapChunk* chunk) {
+    for (size_t i = 0; i < s_visQueue.size();) {
+        if (s_visQueue[i].chunk == chunk) {
+            s_visQueue.erase(s_visQueue.begin() + static_cast<std::ptrdiff_t>(i));
+        } else {
+            ++i;
+        }
+    }
+
+    if (s_visQueue.empty()) {
+        s_visSnap.valid = 0;
+    }
+}
+
+static void CaptureVisibilitySnapshot() {
+    s_visSnap.frustum = CWorldScene::frustumStack[CWorldScene::frustumIndex];
+    s_visSnap.camPlane = CWorldScene::camPlane;
+    s_visSnap.camPlaneXY = CWorldScene::camPlaneXY;
+    s_visSnap.camTarget = CWorldScene::camTarget;
+    s_visSnap.activeView = CWorldScene::s_activeWorldView;
+    s_visSnap.farCorner = CMapChunk::farCornerIndex;
+    s_visSnap.camZ = CWorldScene::s_activeWorldView.z;
+    s_visSnap.valid = 1;
+}
+
+static void EnqueueVisibility(CMapChunk* chunk, int32_t linkChunk, int32_t wantLiquids) {
+    if (s_visQueue.empty() || !s_visSnap.valid) {
+        CaptureVisibilitySnapshot();
+    }
+
+    VisRequest req;
+    req.chunk = chunk;
+    req.linkChunk = linkChunk;
+    req.wantLiquids = wantLiquids;
+    s_visQueue.push_back(req);
+}
+
+static void LinkChunkBucket(CMapChunk* chunk, const C3Vector& pos, const C4Plane& planeXY) {
+    int32_t bucket = 0;
+    float distance = pos.y * planeXY.n.y + pos.z * planeXY.n.z + pos.x * planeXY.n.x + planeXY.d;
+
+    if (distance <= 0.0f || (bucket = CMath::fint_(distance * 0.029999999f - 0.5f)) < 64) {
+        CWorldScene::sortTable.m_table[bucket].m_mapChunkList.LinkToTail(chunk);
+    }
+}
+
+static void LinkLiquidBucket(CChunkLiquid* liquid, const C3Vector& pos, const C4Plane& planeXY) {
+    int32_t bucket = 0;
+    float distance = pos.y * planeXY.n.y + pos.z * planeXY.n.z + pos.x * planeXY.n.x + planeXY.d;
+
+    if (distance > 0.0f) {
+        float scaled = distance * 0.03f;
+        bucket = CMath::fint_(scaled - 0.5f);
+
+        if (bucket >= 64) {
+            return;
+        }
+    }
+
+    CWorldScene::sortTable.m_table[bucket].m_liquidList.LinkToTail(liquid);
+}
+
+static void RunChunkVisibility(Job::Range range, void* user) {
+    VisBatch* batch = static_cast<VisBatch*>(user);
+
+    for (uint32_t i = range.begin; i < range.end; ++i) {
+        VisJob& job = batch->jobs[i];
+        CMapChunk* chunk = job.chunk;
+        job.rejected = 1;
+
+        if (job.linkChunk && batch->frustum.Cull(chunk->m_bbox) != 0) {
+            C3Vector nearest;
+            nearest.x = (batch->camTarget.x >= batch->activeView.x) ? chunk->m_bbox.b.x : chunk->m_bbox.t.x;
+            nearest.y = (batch->camTarget.y >= batch->activeView.y) ? chunk->m_bbox.b.y : chunk->m_bbox.t.y;
+            nearest.z = (batch->camTarget.z >= batch->activeView.z) ? chunk->m_bbox.b.z : chunk->m_bbox.t.z;
+            job.dist = batch->camPlane.n.z * nearest.z + batch->camPlane.n.y * nearest.y + batch->camPlane.n.x * nearest.x + batch->camPlane.d;
+
+            int32_t index = CMapChunk::cornerVertexIndex[batch->farCorner];
+            job.corner.x = CMapChunk::vertexList[index].x + chunk->m_topLeftCoords.x;
+            job.corner.y = CMapChunk::vertexList[index].y + chunk->m_topLeftCoords.y;
+            job.corner.z = chunk->m_height[index] + chunk->m_topLeftCoords.z;
+            job.rejected = 0;
+        }
+
+        if (!job.wantLiquids || !job.liquidCount) {
+            continue;
+        }
+
+        int32_t index = CMapChunk::cornerVertexIndex[batch->farCorner];
+        float cornerX = CMapChunk::vertexList[index].x + chunk->m_topLeftCoords.x;
+        float cornerY = CMapChunk::vertexList[index].y + chunk->m_topLeftCoords.y;
+        int32_t liquidOut = chunk->m_liquidBounds.t.x < chunk->m_liquidBounds.b.x || batch->frustum.Cull(chunk->m_liquidBounds) == 0;
+
+        for (uint32_t n = 0; n < job.liquidCount; ++n) {
+            LiquidOut& out = batch->liquids[job.liquidBegin + n];
+            out.visible = 0;
+
+            if (liquidOut) {
+                continue;
+            }
+
+            CAaBox box;
+            out.liquid->GetAaBox(box);
+
+            if (batch->frustum.Cull(box) == 0) {
+                continue;
+            }
+
+            float top = out.liquid->m_height.y;
+            float bottom = out.liquid->m_height.x;
+            out.corner.x = cornerX;
+            out.corner.y = cornerY;
+            out.corner.z = (batch->camZ <= top ? batch->camZ : top) < bottom ? bottom : (batch->camZ > top ? top : batch->camZ);
+            out.visible = 1;
+        }
+    }
+}
+
+}
+
+void CMapChunk::SetVertexColorFormat(int32_t format) {
+    s_vertexColorFormat = format;
+}
+
+void CMapChunk::FlushQueuedVisibility() {
+    if (s_visQueue.empty()) {
         return;
     }
 
-    C3Vector nearest(0.0f, 0.0f, 0.0f);
-    CWorldScene::GetNearestCornerToCamera(&mapChunk->m_bbox, &nearest);
-    float* height = mapChunk->m_height;
-    mapChunk->m_distToCamera = CWorldScene::camPlane.n.z * nearest.z + CWorldScene::camPlane.n.y * nearest.y + CWorldScene::camPlane.n.x * nearest.x + CWorldScene::camPlane.d;
+    std::vector<VisRequest> requests;
+    requests.swap(s_visQueue);
+    VisSnapshot snap = s_visSnap;
+    s_visSnap.valid = 0;
 
-    int32_t index = CMapChunk::cornerVertexIndex[CMapChunk::farCornerIndex];
-    C3Vector corner;
-    corner.z = 0.0f;
-    corner.x = CMapChunk::vertexList[index].x + mapChunk->m_topLeftCoords.x;
-    corner.y = CMapChunk::vertexList[index].y + mapChunk->m_topLeftCoords.y;
-    corner.z = height[index] + mapChunk->m_topLeftCoords.z;
-    CWorldScene::AddMapChunkToRenderList(mapChunk, &corner);
+    std::vector<VisJob> jobs(requests.size());
+    uint32_t liquidTotal = 0;
+
+    for (size_t i = 0; i < requests.size(); ++i) {
+        VisJob& job = jobs[i];
+        job.chunk = requests[i].chunk;
+        job.linkChunk = requests[i].linkChunk;
+        job.wantLiquids = requests[i].wantLiquids;
+        job.rejected = 1;
+        job.dist = 0.0f;
+        job.corner = C3Vector(0.0f, 0.0f, 0.0f);
+        job.liquidBegin = liquidTotal;
+        job.liquidCount = 0;
+
+        if (!job.wantLiquids || !job.chunk) {
+            continue;
+        }
+
+        for (CChunkLiquid* liquid = job.chunk->m_liquidChunkLinkList.Head(); liquid; liquid = job.chunk->m_liquidChunkLinkList.Next(liquid)) {
+            ++job.liquidCount;
+        }
+
+        liquidTotal += job.liquidCount;
+    }
+
+    std::vector<LiquidOut> liquids(liquidTotal);
+    uint32_t cursor = 0;
+
+    for (VisJob& job : jobs) {
+        job.liquidBegin = cursor;
+
+        if (!job.liquidCount) {
+            continue;
+        }
+
+        for (CChunkLiquid* liquid = job.chunk->m_liquidChunkLinkList.Head(); liquid; liquid = job.chunk->m_liquidChunkLinkList.Next(liquid)) {
+            liquids[cursor].liquid = liquid;
+            liquids[cursor].visible = 0;
+            liquids[cursor].corner = C3Vector(0.0f, 0.0f, 0.0f);
+            ++cursor;
+        }
+    }
+
+    VisBatch batch;
+    batch.frustum = snap.frustum;
+    batch.camPlane = snap.camPlane;
+    batch.camTarget = snap.camTarget;
+    batch.activeView = snap.activeView;
+    batch.farCorner = snap.farCorner;
+    batch.camZ = snap.camZ;
+    batch.jobs = jobs.data();
+    batch.liquids = liquids.empty() ? nullptr : liquids.data();
+
+    // -- ʕ •ᴥ•ʔ✿ Frustum tests write per-chunk results; the lists are linked afterward ✿ ʕ •ᴥ•ʔ
+    Job::ParallelFor(static_cast<uint32_t>(jobs.size()), RunChunkVisibility, &batch);
+
+    for (const VisJob& job : jobs) {
+        if (job.linkChunk && !job.rejected) {
+            job.chunk->m_distToCamera = job.dist;
+            LinkChunkBucket(job.chunk, job.corner, snap.camPlaneXY);
+        }
+
+        for (uint32_t n = 0; n < job.liquidCount; ++n) {
+            const LiquidOut& out = liquids[job.liquidBegin + n];
+
+            if (out.visible) {
+                LinkLiquidBucket(out.liquid, out.corner, snap.camPlaneXY);
+            }
+        }
+    }
+}
+
+// VERIFY: 44a339cb manual
+// OFFSET: 0x007C3E70
+void __fastcall CWorldScene::AddMapChunk(CMapChunk* mapChunk) {
+    // -- ʕ •ᴥ•ʔ✿ Visibility is batched and tested off the main thread ✿ ʕ •ᴥ•ʔ
+    EnqueueVisibility(mapChunk, 1, 0);
 }
 
 // VERIFY: d44747a1 manual
 // OFFSET: 0x007C3F30
 void CMapChunk::CreateVerticesWorld(CGxVertexPN* v, const C3Vector& offset) {
-    static float cols[9];
-    static float rows[9];
+    float cols[9];
+    float rows[9];
 
     float left = 17066.666f - this->m_cOffset.x * 33.333332f;
     float top = 17066.666f - this->m_cOffset.y * 33.333332f;
@@ -411,8 +664,8 @@ void CMapChunk::CreateVerticesWorld(CGxVertexPN* v, const C3Vector& offset) {
 // VERIFY: 6a9c0ba2 manual
 // OFFSET: 0x007C4620
 void CMapChunk::CreateVerticesWorld(CGxVertexPNC* v, const C3Vector& offset) {
-    static float cols[9];
-    static float rows[9];
+    float cols[9];
+    float rows[9];
 
     float left = 17066.666f - this->m_cOffset.x * 33.333332f;
     float top = 17066.666f - this->m_cOffset.y * 33.333332f;
@@ -452,7 +705,7 @@ void CMapChunk::CreateVerticesWorld(CGxVertexPNC* v, const C3Vector& offset) {
 
             if (!this->m_vertexShading) {
                 color = 0xFF7F7F7F;
-            } else if (g_theGxDevicePtr->Caps().m_colorFormat == GxCF_rgba) {
+            } else if (s_vertexColorFormat == GxCF_rgba) {
                 const uint8_t* src = reinterpret_cast<const uint8_t*>(shading);
                 color = src[2] | (src[1] << 8) | (src[0] << 16) | (static_cast<uint32_t>(src[3]) << 24);
             } else {
@@ -479,7 +732,7 @@ void CMapChunk::CreateVerticesWorld(CGxVertexPNC* v, const C3Vector& offset) {
 
                 if (!this->m_vertexShading) {
                     color = 0xFF7F7F7F;
-                } else if (g_theGxDevicePtr->Caps().m_colorFormat == GxCF_rgba) {
+                } else if (s_vertexColorFormat == GxCF_rgba) {
                     const uint8_t* src = reinterpret_cast<const uint8_t*>(shading);
                     color = src[2] | (src[1] << 8) | (src[0] << 16) | (static_cast<uint32_t>(src[3]) << 24);
                 } else {
@@ -567,7 +820,7 @@ void CMapChunk::CreateVerticesLocal(CGxVertexPNC* v) {
             if (this->m_vertexShading) {
                 CImVector color = *reinterpret_cast<CImVector*>(shading);
 
-                if (g_theGxDevicePtr->Caps().m_colorFormat == GxCF_rgba) {
+                if (s_vertexColorFormat == GxCF_rgba) {
                     CImVector swapped;
                     swapped.b = color.r;
                     swapped.g = color.g;
@@ -601,7 +854,7 @@ void CMapChunk::CreateVerticesLocal(CGxVertexPNC* v) {
                 if (this->m_vertexShading) {
                     CImVector color = *reinterpret_cast<CImVector*>(shading);
 
-                    if (g_theGxDevicePtr->Caps().m_colorFormat == GxCF_rgba) {
+                    if (s_vertexColorFormat == GxCF_rgba) {
                         CImVector swapped;
                         swapped.b = color.r;
                         swapped.g = color.g;
@@ -867,23 +1120,12 @@ void CMapChunk::CreateLiquids(bool a3) {
 // VERIFY: 2c9fa8ff manual
 // OFFSET: 0x007C5B20
 void CMapChunk::CullAndBucketChunk() {
-    if (this->m_liquidBounds.t.x < this->m_liquidBounds.b.x || CWorldScene::FrustumCull(&this->m_liquidBounds)) {
+    if (!s_visQueue.empty() && s_visQueue.back().chunk == this) {
+        s_visQueue.back().wantLiquids = 1;
         return;
     }
 
-    int32_t index = CMapChunk::cornerVertexIndex[CMapChunk::farCornerIndex];
-    float camZ = CWorldScene::s_activeWorldView.z;
-    C3Vector corner(CMapChunk::vertexList[index].x + this->m_topLeftCoords.x, CMapChunk::vertexList[index].y + this->m_topLeftCoords.y, this->m_height[index] + this->m_topLeftCoords.z);
-
-    for (CChunkLiquid* liquid = this->m_liquidChunkLinkList.Head(); liquid; liquid = this->m_liquidChunkLinkList.Next(liquid)) {
-        CAaBox box;
-        liquid->GetAaBox(box);
-
-        if (!CWorldScene::FrustumCull(&box)) {
-            corner.z = (camZ <= liquid->m_height.y ? camZ : liquid->m_height.y) < liquid->m_height.x ? liquid->m_height.x : (camZ > liquid->m_height.y ? liquid->m_height.y : camZ);
-            CWorldScene::AddToDistanceBucket(liquid, corner);
-        }
-    }
+    EnqueueVisibility(this, 0, 1);
 }
 
 // VERIFY: 555895ad manual
