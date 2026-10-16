@@ -4,6 +4,7 @@
 <style>body{font-family:system-ui,sans-serif;max-width:60rem;margin:2rem auto;padding:0 1rem;line-height:1.5}code{background:#eee;padding:.1em .3em}table{border-collapse:collapse}td,th{border:1px solid #999;padding:.3em .6em;text-align:left}pre{background:#111;color:#eee;padding:1rem;overflow:auto}</style>
 </head><body>
 <h1>Lua addons to WASM</h1>
+<p>Markdown copy for GitHub: <code>docs/lua-wasm.md</code>.</p>
 <p>Authoring guide for a 3.3.5 addon author moving a UI onto this client's sandboxed <code>wasm32</code> runtime. Packages live in <code>Interface/WasmAddOns</code>. The guest is Rust (or anything that emits <code>wasm32-unknown-unknown</code>) linked to <code>wow_addon_sdk</code>. Widget helpers are <code>wow_addon_sdk::ui</code>. A frame is the spawn kind <code>"frame"</code> in that module, not a second crate.</p>
 
 <h2>A parallel runtime</h2>

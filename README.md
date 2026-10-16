@@ -18,7 +18,7 @@ Join the Discord for other clients and to show off cool stuff you build: https:/
 | **Cross-platform** | **Windows** (x64 and **Windows on ARM64**), **Linux** (x86_64 and **aarch64**), and **macOS** (Intel and **Apple Silicon**). Linux aarch64 cross-builds use `cmake/Toolchain-Clang-aarch64-linux.cmake`. |
 | **Custom Vulkan shaders** | GLSL sources under `Engine/Source/Gx/CGxDeviceVulkan/Shaders/`; SPIR-V is embedded in-tree. Regenerate with the `GxVulkanShadersRegenerate` CMake target when `glslc` is installed. |
 | **Lighting & fog** | Modernized lighting paths through the Vulkan fixed-function pipeline and existing `ShaderEffect` stack; **volumetric fog** and related atmosphere work are part of this experimental rendering push (behavior and quality will change). |
-| **WASM addons** | Host runtime (`WasmAddon`, Wasmtime) for sandboxed `wasm32` addons—see `Addons/Wasm/README.html` and `docs/wasm-addon-architecture.html`. Install addons under `Interface/WasmAddOns/`. |
+| **WASM addons** | Host runtime (`WasmAddon`, Wasmtime) for sandboxed `wasm32` addons. GitHub reading: [`Addons/Wasm/README.md`](Addons/Wasm/README.md), [`docs/lua-wasm.md`](docs/lua-wasm.md), [`docs/wasm-addon-architecture.md`](docs/wasm-addon-architecture.md). Wiki: [wowdecomp/wiki](https://github.com/RosemyneH/wowdecomp/wiki). Install addons under `Interface/WasmAddOns/`. |
 | **Multithreaded performance** | Shared **job pool** (`Engine/Source/Base/Job/JobSystem.h`) drives parallel terrain, models, UI, and other hot paths—a broad performance rewrite on top of the decompiled client. |
 
 Everything above is **experimental**: APIs move, backends differ per OS, and regressions are expected. Treat nightly-quality builds as the norm.
