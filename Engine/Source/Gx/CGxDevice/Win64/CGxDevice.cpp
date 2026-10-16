@@ -48,6 +48,12 @@ int32_t CGxDevice::AdapterFormats(EGxApi api, TSGrowableArray<CGxFormat>& format
             CGxDevice::D3d9ExAdapterFormats(formats);
             break;
 
+#if defined(WOWDECOMP_VULKAN)
+        case GxApi_Vulkan:
+            CGxDevice::VulkanAdapterFormats(formats);
+            break;
+#endif
+
         default:
             break;
     }

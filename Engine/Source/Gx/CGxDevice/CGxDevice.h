@@ -267,6 +267,9 @@ class CGxDevice {
     static int32_t DeviceAdapterInfer(uint16_t& deviceID);
     static int32_t FormatExists(TSGrowableArray<CGxFormat>& formats, const CGxFormat& format);
     static int32_t OpenGlAdapterFormats(TSGrowableArray<CGxFormat>& formats);
+#if defined(WOWDECOMP_VULKAN)
+    static int32_t VulkanAdapterFormats(TSGrowableArray<CGxFormat>& formats);
+#endif
     static void ClampRectBottom(CiRect& windowRect);
     static void ClampRectBottomByAspect(CiRect& windowRect);
     static void ClampRectLeftByAspect(CiRect& windowRect);

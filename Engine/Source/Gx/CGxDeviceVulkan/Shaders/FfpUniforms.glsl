@@ -1,0 +1,22 @@
+layout(std140, set = 0, binding = 0, row_major) uniform DrawUniforms {
+    mat4 world;
+    mat4 view;
+    mat4 proj;
+    mat4 texMatrix[2];
+    vec4 matDiffuse;
+    vec4 matEmissive;
+    vec4 ambient;
+    vec4 lightPos[4];
+    vec4 lightDiffuse[4];
+    vec4 lightAmbient[4];
+    vec4 lightAtten[4];
+    vec4 fogColor;
+    vec4 fogParams;
+    ivec4 stageColorOp;
+    ivec4 stageAlphaOp;
+    ivec4 stageTexGen;
+    ivec4 stageTexMode;
+    ivec4 stageCoord;
+    ivec4 flags;
+    vec4 misc;
+} u;

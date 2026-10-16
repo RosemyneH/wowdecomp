@@ -1,0 +1,26 @@
+name: generated-drift
+on:
+  push:
+    paths: ["Engine/Source/Gx/CGxDeviceVulkan/Shaders/**", "cmake/RegenerateShaders.cmake", ".github/workflows/generated-drift.yml"]
+  pull_request:
+    paths: ["Engine/Source/Gx/CGxDeviceVulkan/Shaders/**", "cmake/RegenerateShaders.cmake", ".github/workflows/generated-drift.yml"]
+jobs:
+  shaders:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache Vulkan SDK
+        uses: actions/cache@v4
+        with:
+          path: /opt/vulkan
+          key: vulkan-sdk-1.4.357.0
+      - name: Install pinned Vulkan SDK
+        run: |
+          curl -fsSL https://sdk.lunarg.com/sdk/download/1.4.357.0/linux/vulkansdk-linux-x86_64-1.4.357.0.tar.xz -o /tmp/vulkan.tar.xz
+          echo "0f09bf6a0625e346bf004be70b92907e934a4c76606b323441b2baf3a5a0e66d /tmp/vulkan.tar.xz" | sha256sum -c -
+          mkdir -p /opt/vulkan && tar -xf /tmp/vulkan.tar.xz -C /opt/vulkan --strip-components=1
+      - name: Regenerate and diff
+        run: |
+          cmake -DGLSLC=/opt/vulkan/x86_64/bin/glslc -P cmake/RegenerateShaders.cmake
+          git diff --exit-code -- Engine/Source/Gx/CGxDeviceVulkan/Shaders/Generated
+          test -z "$(git status --porcelain -- Engine/Source/Gx/CGxDeviceVulkan/Shaders/Generated)"

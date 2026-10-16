@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.24)
 
 if (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_BINARY_DIR})
     message(FATAL_ERROR
@@ -10,11 +10,52 @@ endif ()
 
 project(wowdecomp CXX C)
 
+if (MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+    add_compile_options(/utf-8)
+endif ()
+
+# ʕ •ᴥ•ʔ✿ Vendored C/C++ uses 'register', an error under Clang C++17 (MSVC/GCC only warn) ✿ ʕ •ᴥ•ʔ
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_compile_options(-Wno-register -Wno-c++11-narrowing)
+endif ()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-if (NOT CMAKE_SYSTEM_NAME MATCHES "Windows")
-    message(FATAL_ERROR "wowdecomp targets Windows only.")
+include(${CMAKE_SOURCE_DIR}/cmake/Platform.cmake)
+
+if (NOT WIN32 AND NOT WOWDECOMP_UNIX)
+    message(FATAL_ERROR "wowdecomp targets Windows, Linux, and macOS (experimental).")
+endif ()
+
+# ʕ •ᴥ•ʔ✿ Vulkan is the primary backend on every platform; D3D9 remains as the selectable gxApi fallback on Windows ✿ ʕ •ᴥ•ʔ
+option(WOWDECOMP_ENABLE_VULKAN "Build the Vulkan Gx backend (MoltenVK on macOS)" ON)
+
+if (WOWDECOMP_ENABLE_VULKAN)
+    add_compile_definitions(WOWDECOMP_VULKAN=1)
+    if (WOWDECOMP_APPLE)
+        add_compile_definitions(WOWDECOMP_VULKAN_MOLTENVK=1)
+    endif ()
+endif ()
+
+if (WOWDECOMP_UNIX)
+    set(THREADS_PREFER_PTHREAD_FLAG ON)
+    find_package(Threads REQUIRED)
+    find_package(SDL2 REQUIRED)
+endif ()
+
+if (WOWDECOMP_LINUX)
+    find_package(X11 REQUIRED)
+endif ()
+
+if (WOWDECOMP_APPLE)
+    find_library(COCOA_FRAMEWORK Cocoa REQUIRED)
+    find_library(IOKIT_FRAMEWORK IOKit REQUIRED)
+    find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+    find_library(COREGRAPHICS_FRAMEWORK CoreGraphics REQUIRED)
+    find_library(METAL_FRAMEWORK Metal REQUIRED)
+    find_library(QUARTZCORE_FRAMEWORK QuartzCore REQUIRED)
 endif ()
 
 # x64 is the target. Win32 stays buildable: it is the configuration whose struct layouts can be
@@ -39,13 +80,30 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-add_compile_definitions(
-    WIN32
-    _WINDOWS
-    NOMINMAX
-    WIN32_LEAN_AND_MEAN
-    _CRT_SECURE_NO_WARNINGS
-)
+if (WIN32)
+    add_compile_definitions(
+        WIN32
+        _WINDOWS
+        NOMINMAX
+        WIN32_LEAN_AND_MEAN
+        _CRT_SECURE_NO_WARNINGS
+    )
+else ()
+    add_compile_definitions(
+        WOWDECOMP_UNIX=1
+        __stdcall=
+        __cdecl=
+        __fastcall=
+        __thiscall=
+        "__int64=long long"
+        _alloca=__builtin_alloca
+    )
+    if (WOWDECOMP_APPLE)
+        add_compile_definitions(WOWDECOMP_APPLE=1)
+    else ()
+        add_compile_definitions(WOWDECOMP_LINUX=1)
+    endif ()
+endif ()
 
 # Off by default: the client checks MPQ file MD5s (signaturefile) and GlueXML/FrameXML/AddOn .toc.sig files like the
 # original. ON accepts unsigned or modified game data and interface files.
@@ -69,6 +127,7 @@ add_subdirectory(Engine/Source/FFX)
 add_subdirectory(Engine/Source/Frame)
 add_subdirectory(Engine/Source/FrameScript)
 add_subdirectory(Engine/Source/FrameXML)
+add_subdirectory(Engine/Source/WasmAddon)
 add_subdirectory(Engine/Source/Gx)
 add_subdirectory(Engine/Source/Gxu)
 add_subdirectory(Engine/Source/Images)
@@ -105,15 +164,17 @@ add_subdirectory(WoW/Source/WorldClient)
 add_subdirectory(WoW/Source/WowServices)
 add_subdirectory(WoW/Source/WowSvcs)
 add_subdirectory(WoW/Source)
-if (WIN32)
-    add_subdirectory(Tools/WowClient)
-endif ()
-if (WOWDECOMP_ARCH_64)
+enable_testing()
+add_subdirectory(Tools/WowClient)
+add_subdirectory(Tools/WasmAddonHost)
+if (WIN32 AND WOWDECOMP_ARCH_64)
     add_subdirectory(Tools/XvidDecoder)
 endif ()
 
-foreach (target Wow WowClient MapViewer M2Viewer GxTest MpqTest BlpTest DbcTest AssetCheck)
-    if (TARGET ${target})
-        target_sources(${target} PRIVATE ${CMAKE_SOURCE_DIR}/waystone.rc)
-    endif ()
-endforeach ()
+if (WIN32)
+    foreach (target Wow WowClient MapViewer M2Viewer GxTest MpqTest BlpTest DbcTest AssetCheck)
+        if (TARGET ${target})
+            target_sources(${target} PRIVATE ${CMAKE_SOURCE_DIR}/waystone.rc)
+        endif ()
+    endforeach ()
+endif ()

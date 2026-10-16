@@ -1,0 +1,5 @@
+#!/bin/sh
+# ʕ ◕ᴥ◕ ʔ✿ Enable once per clone: git config core.hooksPath .githooks ✿ ʕ ◕ᴥ◕ ʔ
+if git diff --cached --name-only | grep -q "CGxDeviceVulkan/Shaders/"; then
+    exec "$(git rev-parse --show-toplevel)/Tools/check-generated.sh"
+fi
