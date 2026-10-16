@@ -614,6 +614,11 @@ void *MemPool::alloc(int len, const char *file, const int line, FMOD_MEMORY_TYPE
 	MemBlockHeader *block = 0;
     int numblocks = 0, reallen = len;
 
+    if (len < 0)
+    {
+        return 0;
+    }
+
 #ifdef FMOD_MEMORY_THREADSAFE
     if (!mCrit)
     {
