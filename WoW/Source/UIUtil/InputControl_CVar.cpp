@@ -16,6 +16,10 @@ CVar* s_cvEnableWowMouse;
 // VERIFY: a786a3e1 manual
 // OFFSET: 0x005F99F0
 static void ApplyJoystickConfig(XMLNode* config) {
+    if (GetJoystick() == 0xFFFFFFFF) {
+        return;
+    }
+
     char name[32];
 
     for (XMLNode* child = config->m_child; child; child = child->m_next) {
@@ -119,8 +123,8 @@ static void ApplyJoystickConfig(XMLNode* config) {
 // OFFSET: 0x005F9C80
 bool JoystickCallback(CVar* var, const char* oldValue, const char* value, void* arg) {
     if (*value == '1') {
-        if (s_joystick == 0xFFFFFFFF) {
-            s_joystick = OsJoystickOpen(0);
+        if (GetJoystick() == 0xFFFFFFFF) {
+            SetJoystick(OsJoystickOpen(0));
 
             if (s_joystick == 0xFFFFFFFF) {
                 return true;
@@ -137,9 +141,9 @@ bool JoystickCallback(CVar* var, const char* oldValue, const char* value, void* 
             ApplyJoystickConfig(config);
             XMLTree_Free(tree);
         }
-    } else if (s_joystick != 0xFFFFFFFF) {
+    } else if (GetJoystick() != 0xFFFFFFFF) {
         OsJoystickClose(s_joystick);
-        s_joystick = 0xFFFFFFFF;
+        SetJoystick(0xFFFFFFFF);
     }
 
     return true;

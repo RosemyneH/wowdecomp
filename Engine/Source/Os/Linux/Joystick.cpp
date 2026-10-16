@@ -56,6 +56,7 @@ struct LnxJoystick {
 static LnxJoystickMouseMode s_defaultMouseMode = { 1, 0, 1.5f, 0, 1, 0 };
 
 static int32_t s_initialized;
+static uint32_t s_listId;
 
 static TSGrowableArray<LnxJoystick> s_joysticks;
 
@@ -138,6 +139,10 @@ static void DropJoystickListIfIdle() {
     s_initialized = 0;
 }
 
+uint32_t OsJoystickListId() {
+    return s_listId;
+}
+
 uint32_t OsJoystickCount() {
     DropJoystickListIfIdle();
 
@@ -147,6 +152,7 @@ uint32_t OsJoystickCount() {
         }
 
         s_initialized = 1;
+        s_listId++;
 
         SDL_JoystickEventState(SDL_IGNORE);
 

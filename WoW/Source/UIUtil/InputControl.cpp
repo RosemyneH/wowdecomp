@@ -39,6 +39,8 @@
 // STATIC: 0x00AD192C
 uint32_t s_joystick = 0xFFFFFFFF;
 
+static uint32_t s_joystickList;
+
 // STATIC: 0x00AD1930
 int32_t s_joystickMouseEnabled = 1;
 
@@ -65,10 +67,12 @@ void CGInputControl::UpdateJoystickMouseMode() {
 
     if (enable) {
         this->m_joystickMouseFlags |= 0x1;
-        OsJoystickSetMouseMode(s_joystick, enable);
     } else {
         this->m_joystickMouseFlags &= ~0x1;
-        OsJoystickSetMouseMode(s_joystick, 0);
+    }
+
+    if (GetJoystick() != 0xFFFFFFFF) {
+        OsJoystickSetMouseMode(s_joystick, enable);
     }
 }
 
@@ -241,7 +245,7 @@ int32_t CGInputControl::IsIdle() const {
 XMLTree* LoadJoystickConfig(XMLNode*& config) {
     config = nullptr;
 
-    if (s_joystick == 0xFFFFFFFF) {
+    if (GetJoystick() == 0xFFFFFFFF) {
         return nullptr;
     }
 
@@ -615,7 +619,7 @@ void CGInputControl::OnUpdate(float elapsed) {
         return;
     }
 
-    if (s_joystick != 0xFFFFFFFF && (this->m_flags & 0x6000000)) {
+    if (GetJoystick() != 0xFFFFFFFF && (this->m_flags & 0x6000000)) {
         CGCamera* camera = CGWorldFrame::GetActiveCamera();
 
         if (camera) {
@@ -1327,7 +1331,24 @@ void CGInputControl::StopMovementAndTurning(uint32_t time) {
 // VERIFY: 2d993d52 auto
 // OFFSET: 0x005F9540
 uint32_t GetJoystick() {
+    // ʕ ◕ᴥ◕ ʔ✿ Stored index is from the list that was open; a rebuild hands that slot to another device ✿ ʕ ◕ᴥ◕ ʔ
+    if (s_joystick != 0xFFFFFFFF) {
+        uint32_t count = OsJoystickCount();
+
+        if (s_joystick >= count || s_joystickList != OsJoystickListId()) {
+            s_joystick = 0xFFFFFFFF;
+        }
+    }
+
     return s_joystick;
+}
+
+void SetJoystick(uint32_t index) {
+    s_joystick = index;
+
+    if (index != 0xFFFFFFFF) {
+        s_joystickList = OsJoystickListId();
+    }
 }
 
 // VERIFY: 321bafa5 auto

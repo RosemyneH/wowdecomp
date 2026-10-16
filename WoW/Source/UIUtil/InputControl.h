@@ -105,6 +105,7 @@ extern float s_vehicleAimNormPower;
 extern int32_t s_joystickMouseEnabled;
 
 uint32_t GetJoystick();
+void SetJoystick(uint32_t index);
 void CheckToCancelCurrentChannelSpell();
 void DescendStart();
 CGUnit_C* GetVehicleUnitPtr();

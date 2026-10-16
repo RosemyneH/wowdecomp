@@ -190,6 +190,10 @@ static BOOL CALLBACK EnumDevicesCallback(LPCDIDEVICEINSTANCEA instance, LPVOID r
     return DIENUM_CONTINUE;
 }
 
+uint32_t OsJoystickListId() {
+    return 0;
+}
+
 // OFFSET: 0x008706E0
 uint32_t OsJoystickCount() {
     if (!s_joysticks.Count()) {
