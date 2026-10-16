@@ -3,12 +3,14 @@
 #include <cstdint>
 #include <cstring>
 #include <new>
+#include <vector>
 #if defined(__aarch64__) || defined(__arm64__)
 #include "ThirdParty/sse2neon/sse2neon.h"
 #else
 #include <xmmintrin.h>
 #endif
 #include "Engine/Source/Model2/M2Scene.h"
+#include "Engine/Source/Base/Job/JobSystem.h"
 #include "Engine/Source/Base/ObjectAlloc.h"
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
 #include "Engine/Source/Model2/M2Cache.h"
@@ -235,26 +237,25 @@ CM2Model* CM2ModelHeap::New() {
     return model;
 }
 
-// VERIFY: f41c995e auto
-// OFFSET: 0x0081CE70
-void CM2Scene::AnimateThread(void* param) {
-    CM2Scene* scene = static_cast<CM2Scene*>(param);
+struct M2AnimateBatch {
+    const C44Matrix* view;
+    CM2Model** models;
+};
 
-    for (CM2Model* model = scene->m_animateList; model; model = model->m_animateNext) {
-        model = model->m_animateNext;
+static std::vector<CM2Model*> s_animateRoots;
 
-        if (!model) {
-            break;
-        }
+static void AnimateModelRange(Job::Range range, void* user) {
+    M2AnimateBatch* batch = static_cast<M2AnimateBatch*>(user);
+    const C3Vector diffuse(1.0f, 1.0f, 1.0f);
+    const C3Vector emissive(0.0f, 0.0f, 0.0f);
 
-        if (model->m_attachParent) {
-            continue;
-        }
+    for (uint32_t index = range.begin; index < range.end; index++) {
+        CM2Model* model = batch->models[index];
 
         if (model->m_fFlags & 0x1000) {
-            model->AnimateMTSimple(&scene->m_view, C3Vector(1.0f, 1.0f, 1.0f), C3Vector(0.0f, 0.0f, 0.0f), 1.0f, 1.0f);
+            model->AnimateMTSimple(batch->view, diffuse, emissive, 1.0f, 1.0f);
         } else {
-            model->AnimateMT(&scene->m_view, C3Vector(1.0f, 1.0f, 1.0f), C3Vector(0.0f, 0.0f, 0.0f), 1.0f, 1.0f);
+            model->AnimateMT(batch->view, diffuse, emissive, 1.0f, 1.0f);
         }
     }
 }
@@ -1712,42 +1713,21 @@ int32_t CM2Scene::Animate(const C3Vector& cameraPos) {
     this->m_view.Translate(move);
     this->m_viewInv = this->m_view.Inverse(this->m_view.Determinant());
 
-    if (this->m_cache->m_flags & 4) {
-        this->m_cache->BeginThread(&CM2Scene::AnimateThread, this);
+    s_animateRoots.clear();
 
-        for (CM2Model* model = this->m_animateList; model; ) {
-            if (!model->m_attachParent) {
-                if (model->m_fFlags & 0x1000) {
-                    model->AnimateMTSimple(&this->m_view, C3Vector(1.0f, 1.0f, 1.0f), C3Vector(0.0f, 0.0f, 0.0f), 1.0f, 1.0f);
-                } else {
-                    model->AnimateMT(&this->m_view, C3Vector(1.0f, 1.0f, 1.0f), C3Vector(0.0f, 0.0f, 0.0f), 1.0f, 1.0f);
-                }
-            }
-
-            CM2Model* next = model->m_animateNext;
-
-            if (!next) {
-                break;
-            }
-
-            model = next->m_animateNext;
-        }
-
-        this->m_cache->WaitThread();
-    } else {
-        for (CM2Model* model = this->m_animateList; model; model = model->m_animateNext) {
-            if (model->m_attachParent) {
-                continue;
-            }
-
-            if (model->m_fFlags & 0x1000) {
-                model->AnimateMTSimple(&this->m_view, C3Vector(1.0f, 1.0f, 1.0f), C3Vector(0.0f, 0.0f, 0.0f), 1.0f, 1.0f);
-            } else {
-                model->AnimateMT(&this->m_view, C3Vector(1.0f, 1.0f, 1.0f), C3Vector(0.0f, 0.0f, 0.0f), 1.0f, 1.0f);
-            }
+    for (CM2Model* model = this->m_animateList; model; model = model->m_animateNext) {
+        if (!model->m_attachParent) {
+            s_animateRoots.push_back(model);
         }
     }
 
+    // -- ʕ •ᴥ•ʔ✿ Each root writes only its own bones; attachments follow the parent ✿ ʕ •ᴥ•ʔ
+    M2AnimateBatch batch;
+    batch.view = &this->m_view;
+    batch.models = s_animateRoots.data();
+    Job::ParallelFor(static_cast<uint32_t>(s_animateRoots.size()), &AnimateModelRange, &batch);
+
+    // -- ʕ •ᴥ•ʔ✿ Draw-list links, ribbons, particles, and lighting stay on the main thread ✿ ʕ •ᴥ•ʔ
     for (CM2Model* model = this->m_animateList; model; model = model->m_animateNext) {
         if (!model->m_attachParent) {
             model->AnimateST();
