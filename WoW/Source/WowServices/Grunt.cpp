@@ -134,6 +134,11 @@ void Grunt::ClientLink::Connect(const char* address) {
         return;
     }
 
+    if (!address) {
+        this->m_clientResponse->CantConnect();
+        return;
+    }
+
     this->SetState(1);
 
     this->m_connection = new (__FILE__, __LINE__) WowConnection(this, nullptr);
