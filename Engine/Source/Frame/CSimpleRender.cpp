@@ -676,6 +676,7 @@ void CSimpleRender::DrawBatch(CRenderBatch* batch) {
         GxRsSet(GxRs_Fog, 0);
         GxRsSet(GxRs_DepthTest, 0);
         GxRsSet(GxRs_DepthWrite, 0);
+        GxRsSet(GxRs_ColorWrite, 15);
 
         uint32_t* vertCounts = static_cast<uint32_t*>(alloca(sizeof(uint32_t) * meshCount));
         uint32_t* idxCounts = static_cast<uint32_t*>(alloca(sizeof(uint32_t) * meshCount));

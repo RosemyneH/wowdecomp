@@ -889,6 +889,9 @@ void CSimpleMovieFrame::Render() {
 
     GxRsSet(GxRs_Lighting, 0);
     GxRsSet(GxRs_Fog, 0);
+    GxRsSet(GxRs_DepthTest, 0);
+    GxRsSet(GxRs_DepthWrite, 0);
+    GxRsSet(GxRs_ColorWrite, 15);
     GxRsSet(GxRs_BlendingMode, GxBlend_Opaque);
     GxUpdateAlphaRef(GxRs_AlphaRef);
 
