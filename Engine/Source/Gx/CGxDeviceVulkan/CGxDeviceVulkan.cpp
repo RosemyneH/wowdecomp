@@ -488,11 +488,9 @@ void CGxDeviceVulkan::ISetCaps(const CGxFormat& format) {
         this->m_caps.m_texFmt[i] = (properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) != 0;
     }
 
-    if (!this->m_caps.m_texFmt[GxTex_Dxt1] || !this->m_caps.m_texFmt[GxTex_Dxt3] || !this->m_caps.m_texFmt[GxTex_Dxt5]) {
-        s_gxTexFormatToUse[GxTex_Dxt1] = GxTex_Argb8888;
-        s_gxTexFormatToUse[GxTex_Dxt3] = GxTex_Argb8888;
-        s_gxTexFormatToUse[GxTex_Dxt5] = GxTex_Argb8888;
-    }
+    s_gxTexFormatToUse[GxTex_Dxt1] = GxTex_Argb8888;
+    s_gxTexFormatToUse[GxTex_Dxt3] = GxTex_Argb8888;
+    s_gxTexFormatToUse[GxTex_Dxt5] = GxTex_Argb8888;
 
     this->m_caps.m_rttFormat[GxTex_Argb8888] = 1;
     this->m_caps.unk_0134 = 1;
@@ -1070,7 +1068,7 @@ VkPipeline CGxDeviceVulkan::IPipeline(const VkPipelineKey& key) {
     multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
     VkPipelineDepthStencilStateCreateInfo depth = { VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
-    depth.depthTestEnable = VK_TRUE;
+    depth.depthTestEnable = key.unused;
     depth.depthWriteEnable = key.depthWrite;
     depth.depthCompareOp = s_cmpFunc[key.depthFunc];
 
@@ -1249,7 +1247,8 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
     key.bindingCount = static_cast<uint8_t>(bindingCount);
     key.topology = static_cast<uint8_t>(batch->m_primType);
     key.blend = static_cast<uint8_t>(std::min<uint32_t>(rs[GxRs_BlendingMode].m_value.m_data.u[0], GxBlends_Last - 1));
-    key.depthFunc = (enables & 0x4) && rs[GxRs_DepthTest].m_value.m_data.i[0] ? static_cast<uint8_t>(rs[GxRs_DepthFunc].m_value.m_data.u[0] & 0x3) : DepthFunc_Always;
+    key.unused = (enables & 0x4) && rs[GxRs_DepthTest].m_value.m_data.i[0];
+    key.depthFunc = key.unused ? static_cast<uint8_t>(rs[GxRs_DepthFunc].m_value.m_data.u[0] & 0x3) : DepthFunc_Always;
     key.depthWrite = (enables & 0x8) && rs[GxRs_DepthWrite].m_value.m_data.i[0];
     key.colorMask = (enables & 0x10) ? static_cast<uint8_t>(rs[GxRs_ColorWrite].m_value.m_data.u[0] & 0xF) : 0;
     key.cull = (enables & 0x20) ? static_cast<uint8_t>(std::min<uint32_t>(rs[GxRs_Culling].m_value.m_data.u[0], 2)) : 0;
@@ -1282,6 +1281,10 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
         VkTexture* texture = nullptr;
 
         if (texId) {
+            if (texId->m_needsCreation || !texId->m_apiSpecificData) {
+                this->ITexReady(texId);
+            }
+
             this->ITexMarkAsUpdated(texId);
             texture = static_cast<VkTexture*>(texId->m_apiSpecificData);
         }
@@ -1577,25 +1580,25 @@ void CGxDeviceVulkan::ITexCreate(CGxTex* texId) {
     texture->renderTarget = renderTarget;
 
     VkCommandBuffer upload = this->m_vk.UploadCmd();
-    if (!upload) {
-        this->m_vk.RetireImage(texture->image);
-        delete texture;
-        return;
-    }
 
-    if (renderTarget) {
-        texture->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        VkContext::Barrier(upload, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    if (upload) {
+        if (renderTarget) {
+            texture->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            VkContext::Barrier(upload, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        } else {
+            texture->layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            VkContext::Barrier(upload, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+            VkImageSubresourceRange range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, texture->levels, 0, 1 };
+            VkClearColorValue clear = {};
+            vkCmdClearColorImage(upload, texture->image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear, 1, &range);
+            VkContext::Barrier(upload, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            texture->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            texture->initialized = 1;
+        }
     } else {
-        texture->layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        VkContext::Barrier(upload, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-
-        VkImageSubresourceRange range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, texture->levels, 0, 1 };
-        VkClearColorValue clear = {};
-        vkCmdClearColorImage(upload, texture->image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear, 1, &range);
-        VkContext::Barrier(upload, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        texture->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        texture->initialized = 1;
+        texture->layout = VK_IMAGE_LAYOUT_UNDEFINED;
+        texture->initialized = 0;
     }
 
     texId->m_apiSpecificData = texture;
