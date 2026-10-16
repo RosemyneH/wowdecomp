@@ -795,9 +795,8 @@ int32_t VkContext::BeginFrame() {
     // ʕ •ᴥ•ʔ✿ A failed begin is not a live command buffer; present the image already acquired ✿ ʕ •ᴥ•ʔ
     if (vkBeginCommandBuffer(frame.cmd, &beginInfo) != VK_SUCCESS) {
         frame.recording = 0;
-        this->EndFrame();
-        // ʕ •ᴥ•ʔ✿ 2 is an acquire timeout; this image was already presented ✿ ʕ •ᴥ•ʔ
-        return 3;
+        // ʕ •ᴥ•ʔ✿ 3 is a clean present; 4 means EndFrame failed so the next scene recreates ✿ ʕ •ᴥ•ʔ
+        return this->EndFrame() ? 3 : 4;
     }
     frame.recording = 1;
 

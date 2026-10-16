@@ -550,9 +550,13 @@ void CGxDeviceVulkan::ISceneBegin() {
         return;
     }
 
-    if (begun == 3) {
+    if (begun == 3 || begun == 4) {
         // ʕ •ᴥ•ʔ✿ Acquired image was presented; do not pace a visible window at the background cap ✿ ʕ •ᴥ•ʔ
         this->m_imageStarved = 0;
+        // ʕ •ᴥ•ʔ✿ EndFrame failed, including out of date or suboptimal; the next scene begin recreates ✿ ʕ •ᴥ•ʔ
+        if (begun == 4) {
+            this->m_swapchainDirty = 1;
+        }
         return;
     }
 
