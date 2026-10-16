@@ -6,6 +6,10 @@
 #include <cstring>
 #include <ctime>
 #include <execinfo.h>
+#if defined(__APPLE__)
+#include <climits>
+#include <mach-o/dyld.h>
+#endif
 #include <pwd.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -41,8 +45,23 @@ static void sLogHeader(void (*logLineProc)(void*, const char*, ...), void* logLi
 
 static void sLogExeFile(void (*logLineProc)(void*, const char*, ...), void* logLineProcParam) {
     char exeFullPath[MAX_PATH];
+
+#if defined(__APPLE__)
+    char executable[PATH_MAX];
+    char resolved[PATH_MAX];
+    uint32_t length = sizeof(executable);
+
+    if (_NSGetExecutablePath(executable, &length)) {
+        exeFullPath[0] = 0;
+    } else {
+        const char* path = realpath(executable, resolved);
+        SStrCopy(exeFullPath, path ? path : executable, sizeof(exeFullPath));
+    }
+#else
     ssize_t length = readlink("/proc/self/exe", exeFullPath, sizeof(exeFullPath) - 1);
     exeFullPath[length > 0 ? length : 0] = 0;
+#endif
+
     logLineProc(logLineProcParam, "%-10s%s", "Exe:", exeFullPath);
 }
 
