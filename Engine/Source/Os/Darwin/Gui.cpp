@@ -356,9 +356,14 @@ int32_t OsGuiMessageBox(void* parentWindow, int32_t style, const char* message, 
             break;
     }
 
+    SDL_Window* parent = static_cast<SDL_Window*>(parentWindow);
+    if (parent != s_GxDevWindow) {
+        parent = nullptr;
+    }
+
     SDL_MessageBoxData data = {};
     data.flags = SDL_MESSAGEBOX_INFORMATION;
-    data.window = static_cast<SDL_Window*>(parentWindow);
+    data.window = parent;
     data.title = title ? title : "";
     data.message = message;
     data.numbuttons = count;
