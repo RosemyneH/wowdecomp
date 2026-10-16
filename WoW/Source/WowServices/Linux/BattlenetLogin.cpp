@@ -1,4 +1,4 @@
-#if defined(WOWDECOMP_LINUX)
+#if defined(WOWDECOMP_UNIX)
 
 #include <arpa/inet.h>
 #include <netdb.h>

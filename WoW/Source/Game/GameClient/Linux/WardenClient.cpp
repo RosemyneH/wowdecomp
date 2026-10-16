@@ -1,4 +1,4 @@
-#if defined(WOWDECOMP_LINUX)
+#if defined(WOWDECOMP_UNIX)
 
 #include "WoW/Source/Game/GameClient/WardenClient.h"
 #include "Engine/Source/Base/CDataStore.h"

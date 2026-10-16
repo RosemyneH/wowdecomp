@@ -1,4 +1,4 @@
-#if defined(WOWDECOMP_LINUX)
+#if defined(WOWDECOMP_UNIX)
 
 #include "WoW/Source/Glue/CGlueMgr.h"
 #include "Engine/Source/BlizzardCore/Source/System/Process/Process.h"
