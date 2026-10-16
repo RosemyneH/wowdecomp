@@ -283,6 +283,10 @@ int32_t OsGuiCreateVulkanSurface(void* window, void* instance, void* surface) {
 int32_t OsGuiMessageBox(void* parentWindow, int32_t style, const char* message, const char* title) {
     enum { RESULT_YES = 0, RESULT_NO = 1, RESULT_CANCEL = 2 };
 
+    if (!SDL_WasInit(SDL_INIT_VIDEO)) {
+        return RESULT_CANCEL;
+    }
+
     SDL_MessageBoxButtonData buttons[3];
     int32_t count = 0;
 
