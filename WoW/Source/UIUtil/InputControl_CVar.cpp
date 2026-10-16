@@ -15,7 +15,7 @@ CVar* s_cvEnableWowMouse;
 
 // VERIFY: a786a3e1 manual
 // OFFSET: 0x005F99F0
-static void ApplyJoystickConfig(XMLNode* config) {
+void ApplyJoystickConfig(XMLNode* config) {
     if (GetJoystick() == 0xFFFFFFFF) {
         return;
     }

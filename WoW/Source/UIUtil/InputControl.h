@@ -114,6 +114,7 @@ void InputControlInitialize();
 void __stdcall ScaleMouseDeltaByFov(float* dx, float* dy);
 bool JoystickCallback(CVar* var, const char* oldValue, const char* value, void* arg);
 XMLTree* LoadJoystickConfig(XMLNode*& config);
+void ApplyJoystickConfig(XMLNode* config);
 bool WowMouseCVarCallback(CVar* var, const char* oldValue, const char* value, void* arg);
 
 void InputControlRegisterScriptFunctions();

@@ -1347,6 +1347,17 @@ uint32_t GetJoystick() {
                 s_joystickReopenList = listId;
                 SetJoystick(OsJoystickOpen(0));
             }
+
+            // ʕ ◕ᴥ◕ ʔ✿ Bindings live in the XML load, not in the cvar toggle ✿ ʕ ◕ᴥ◕ ʔ
+            if (s_joystick != 0xFFFFFFFF) {
+                XMLNode* config;
+                XMLTree* tree = LoadJoystickConfig(config);
+
+                if (tree) {
+                    ApplyJoystickConfig(config);
+                    XMLTree_Free(tree);
+                }
+            }
         }
     }
 
