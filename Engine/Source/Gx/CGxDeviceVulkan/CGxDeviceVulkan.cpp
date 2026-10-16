@@ -159,7 +159,10 @@ int32_t CGxDeviceVulkan::DeviceSetFormat(const CGxFormat& format) {
 
     CGxDevice::Log("CGxDeviceVulkan::DeviceSetFormat(): unable to set format!");
     this->IDestroyVulkan();
-    this->IDestroyWindow();
+
+    if (this->m_ownWindow) {
+        this->IDestroyWindow();
+    }
 
     return 0;
 }

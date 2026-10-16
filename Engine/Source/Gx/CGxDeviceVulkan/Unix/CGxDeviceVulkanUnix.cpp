@@ -63,16 +63,19 @@ int32_t CGxDeviceVulkan::ICreateWindow(CGxFormat& format) {
 }
 
 void CGxDeviceVulkan::IDestroyWindow() {
+    if (!this->m_ownWindow) {
+        return;
+    }
+
     if (this->m_window && OsGuiGetWindow(0) == this->m_window) {
         OsGuiSetGxWindowProc(nullptr, nullptr, nullptr);
         OsGuiSetGxWindow(nullptr);
     }
 
-    if (this->m_ownWindow && this->m_window) {
+    if (this->m_window) {
         OsGuiDestroyGxWindow(this->m_window);
+        this->m_window = nullptr;
     }
-
-    this->m_window = nullptr;
 }
 
 int32_t CGxDeviceVulkan::ICreateInstance() {
