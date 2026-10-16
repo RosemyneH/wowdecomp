@@ -1320,7 +1320,8 @@ CGxTex* TextureGetGxTex(CTexture* texture, int32_t wait, CStatus* status) {
                 texture->m_atlas->Reload();
             }
 
-            return texture->m_atlas->m_gxTex;
+            CGxTex* atlasTex = texture->m_atlas->m_gxTex;
+            return atlasTex && GxCpuPtrOk(atlasTex) ? atlasTex : nullptr;
         }
     }
 
@@ -1340,7 +1341,8 @@ CGxTex* TextureGetGxTex(CTexture* texture, int32_t wait, CStatus* status) {
         }
     }
 
-    return texture->m_gxTex;
+    CGxTex* gxTex = texture->m_gxTex;
+    return gxTex && GxCpuPtrOk(gxTex) ? gxTex : nullptr;
 }
 
 // VERIFY: 9761fb06 manual

@@ -1346,6 +1346,10 @@ void CGxDevice::RsSet(EGxRenderState which, void* value) {
         return;
     }
 
+    if (value && which >= GxRs_Texture0 && which <= GxRs_Texture15 && !GxCpuPtrOk(value)) {
+        value = nullptr;
+    }
+
     CGxAppRenderState& state = this->m_appRenderStates[which];
 
     if (state.m_value.m_data.p == value) {

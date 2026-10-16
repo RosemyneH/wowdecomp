@@ -11,6 +11,12 @@
 
 class CGxTex;
 
+// -- ʕ •ᴥ•ʔ✿ 47-bit userspace only. A stripped NVIDIA mapping is not a CGxTex. ✿ ʕ •ᴥ•ʔ
+inline int32_t GxCpuPtrOk(const void* value) {
+    uintptr_t top = reinterpret_cast<uintptr_t>(value) >> 47;
+    return top == 0 || top == 0x1ffff;
+}
+
 typedef void (*GxTexUserFunc)(EGxTexCommand command, uint32_t width, uint32_t height, uint32_t depth, uint32_t mipLevel, void* userArg, uint32_t& texelStrideInBytes, const void*& texels);
 
 class CGxTexParms {

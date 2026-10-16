@@ -1406,6 +1406,10 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
         CGxTex* texId = static_cast<CGxTex*>(rs[GxRs_Texture0 + tmu].m_value.m_data.p);
         VkTexture* texture = nullptr;
 
+        if (texId && !GxCpuPtrOk(texId)) {
+            texId = nullptr;
+        }
+
         if (texId) {
             if (texId->m_needsCreation || !texId->m_apiSpecificData) {
                 this->ITexReady(texId);
@@ -1697,11 +1701,11 @@ uint32_t CGxDeviceVulkan::TerrainTextureSlot(CGxTex* tex) {
         return ~0u;
     }
 
-    if (!tex) {
+    if (!tex || !GxCpuPtrOk(tex)) {
         tex = this->m_defaultTexture;
     }
 
-    if (!tex) {
+    if (!tex || !GxCpuPtrOk(tex)) {
         return ~0u;
     }
 
