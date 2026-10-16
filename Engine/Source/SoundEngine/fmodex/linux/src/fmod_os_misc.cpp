@@ -84,7 +84,11 @@ FMOD_RESULT FMOD_OS_File_Open(const char *name, char *mode, int unicode, unsigne
     }
 
     struct stat info;
-    fstat(fileno(file), &info);
+    if (fstat(fileno(file), &info))
+    {
+        fclose(file);
+        return FMOD_ERR_FILE_BAD;
+    }
 
     *handle = file;
     *filesize = (unsigned int)info.st_size;
