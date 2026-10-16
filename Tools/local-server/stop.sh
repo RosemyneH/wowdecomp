@@ -13,7 +13,11 @@ done
 if [[ "${WOWDECOMP_SERVER_BACKEND:-}" == "docker" ]]; then
     SERVER_DIR="${WOWDECOMP_ACORE_DIR:-$ROOT/test/local-server/acore-docker}"
     if [[ -f "$SERVER_DIR/docker-compose.yml" ]]; then
-        docker compose -f "$SERVER_DIR/docker-compose.yml" down
+        if docker info >/dev/null 2>&1; then
+            docker compose -f "$SERVER_DIR/docker-compose.yml" down
+        else
+            sudo docker compose -f "$SERVER_DIR/docker-compose.yml" down
+        fi
     fi
     exit 0
 fi

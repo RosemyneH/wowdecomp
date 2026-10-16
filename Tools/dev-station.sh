@@ -33,7 +33,7 @@ Usage: $0 [all|deps|addons|scope|build|test|launch|smoke]
   scope    symlink $PLAY_DIR from $GAME_SRC and the built packages
   build    Ninja build of WowClient, wasm_addon_host, wasm_addon_tests
   test     headless host tests against Addons/Wasm/dist
-  launch   start WowClient64 in the dev scope (foreground)
+  launch   start AzerothCore in Docker, then WowClient64 in the dev scope
   smoke    start the client, require it to stay up, then stop it
 
 Env: WOWDECOMP_GAME_SRC WOWDECOMP_PLAY_DIR WOWDECOMP_BUILD_DIR WOWDECOMP_REALM_HOST
@@ -144,6 +144,7 @@ launch_client() {
         echo "Missing $PLAY_DIR/WowClient64 — run: $0 build" >&2
         exit 1
     fi
+    WOWDECOMP_SERVER_BACKEND=docker "$ROOT/Tools/local-server/start.sh"
     cd "$PLAY_DIR"
     exec ./WowClient64
 }
