@@ -960,6 +960,9 @@ void ComSat::Sound::Manager::PlayVoiceDataForLocalPlayer(uint8_t player, int32_t
         if (!localPlayer->m_talkerVolumes.Get(ComSat::MapKey<uint64_t>(info.m_talker), talkerVolume)) {
             talkerVolume = 1.0f;
         }
+        if (!this->m_io) {
+            return;
+        }
         this->m_io->SetPlayerPlaybackVolume(player, c, talkerVolume * sessionVolume);
         double average = remote->m_frameTime.GetCurrentAverage();
         int32_t slot = static_cast<int32_t>(remote->m_playCursor);

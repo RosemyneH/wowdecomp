@@ -19,7 +19,11 @@ ComSat::Sound::IO::~IO() {
 // VERIFY: f1d0cb09 manual
 // OFFSET: 0x00887B10
 ComSat::Sound::IO* ComSat::Sound::IO::Create(const ComSat::Initialization& init, ComSat::Sound::IOCallback& callback, ComSat::Allocator& allocator) {
-    return new (allocator.Alloc(sizeof(ComSat::Sound::IOSoundEngine))) ComSat::Sound::IOSoundEngine(init, callback, allocator);
+    void* memory = allocator.Alloc(sizeof(ComSat::Sound::IOSoundEngine));
+    if (!memory) {
+        return nullptr;
+    }
+    return new (memory) ComSat::Sound::IOSoundEngine(init, callback, allocator);
 }
 
 // INLINED
