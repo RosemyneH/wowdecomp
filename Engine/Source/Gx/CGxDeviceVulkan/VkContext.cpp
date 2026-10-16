@@ -285,7 +285,7 @@ int32_t VkContext::CreateDeviceResources() {
         if (!pool) return 0;
         frame.descriptorPools.push_back(pool);
 
-        if (!this->CreateBuffer(UniformRingSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, frame.uniforms) || !this->CreateBuffer(StagingRingSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, frame.staging)) {
+        if (!this->CreateBuffer(UniformRingSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, frame.uniforms) || !this->CreateBuffer(StagingRingSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, frame.staging) || !this->CreateBuffer(StreamRingSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, frame.stream)) {
             return 0;
         }
     }
@@ -640,6 +640,7 @@ void VkContext::DestroyDevice() {
         this->Collect(frame);
         this->DestroyBuffer(frame.uniforms);
         this->DestroyBuffer(frame.staging);
+        this->DestroyBuffer(frame.stream);
         for (VkDescriptorPool pool : frame.descriptorPools) vkDestroyDescriptorPool(this->m_device, pool, nullptr);
         vkDestroySemaphore(this->m_device, frame.imageAvailable, nullptr);
         vkDestroyFence(this->m_device, frame.fence, nullptr);
@@ -703,6 +704,7 @@ void VkContext::PrepareFrame() {
     frame.sets.clear();
     frame.uniformOffset = 0;
     frame.stagingOffset = 0;
+    frame.streamOffset = 0;
     frame.acquired = 0;
     frame.imageWaited = 0;
     frame.prepared = 1;
@@ -995,6 +997,38 @@ int32_t VkContext::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkB
     return 1;
 }
 
+int32_t VkContext::StreamLock(uint32_t align, uint32_t bytes, uint32_t& index, VkBufferAlloc& out) {
+    if (!align || !bytes) {
+        return 0;
+    }
+
+    this->PrepareFrame();
+    VkFrame& frame = this->Frame();
+
+    if (!frame.stream.buffer) {
+        return 0;
+    }
+
+    uint64_t cursor = frame.streamOffset;
+    uint64_t aligned = (static_cast<uint64_t>(align) + cursor - 1) - (static_cast<uint64_t>(align) + cursor - 1) % align;
+
+    if (aligned + bytes <= frame.stream.size) {
+        frame.streamOffset = aligned + bytes;
+        out = frame.stream;
+        out.borrowed = 1;
+        index = static_cast<uint32_t>(aligned);
+        return 1;
+    }
+
+    // ʕ •ᴥ•ʔ✿ Past the ring. This lock gets its own buffer and the next lock returns to the ring ✿ ʕ •ᴥ•ʔ
+    if (!this->CreateBuffer(bytes, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, out)) {
+        return 0;
+    }
+
+    index = 0;
+    return 1;
+}
+
 void VkContext::DestroyBuffer(VkBufferAlloc& buffer) {
     if (buffer.buffer) {
         vkDestroyBuffer(this->m_device, buffer.buffer, nullptr);
@@ -1064,6 +1098,11 @@ void VkContext::Retire(const VkGarbage& garbage) {
 }
 
 void VkContext::RetireBuffer(VkBufferAlloc& buffer) {
+    if (buffer.borrowed) {
+        buffer = {};
+        return;
+    }
+
     if (buffer.buffer) {
         VkGarbage garbage = {};
         garbage.buffer = buffer.buffer;

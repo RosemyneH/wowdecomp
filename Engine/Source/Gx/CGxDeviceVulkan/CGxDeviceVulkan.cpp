@@ -1459,7 +1459,9 @@ void CGxDeviceVulkan::IReleasePool(CGxPool* pool) {
     VkBufferAlloc* alloc = static_cast<VkBufferAlloc*>(pool->m_apiSpecific);
 
     if (alloc) {
-        this->m_vk.RetireBuffer(*alloc);
+        if (!alloc->borrowed) {
+            this->m_vk.RetireBuffer(*alloc);
+        }
         delete alloc;
         pool->m_apiSpecific = nullptr;
     }
@@ -1494,17 +1496,50 @@ char* CGxDeviceVulkan::IBufLock(CGxBuf* buf) {
     }
 
     if (pool->m_usage == GxPoolUsage_Stream) {
-        uint32_t index = (buf->m_itemSize + pool->m_offset - 1) - (buf->m_itemSize + pool->m_offset - 1) % buf->m_itemSize;
-
-        if (index + buf->m_size > static_cast<uint32_t>(pool->m_size)) {
-            this->IReleasePool(pool);
-            pool->Discard();
-            buf->m_index = 0;
-            pool->m_offset = buf->m_size;
-        } else {
-            buf->m_index = index;
-            pool->m_offset = index + buf->m_size;
+        // ʕ •ᴥ•ʔ✿ Appending into the frame ring. Releasing the pool here allocated a new 2.75MB buffer every wrap ✿ ʕ •ᴥ•ʔ
+        if (!buf->m_itemSize || !buf->m_size) {
+            return static_cast<char*>(this->m_emergencyMem[pool->m_target].Lock(buf->m_size));
         }
+
+        uint32_t index = 0;
+        VkBufferAlloc slice = {};
+
+        if (!this->m_vk.StreamLock(buf->m_itemSize, buf->m_size, index, slice)) {
+            return static_cast<char*>(this->m_emergencyMem[pool->m_target].Lock(buf->m_size));
+        }
+
+        VkBufferAlloc* alloc = static_cast<VkBufferAlloc*>(pool->m_apiSpecific);
+
+        if (slice.borrowed) {
+            if (alloc && !alloc->borrowed) {
+                this->m_vk.RetireBuffer(*alloc);
+                delete alloc;
+                alloc = nullptr;
+            }
+
+            if (!alloc) {
+                alloc = new VkBufferAlloc();
+                pool->m_apiSpecific = alloc;
+            }
+
+            *alloc = slice;
+            alloc->memory = VK_NULL_HANDLE;
+            alloc->borrowed = 1;
+        } else {
+            if (alloc) {
+                if (!alloc->borrowed) {
+                    this->m_vk.RetireBuffer(*alloc);
+                }
+                delete alloc;
+            }
+
+            alloc = new VkBufferAlloc(slice);
+            pool->m_apiSpecific = alloc;
+        }
+
+        buf->m_index = index;
+        pool->m_offset = static_cast<int32_t>(index + buf->m_size);
+        return reinterpret_cast<char*>(slice.mapped) + index;
     }
 
     VkBufferAlloc* alloc = this->IPoolBuffer(pool);
