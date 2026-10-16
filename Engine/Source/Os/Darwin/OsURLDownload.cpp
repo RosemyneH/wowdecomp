@@ -74,7 +74,10 @@ static void OsUrlDownloadThread(OsUrlDownload* download, std::string host, std::
             size_t bodyOffset = std::string::npos;
 
             while (!download->m_done) {
-                ssize_t received = recv(sock, data, sizeof(data), 0);
+                ssize_t received;
+                do {
+                    received = recv(sock, data, sizeof(data), 0);
+                } while (received < 0 && errno == EINTR);
 
                 if (received < 0) {
                     download->m_errorCode = errno == EAGAIN || errno == EWOULDBLOCK ? HTTPError::Timeout : HTTPError::Failed;
