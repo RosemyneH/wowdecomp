@@ -64,7 +64,10 @@ static void OsUrlDownloadThread(OsUrlDownload* download, std::string host, std::
         download->m_errorCode = errno == EAGAIN || errno == ETIMEDOUT ? HTTPError::Timeout : HTTPError::Failed;
     } else {
         std::string request = "GET " + path + " HTTP/1.0\r\nHost: " + host + "\r\nUser-Agent: Blizzard Web Client\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n";
-        ssize_t sent = send(sock, request.data(), request.size(), 0);
+        ssize_t sent;
+        do {
+            sent = send(sock, request.data(), request.size(), 0);
+        } while (sent < 0 && errno == EINTR);
 
         if (sent < 0 || static_cast<size_t>(sent) != request.size()) {
             download->m_errorCode = HTTPError::Failed;
