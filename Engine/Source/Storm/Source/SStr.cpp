@@ -1025,6 +1025,9 @@ char* STORMAPI SStrDupA(const char* string, const char* filename, int32_t linenu
 
     size_t length = SStrLen(string) + 1;
     char* result = static_cast<char*>(SMemAlloc(length, filename, linenumber, 0));
+    if (!result) {
+        return nullptr;
+    }
     memcpy(result, string, length);
     return result;
 }
