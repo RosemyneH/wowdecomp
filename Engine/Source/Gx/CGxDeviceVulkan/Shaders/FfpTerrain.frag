@@ -31,6 +31,12 @@ vec4 Stage(int stage, vec4 tex, vec4 cur) {
     return clamp(vec4(TexOp(u.stageColorOp[stage], tex, cur).rgb, TexOp(u.stageAlphaOp[stage], tex, cur).a), 0.0, 1.0);
 }
 
+// ʕ •ᴥ•ʔ✿ 64² blend map. Raw 0..1 puts the chunk edge on the texel border, and clamp turns that border into a hard diagonal ✿ ʕ •ᴥ•ʔ
+vec2 BlendUv(vec3 coord) {
+    vec2 uv = coord.xy / coord.z;
+    return uv * (63.0 / 64.0) + (0.5 / 64.0);
+}
+
 void main() {
     vec4 color = inColor;
 
@@ -39,7 +45,9 @@ void main() {
 
         // ʕ •ᴥ•ʔ✿ A base layer has no blend map. Sampling the default image here punches a second texture through the ground ✿ ʕ •ᴥ•ʔ
         if (u.stageColorOp.y >= 0 && inTexIndex.y >= 0) {
-            color = Stage(1, texture(terrainTextures[nonuniformEXT(inTexIndex.y)], inTexCoord1.xy / inTexCoord1.z), color);
+            vec4 blend = texture(terrainTextures[nonuniformEXT(inTexIndex.y)], BlendUv(inTexCoord1));
+            // ʕ •ᴥ•ʔ✿ Coverage lives in alpha. An 8-bit map repeats that weight in rgb, and modulating with it squares the fade into blocks ✿ ʕ •ᴥ•ʔ
+            color.a *= blend.a;
         }
     }
 
