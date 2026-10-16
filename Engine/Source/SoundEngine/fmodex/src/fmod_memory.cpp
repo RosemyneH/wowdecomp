@@ -7,6 +7,7 @@
 #include "fmod_string.h"
 #include "fmod_types.h"
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -619,6 +620,11 @@ void *MemPool::alloc(int len, const char *file, const int line, FMOD_MEMORY_TYPE
         return 0;
     }
 
+    if (!mCustomPool && len > INT_MAX - (int)sizeof(MemBlockHeader))
+    {
+        return 0;
+    }
+
 #ifdef FMOD_MEMORY_THREADSAFE
     if (!mCrit)
     {
@@ -822,6 +828,11 @@ void *MemPool::realloc(void *ptr, int len, const char *file, const int line, FMO
     }
 
     if (len < 0)
+    {
+        return 0;
+    }
+
+    if (!mCustomPool && len > INT_MAX - (int)sizeof(MemBlockHeader))
     {
         return 0;
     }
