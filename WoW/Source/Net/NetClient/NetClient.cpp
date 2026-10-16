@@ -517,6 +517,11 @@ void NetClient::WCDisconnected(WowConnection* connection, uint32_t timeStamp, co
 void NetClient::HandleAuthChallenge(WowConnection* connection, CDataStore* msg) {
     AuthenticationChallenge* challenge = static_cast<AuthenticationChallenge*>(SMemAlloc(sizeof(AuthenticationChallenge), __FILE__, __LINE__, 0));
 
+    if (!challenge) {
+        connection->Disconnect();
+        return;
+    }
+
     uint32_t difficulty;
     msg->Get(difficulty);
     msg->Get(challenge->m_serverSeed);
