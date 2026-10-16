@@ -87,7 +87,60 @@ void OsJoystickMapStick(uint32_t index, int32_t stick, int32_t xAxis, int32_t yA
     }
 }
 
+static bool AnyJoystickOpen() {
+    for (uint32_t i = 0; i < s_joysticks.Count(); i++) {
+        if (s_joysticks[i].m_device) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool ReplugAlreadyPickedUp() {
+    int32_t live = SDL_NumJoysticks();
+
+    if (live < 0 || static_cast<uint32_t>(live) != s_joysticks.Count()) {
+        return false;
+    }
+
+    for (uint32_t i = 0; i < s_joysticks.Count(); i++) {
+        const MacJoystick* joystick = &s_joysticks[i];
+
+        if (joystick->m_device || joystick->m_deviceIndex != static_cast<int32_t>(i) || joystick->m_axisMask) {
+            return false;
+        }
+
+        for (int32_t stick = 0; stick < 4; stick++) {
+            if (joystick->m_sticks[stick].m_xAxis != -1 || joystick->m_sticks[stick].m_yAxis != -1) {
+                return false;
+            }
+        }
+
+        for (int32_t state = 0; state < 2; state++) {
+            for (int32_t pov = 0; pov < 4; pov++) {
+                if (joystick->m_states[state].m_pov[pov] != 0) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
+static void DropJoystickListIfIdle() {
+    if (!s_initialized || AnyJoystickOpen() || ReplugAlreadyPickedUp()) {
+        return;
+    }
+
+    s_joysticks.SetCount(0);
+    s_initialized = 0;
+}
+
 uint32_t OsJoystickCount() {
+    DropJoystickListIfIdle();
+
     if (!s_initialized) {
         if (SDL_InitSubSystem(SDL_INIT_JOYSTICK)) {
             return 0;
@@ -525,4 +578,6 @@ void OsPollJoysticks(int32_t active) {
     for (uint32_t i = 0; i < s_joysticks.Count(); i++) {
         PollJoystick(i, active);
     }
+
+    DropJoystickListIfIdle();
 }
