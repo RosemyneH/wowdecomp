@@ -1247,8 +1247,17 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
     key.bindingCount = static_cast<uint8_t>(bindingCount);
     key.topology = static_cast<uint8_t>(batch->m_primType);
     key.blend = static_cast<uint8_t>(std::min<uint32_t>(rs[GxRs_BlendingMode].m_value.m_data.u[0], GxBlends_Last - 1));
-    key.unused = (enables & 0x4) && rs[GxRs_DepthTest].m_value.m_data.i[0];
-    key.depthFunc = key.unused ? static_cast<uint8_t>(rs[GxRs_DepthFunc].m_value.m_data.u[0] & 0x3) : DepthFunc_Always;
+    int32_t depthTestOn = (enables & 0x4) && rs[GxRs_DepthTest].m_value.m_data.i[0];
+    int32_t depthFunc = rs[GxRs_DepthFunc].m_value.m_data.i[0];
+
+    if (depthFunc < 0) {
+        depthFunc = 0;
+    } else if (depthFunc > 3) {
+        depthFunc = 3;
+    }
+
+    key.unused = static_cast<uint8_t>(depthTestOn);
+    key.depthFunc = depthTestOn ? static_cast<uint8_t>(depthFunc) : DepthFunc_Always;
     key.depthWrite = (enables & 0x8) && rs[GxRs_DepthWrite].m_value.m_data.i[0];
     key.colorMask = (enables & 0x10) ? static_cast<uint8_t>(rs[GxRs_ColorWrite].m_value.m_data.u[0] & 0xF) : 0;
     key.cull = (enables & 0x20) ? static_cast<uint8_t>(std::min<uint32_t>(rs[GxRs_Culling].m_value.m_data.u[0], 2)) : 0;
@@ -1275,6 +1284,7 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
 
     VkImageView views[2];
     VkSampler samplers[2];
+    int32_t disableTexStage[2] = {};
 
     for (uint32_t tmu = 0; tmu < 2; tmu++) {
         CGxTex* texId = static_cast<CGxTex*>(rs[GxRs_Texture0 + tmu].m_value.m_data.p);
@@ -1287,6 +1297,10 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
 
             this->ITexMarkAsUpdated(texId);
             texture = static_cast<VkTexture*>(texId->m_apiSpecificData);
+
+            if (!texture) {
+                disableTexStage[tmu] = 1;
+            }
         }
 
         if (!texture) {
@@ -1307,6 +1321,13 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
 
     VkDrawUniforms uniforms;
     this->IBuildUniforms(uniforms);
+
+    for (uint32_t tmu = 0; tmu < 2; tmu++) {
+        if (disableTexStage[tmu]) {
+            uniforms.stageColorOp[tmu] = -1;
+            uniforms.stageAlphaOp[tmu] = -1;
+        }
+    }
 
     this->IBeginPass();
 
@@ -1699,7 +1720,7 @@ int32_t CGxDeviceVulkan::ITexUpload(CGxTex* texId) {
         VkContext::Barrier(cmd, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         texture->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         texture->initialized = 1;
-    } else if (texture->initialized) {
+    } else if (texture->layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
         VkContext::Barrier(cmd, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         texture->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     }
