@@ -387,6 +387,10 @@ struct VisBatch {
 
 static VisSnapshot s_visSnap;
 static std::vector<VisRequest> s_visQueue;
+// -- ʕ •ᴥ•ʔ✿ Flush swaps into these. clear() keeps the capacity for the next swap. ✿ ʕ •ᴥ•ʔ
+static std::vector<VisRequest> s_visRequests;
+static std::vector<VisJob> s_visJobs;
+static std::vector<LiquidOut> s_visLiquids;
 
 void DropQueuedVisibility(CMapChunk* chunk) {
     for (size_t i = 0; i < s_visQueue.size();) {
@@ -518,19 +522,18 @@ void CMapChunk::FlushQueuedVisibility() {
         return;
     }
 
-    std::vector<VisRequest> requests;
-    requests.swap(s_visQueue);
+    s_visRequests.swap(s_visQueue);
     VisSnapshot snap = s_visSnap;
     s_visSnap.valid = 0;
 
-    std::vector<VisJob> jobs(requests.size());
+    s_visJobs.resize(s_visRequests.size());
     uint32_t liquidTotal = 0;
 
-    for (size_t i = 0; i < requests.size(); ++i) {
-        VisJob& job = jobs[i];
-        job.chunk = requests[i].chunk;
-        job.linkChunk = requests[i].linkChunk;
-        job.wantLiquids = requests[i].wantLiquids;
+    for (size_t i = 0; i < s_visRequests.size(); ++i) {
+        VisJob& job = s_visJobs[i];
+        job.chunk = s_visRequests[i].chunk;
+        job.linkChunk = s_visRequests[i].linkChunk;
+        job.wantLiquids = s_visRequests[i].wantLiquids;
         job.rejected = 1;
         job.dist = 0.0f;
         job.corner = C3Vector(0.0f, 0.0f, 0.0f);
@@ -548,10 +551,10 @@ void CMapChunk::FlushQueuedVisibility() {
         liquidTotal += job.liquidCount;
     }
 
-    std::vector<LiquidOut> liquids(liquidTotal);
+    s_visLiquids.resize(liquidTotal);
     uint32_t cursor = 0;
 
-    for (VisJob& job : jobs) {
+    for (VisJob& job : s_visJobs) {
         job.liquidBegin = cursor;
 
         if (!job.liquidCount) {
@@ -559,9 +562,9 @@ void CMapChunk::FlushQueuedVisibility() {
         }
 
         for (CChunkLiquid* liquid = job.chunk->m_liquidChunkLinkList.Head(); liquid; liquid = job.chunk->m_liquidChunkLinkList.Next(liquid)) {
-            liquids[cursor].liquid = liquid;
-            liquids[cursor].visible = 0;
-            liquids[cursor].corner = C3Vector(0.0f, 0.0f, 0.0f);
+            s_visLiquids[cursor].liquid = liquid;
+            s_visLiquids[cursor].visible = 0;
+            s_visLiquids[cursor].corner = C3Vector(0.0f, 0.0f, 0.0f);
             ++cursor;
         }
     }
@@ -573,26 +576,30 @@ void CMapChunk::FlushQueuedVisibility() {
     batch.activeView = snap.activeView;
     batch.farCorner = snap.farCorner;
     batch.camZ = snap.camZ;
-    batch.jobs = jobs.data();
-    batch.liquids = liquids.empty() ? nullptr : liquids.data();
+    batch.jobs = s_visJobs.data();
+    batch.liquids = s_visLiquids.empty() ? nullptr : s_visLiquids.data();
 
     // -- ʕ •ᴥ•ʔ✿ Frustum tests write per-chunk results; the lists are linked afterward ✿ ʕ •ᴥ•ʔ
-    Job::ParallelFor(static_cast<uint32_t>(jobs.size()), RunChunkVisibility, &batch);
+    Job::ParallelFor(static_cast<uint32_t>(s_visJobs.size()), RunChunkVisibility, &batch);
 
-    for (const VisJob& job : jobs) {
+    for (const VisJob& job : s_visJobs) {
         if (job.linkChunk && !job.rejected) {
             job.chunk->m_distToCamera = job.dist;
             LinkChunkBucket(job.chunk, job.corner, snap.camPlaneXY);
         }
 
         for (uint32_t n = 0; n < job.liquidCount; ++n) {
-            const LiquidOut& out = liquids[job.liquidBegin + n];
+            const LiquidOut& out = s_visLiquids[job.liquidBegin + n];
 
             if (out.visible) {
                 LinkLiquidBucket(out.liquid, out.corner, snap.camPlaneXY);
             }
         }
     }
+
+    s_visRequests.clear();
+    s_visJobs.clear();
+    s_visLiquids.clear();
 }
 
 // VERIFY: 44a339cb manual
