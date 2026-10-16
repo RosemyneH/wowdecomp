@@ -1,6 +1,5 @@
 #if defined(__linux__) || defined(__APPLE__)
 
-#include <algorithm>
 #include <cerrno>
 #include <cstdint>
 #include <cstdlib>
@@ -219,10 +218,25 @@ bool System_File::MakeAbsolutePath(Blizzard::File::Filesystem* fs, System_File::
     const char* path = parms->m_path;
 
     if (path[0] == '/') {
+        if (strlen(path) >= sizeof(buffer)) {
+            Blizzard::File::SetLastError(8);
+            return false;
+        }
+
         Blizzard::String::Copy(buffer, path, sizeof(buffer));
     } else {
         if (!getcwd(buffer, sizeof(buffer))) {
+            if (errno == ERANGE) {
+                Blizzard::File::SetLastError(8);
+                return false;
+            }
+
             buffer[0] = '\0';
+        }
+
+        if (strlen(buffer) + 1 + strlen(path) >= sizeof(buffer)) {
+            Blizzard::File::SetLastError(8);
+            return false;
         }
 
         Blizzard::String::Append(buffer, "/", sizeof(buffer));
@@ -262,6 +276,12 @@ bool System_File::Move(Blizzard::File::Filesystem* fs, System_File::Stacked::Fil
 
 bool System_File::Delete(Blizzard::File::Filesystem* fs, System_File::Stacked::FileParms* parms) {
     char path[1024];
+
+    if (parms->m_path && strlen(parms->m_path) >= sizeof(path)) {
+        Blizzard::File::SetLastError(8);
+        return false;
+    }
+
     Blizzard::String::MakeUnivPath(parms->m_path, path, sizeof(path));
 
     return unlink(path) == 0;
@@ -374,6 +394,11 @@ bool System_File::GetWorkingDirectory(Blizzard::File::Filesystem* fs, System_Fil
     char buffer[1024];
 
     if (!getcwd(buffer, sizeof(buffer))) {
+        if (errno == ERANGE) {
+            Blizzard::File::SetLastError(8);
+            return false;
+        }
+
         buffer[0] = '\0';
     }
 
@@ -388,6 +413,12 @@ bool System_File::ProcessDirFast(Blizzard::File::Filesystem* fs, System_File::St
     Blizzard::File::ProcessDirCallback callback = parms->m_dircallback;
 
     char nativePath[1024];
+
+    if (path && strlen(path) >= sizeof(nativePath)) {
+        Blizzard::File::SetLastError(8);
+        return false;
+    }
+
     Blizzard::String::MakeUnivPath(path, nativePath, sizeof(nativePath));
     DIR* dir = opendir(nativePath);
 
@@ -482,8 +513,15 @@ bool System_File::GetFreeSpace(Blizzard::File::Filesystem* fs, System_File::Stac
     const char* path = parms->m_path;
 
     if (path && *path) {
+        size_t prefix = static_cast<size_t>(Blizzard::String::FindFilename(path) - path);
+
+        if (prefix >= MAX_PATH) {
+            Blizzard::File::SetLastError(8);
+            return false;
+        }
+
         char directory[MAX_PATH];
-        Blizzard::String::Copy(directory, path, std::min<int32_t>(static_cast<int32_t>(Blizzard::String::FindFilename(path) - path + 1), MAX_PATH));
+        Blizzard::String::Copy(directory, path, static_cast<uint32_t>(prefix + 1));
 
         struct statvfs info;
 
