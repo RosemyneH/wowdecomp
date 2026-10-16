@@ -52,6 +52,7 @@ void OsInputSetWindowResizeLock(int32_t resizeLock);
 float OsInputGetMouseSpeed();
 void OsInputInitialize();
 void OsInputDestroy();
+void OsInputQuitDeferredEvents();
 void OsInputEnableSecureMode(int32_t enable);
 void OsInputSetEventPollProc(void (*pollProc)());
 int32_t OsInputGet(OSINPUT* id, int32_t* param0, int32_t* param1, int32_t* param2, int32_t* param3);

@@ -1803,6 +1803,8 @@ void BeginCloseGame() {
         Startup_StringsRec* message = g_startup_StringsDB.GetRecord(s_closeErrorStringId);
         OsGuiMessageBox(nullptr, 0, message ? message->m_message : "Unknown Error", title ? title->m_message : "World of Warcraft");
     }
+
+    OsInputQuitDeferredEvents();
 }
 
 // VERIFY: cfa3efeb auto

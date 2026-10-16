@@ -46,6 +46,8 @@ static int32_t s_WindowResizeLock;
 
 static void (*s_eventPollProc)();
 
+static int32_t s_quitEventsOnWindowDestroy;
+
 static SDL_Window* GxWindow() {
     return static_cast<SDL_Window*>(OsGuiGetWindow(0));
 }
@@ -294,8 +296,12 @@ static void SaveMouse(int32_t x, int32_t y) {
 }
 
 static void WarpMouse(int32_t x, int32_t y) {
+    SDL_Window* window = GxWindow();
+    if (!window) {
+        return;
+    }
     ScalePoint(&x, &y, 0);
-    SDL_WarpMouseInWindow(GxWindow(), x, y);
+    SDL_WarpMouseInWindow(window, x, y);
 }
 
 static void RestoreMouse() {
@@ -380,6 +386,19 @@ void OsInputInitialize() {
 
 void OsInputDestroy() {
     SDL_StopTextInput();
+    // ʕ •ᴥ•ʔ✿ ConsoleDeviceDestroy still calls SDL_DestroyWindow after this ✿ ʕ •ᴥ•ʔ
+    if (OsGuiGetWindow(0)) {
+        s_quitEventsOnWindowDestroy = 1;
+        return;
+    }
+    SDL_QuitSubSystem(SDL_INIT_EVENTS);
+}
+
+void OsInputQuitDeferredEvents() {
+    if (!s_quitEventsOnWindowDestroy) {
+        return;
+    }
+    s_quitEventsOnWindowDestroy = 0;
     SDL_QuitSubSystem(SDL_INIT_EVENTS);
 }
 

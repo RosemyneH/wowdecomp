@@ -5,6 +5,7 @@
 #include <SDL.h>
 #include <SDL_vulkan.h>
 #include "Engine/Source/Os/Gui.h"
+#include "Engine/Source/Os/Input.h"
 #include "Engine/Source/Storm/H/storm.h"
 
 static SDL_Window* s_GxDevWindow;
@@ -281,6 +282,15 @@ void* OsGuiCreateGxWindow(const char* title, int32_t width, int32_t height, int3
 void OsGuiDestroyGxWindow(void* window) {
     if (window == s_GxDevWindow) {
         s_GxDevWindow = nullptr;
+    }
+
+    if (window == s_GxProcWindow) {
+        if (s_GxWindowProc) {
+            SDL_DelEventWatch(GxWindowEventWatch, nullptr);
+        }
+        s_GxProcWindow = nullptr;
+        s_GxWindowProc = nullptr;
+        s_GxWindowParam = nullptr;
     }
 
     SDL_DestroyWindow(static_cast<SDL_Window*>(window));
