@@ -77,6 +77,11 @@ FMOD_RESULT OutputALSA::getNumDrivers(int *numdrivers)
 
 FMOD_RESULT OutputALSA::getDriverName(int driver, char *name, int namelen)
 {
+    if (!name)
+    {
+        return FMOD_ERR_INVALID_PARAM;
+    }
+
     FMOD_strncpy(name, "ALSA Default", namelen);
 
     return FMOD_OK;
