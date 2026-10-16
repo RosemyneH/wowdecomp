@@ -126,6 +126,11 @@ void WowConnectionNet::PlatformRun() {
                     flags |= 1;
                 }
 
+                if (revents & POLLNVAL) {
+                    flags |= 2;
+                    flags |= 8;
+                }
+
                 if (connection->m_connState == WOWC_DISCONNECTING) {
                     flags |= 8;
                 }
