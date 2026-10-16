@@ -10,6 +10,7 @@
 #include "Engine/Source/Storm/H/storm.h"
 #include "WoW/Source/Glue/CGlueMgr.h"
 #include "WoW/Source/WowServices/HMAC.h"
+#include "WoW/Source/WowServices/WowConnectionNet.h"
 
 // STATIC: 0x00AD2ED0
 static TSList<NETCLIENTNODE> s_clientList;
@@ -680,6 +681,9 @@ void NetClient::Disconnect() {
     this->m_serverConnection->SetResponse(nullptr, false);
     this->m_serverConnection->Disconnect();
     this->m_netEventQueue->Clear();
+    if (WowConnection::s_network) {
+        WowConnection::s_network->Remove(this->m_serverConnection);
+    }
     this->m_serverConnection->Release();
     this->m_serverConnection = new (SMemAlloc(sizeof(WowConnection), __FILE__, __LINE__, 0)) WowConnection(this, nullptr);
     this->m_netState = NS_INITIALIZED;
@@ -694,6 +698,9 @@ void NetClient::Destroy() {
 
     this->Disconnect();
     this->m_serverConnection->SetResponse(nullptr, false);
+    if (WowConnection::s_network) {
+        WowConnection::s_network->Remove(this->m_serverConnection);
+    }
     this->m_serverConnection->Release();
     this->m_serverConnection = nullptr;
     memset(this->m_handlers, 0, sizeof(this->m_handlers));
@@ -799,6 +806,9 @@ void NetClient::HandleResumeComms(WowConnection* connection, CDataStore* msg) {
         this->m_redirectConnection = nullptr;
         old->SetResponse(nullptr, false);
         old->Disconnect();
+        if (WowConnection::s_network) {
+            WowConnection::s_network->Remove(old);
+        }
         old->Release();
     } else {
         this->m_redirectConnection->SetResponse(nullptr, false);
