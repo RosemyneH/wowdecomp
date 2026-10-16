@@ -12,6 +12,7 @@
 #endif
 #include "Engine/Source/Model2/M2Scene.h"
 #include "Engine/Source/Base/Job/JobSystem.h"
+#include "Engine/Source/Base/Profiler.h"
 #include "Engine/Source/Base/ObjectAlloc.h"
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
 #include "Engine/Source/Model2/M2Cache.h"
@@ -2393,6 +2394,7 @@ void CM2Scene::Release() {
 // VERIFY: 610b7e45 manual
 // OFFSET: 0x00823CB0
 void CM2Scene::Draw(M2PASS pass) {
+    Profiler::Scope profile(Profiler::M2Draw);
     M2SkinFinish();
 
     if (!((1 << pass) & this->m_passMask)) {

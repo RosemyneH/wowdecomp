@@ -10,6 +10,7 @@
 #include "Engine/Source/BlizzardCore/Source/Packages/Streaming/Streaming.h"
 #include "Engine/Source/Base/Handle.h"
 #include "Engine/Source/Base/Job/JobSystem.h"
+#include "Engine/Source/Base/Profiler.h"
 #include "Engine/Source/Base/RCString.h"
 #include "Engine/Source/ConsoleBase/ConsoleCommand.h"
 #include "Engine/Source/ConsoleBase/ConsoleVar.h"
@@ -763,6 +764,7 @@ int32_t World::SceneCamLiquidStatus(float* depth) {
 // VERIFY: ac1fbe8d auto
 // OFFSET: 0x0077EFF0
 void CWorld::Render(const C3Vector& cameraPos, float time) {
+    Profiler::Scope profile(Profiler::WorldRender);
     CWorldScene::Render(cameraPos, time);
     CheckAndSendBotDetected();
 }

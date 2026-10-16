@@ -1,4 +1,5 @@
 #include "Engine/Source/Base/Job/JobSystem.h"
+#include "Engine/Source/Base/Profiler.h"
 
 #include <atomic>
 #include <condition_variable>
@@ -145,6 +146,7 @@ void Publish(uint32_t count, RangeFn fn, void* user, uint32_t chunks) {
 }
 
 void Join() {
+    Profiler::Scope profile(Profiler::JobJoin);
     std::unique_lock<std::mutex> lock(g_pool.mu);
     if (!g_pool.active) {
         return;

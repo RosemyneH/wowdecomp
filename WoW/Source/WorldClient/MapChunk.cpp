@@ -6,6 +6,7 @@
 #include "Engine/Source/Tempest/NTempest.h"
 #include <cmath>
 #include "Engine/Source/Base/CDataAllocator.h"
+#include "Engine/Source/Base/Profiler.h"
 #include "Engine/Source/Base/RCString.h"
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
 #include "Engine/Source/Gx/Gx.h"
@@ -512,6 +513,7 @@ void CMapChunk::SetVertexColorFormat(int32_t format) {
 }
 
 void CMapChunk::FlushQueuedVisibility() {
+    Profiler::Scope profile(Profiler::VisFlush);
     if (s_visQueue.empty()) {
         return;
     }

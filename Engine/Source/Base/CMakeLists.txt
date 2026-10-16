@@ -13,3 +13,7 @@ target_include_directories(Base
 if (WOWDECOMP_UNIX)
     target_link_libraries(Base PRIVATE Threads::Threads)
 endif ()
+
+if (WOWDECOMP_LINUX)
+    target_link_libraries(Base PRIVATE rt)
+endif ()

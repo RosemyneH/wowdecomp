@@ -6,6 +6,7 @@
 #include "Engine/Source/Gx/CGxPool.h"
 #include "Engine/Source/Gx/Gx.h"
 #include "Engine/Source/Base/Handle.h"
+#include "Engine/Source/Base/Profiler.h"
 #include "Engine/Source/Services/Texture.h"
 #include "Engine/Source/Storm/H/storm.h"
 #include "Engine/Source/Tempest/CImVector.h"
@@ -2557,6 +2558,7 @@ void CMapRenderChunk::QueueMultiPass(CMapRenderChunk* chunk) {
 }
 
 void CMapRenderChunk::FlushMultiPass() {
+    Profiler::Scope profile(Profiler::TerrainFlush);
     if (s_terrainBatch.empty()) {
         return;
     }

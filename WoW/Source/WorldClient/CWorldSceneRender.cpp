@@ -5,6 +5,7 @@
 #include "Engine/Source/Gx/Gx.h"
 #include "Engine/Source/Gxu/GxuScene.h"
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
+#include "Engine/Source/Base/Profiler.h"
 #include "Engine/Source/Model2/M2Scene.h"
 #include "Engine/Source/ShaderEffect/ShaderEffect.h"
 #include "Engine/Source/Tempest/CMath.h"
@@ -69,6 +70,7 @@ void CWorldScene::RenderCollisionDebug() {
 // VERIFY: cd492c82 manual
 // OFFSET: 0x0079A870
 void CWorldScene::Render(const C3Vector& cameraPos, float time) {
+    Profiler::Scope profile(Profiler::SceneRender);
     if (!CWorldScene::s_viewerMapObjDef) {
         CWorldScene::ComputeExteriorSortDistances();
     }

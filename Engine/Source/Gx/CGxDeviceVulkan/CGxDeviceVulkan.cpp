@@ -7,6 +7,7 @@
 #include "Engine/Source/Gx/CGxPool.h"
 #include "Engine/Source/Gx/CGxTex.h"
 #include "Engine/Source/Gx/Gx.h"
+#include "Engine/Source/Base/Profiler.h"
 #include "Engine/Source/Storm/H/storm.h"
 
 static const uint32_t s_ffpVertexCode[] =
@@ -1181,6 +1182,7 @@ VkSampler CGxDeviceVulkan::ISampler(const CGxTexFlags& flags) {
 }
 
 void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
+    Profiler::Scope profile(Profiler::GxDraw);
     struct ResetGpuDraw {
         CGxDeviceVulkan* self;
         ~ResetGpuDraw() {
