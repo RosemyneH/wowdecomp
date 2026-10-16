@@ -24,6 +24,7 @@
 #include "WoW/Source/WorldClient/Types.h"
 #include "WoW/Source/WorldClient/World.h"
 #include "Engine/Source/Base/Job/JobSystem.h"
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 #if defined(_MSC_VER)
@@ -2437,6 +2438,221 @@ void CMapRenderChunk::RenderMultiPassAdditive(CMapRenderChunk* renderChunk) {
     GxRsSet(GxRs_FogColor, *reinterpret_cast<int32_t*>(&CMapRenderChunk::s_fogColor));
     GxRsSet(GxRs_Texture0, 0);
     GxRsSet(GxRs_Texture1, 0);
+}
+
+struct TerrainCapture {
+    CMapRenderChunk* chunk;
+    C44Matrix world;
+    C44Matrix tex0;
+    C44Matrix tex1;
+    float lightPos[4][4];
+    float lightDiffuse[4][4];
+    float lightAmbient[4][4];
+    float lightAtten[4][4];
+    float fogStart;
+    float fogEnd;
+    uint32_t fogColor;
+    int32_t fog;
+    uint32_t indexCount;
+    uint32_t firstIndex;
+    int32_t baseVertex;
+};
+
+static std::vector<TerrainCapture> s_terrainBatch;
+
+static void CaptureLights(TerrainCapture& cap) {
+    memset(cap.lightPos, 0, sizeof(cap.lightPos));
+    memset(cap.lightDiffuse, 0, sizeof(cap.lightDiffuse));
+    memset(cap.lightAmbient, 0, sizeof(cap.lightAmbient));
+    memset(cap.lightAtten, 0, sizeof(cap.lightAtten));
+
+    for (uint32_t i = 0; i < 4; ++i) {
+        const CGxApiLight& light = g_theGxDevicePtr->m_lights[i];
+
+        if (!light.m_enable) {
+            continue;
+        }
+
+        cap.lightPos[i][0] = light.m_dir.x;
+        cap.lightPos[i][1] = light.m_dir.y;
+        cap.lightPos[i][2] = light.m_dir.z;
+        cap.lightPos[i][3] = light.m_dir.w == 1.0f ? 1.0f : 0.0f;
+        cap.lightDiffuse[i][0] = light.m_dirColor.x;
+        cap.lightDiffuse[i][1] = light.m_dirColor.y;
+        cap.lightDiffuse[i][2] = light.m_dirColor.z;
+        cap.lightDiffuse[i][3] = 1.0f;
+        cap.lightAmbient[i][0] = light.m_ambColor.x;
+        cap.lightAmbient[i][1] = light.m_ambColor.y;
+        cap.lightAmbient[i][2] = light.m_ambColor.z;
+        cap.lightAtten[i][0] = light.m_constantAttenuation;
+        cap.lightAtten[i][1] = light.m_linearAttenuation;
+        cap.lightAtten[i][2] = light.m_quadraticAttenuation;
+    }
+}
+
+static void ApplyChunkFog(const TerrainCapture& cap) {
+    GxRsSet(GxRs_FogStart, cap.fogStart);
+    GxRsSet(GxRs_FogEnd, cap.fogEnd);
+    GxRsSet(GxRs_FogColor, static_cast<int32_t>(cap.fogColor));
+    GxRsSet(GxRs_Fog, cap.fog);
+}
+
+static void FillTerrainDraw(GxTerrainDraw& draw, const TerrainCapture& cap) {
+    draw.world = cap.world;
+    GxXformSet(GxXform_Tex0, cap.tex0);
+    GxXformSet(GxXform_Tex1, cap.tex1);
+    // ʕ ◕ᴥ◕ ʔ✿ Eye-linear texgen is the view inverse, refreshed by IRsSync before this ✿ ʕ ◕ᴥ◕ ʔ
+    g_theGxDevicePtr->ResolveTexMatrix(0, draw.tex0);
+    g_theGxDevicePtr->ResolveTexMatrix(1, draw.tex1);
+    memcpy(draw.lightPos, cap.lightPos, sizeof(draw.lightPos));
+    memcpy(draw.lightDiffuse, cap.lightDiffuse, sizeof(draw.lightDiffuse));
+    memcpy(draw.lightAmbient, cap.lightAmbient, sizeof(draw.lightAmbient));
+    memcpy(draw.lightAtten, cap.lightAtten, sizeof(draw.lightAtten));
+    draw.indexCount = cap.indexCount;
+    draw.firstIndex = cap.firstIndex;
+    draw.baseVertex = cap.baseVertex;
+}
+
+static void DrawTerrainChunk(const TerrainCapture& cap) {
+    ApplyChunkFog(cap);
+    GxXformSet(GxXform_World, cap.world);
+    GxXformSet(GxXform_Tex0, cap.tex0);
+    GxXformSet(GxXform_Tex1, cap.tex1);
+    GxPrimVertexPtr(cap.chunk->m_chunkBuf->m_vertexBuf, CMapRenderChunk::s_gxBufVertexFormat);
+    g_theGxDevicePtr->PrimIndexPtr(cap.chunk->m_chunkBuf->m_indexBuf);
+    g_theGxDevicePtr->Draw(&cap.chunk->m_batch, 1);
+}
+
+void CMapRenderChunk::QueueMultiPass(CMapRenderChunk* chunk) {
+    CGxBuf* vertex = chunk->m_chunkBuf ? chunk->m_chunkBuf->m_vertexBuf : nullptr;
+    CGxBuf* index = chunk->m_chunkBuf ? chunk->m_chunkBuf->m_indexBuf : nullptr;
+    int32_t special = (chunk->m_renderFlags & 0x4) != 0;
+
+    for (uint32_t i = 0; i < chunk->m_layersCount; ++i) {
+        if (chunk->m_layers[i].m_flags & (0x40 | 0x80)) {
+            special = 1;
+        }
+    }
+
+    if (special || !vertex || !index || vertex->m_pool != CMapRenderChunk::s_gxVertexPool || index->m_pool != CMapRenderChunk::s_gxIndexPool || !vertex->m_itemSize || vertex->m_index % vertex->m_itemSize || index->m_itemSize != 2) {
+        CMapRenderChunk::RenderMultiPassAlpha(chunk);
+        return;
+    }
+
+    TerrainCapture cap = {};
+    CGxMatrixStack& world = g_theGxDevicePtr->m_xforms[GxXform_World];
+    cap.chunk = chunk;
+    cap.world = world.m_mtx[world.m_level];
+    C3Vector offset = CWorldScene::s_activeWorldView - chunk->m_vec1;
+    CMapRenderChunk::ComputeTexMatrices(cap.tex0, cap.tex1, offset, -CMapChunk::s_geoToTex);
+    CaptureLights(cap);
+    cap.fogStart = g_theGxDevicePtr->m_appRenderStates[GxRs_FogStart].m_value.m_data.f[0];
+    cap.fogEnd = g_theGxDevicePtr->m_appRenderStates[GxRs_FogEnd].m_value.m_data.f[0];
+    cap.fogColor = g_theGxDevicePtr->m_appRenderStates[GxRs_FogColor].m_value.m_data.u[0];
+    cap.fog = g_theGxDevicePtr->m_appRenderStates[GxRs_Fog].m_value.m_data.i[0];
+    cap.indexCount = chunk->m_batch.m_count;
+    cap.firstIndex = index->m_index / 2 + chunk->m_batch.m_start;
+    cap.baseVertex = static_cast<int32_t>(vertex->m_index / vertex->m_itemSize);
+    s_terrainBatch.push_back(cap);
+}
+
+void CMapRenderChunk::FlushMultiPass() {
+    if (s_terrainBatch.empty()) {
+        return;
+    }
+
+    uint32_t maxLayers = 0;
+
+    for (const TerrainCapture& cap : s_terrainBatch) {
+        if (cap.chunk->m_layersCount > maxLayers) {
+            maxLayers = cap.chunk->m_layersCount;
+        }
+    }
+
+    std::vector<uint8_t> used(s_terrainBatch.size());
+    std::vector<GxTerrainDraw> draws;
+    g_theGxDevicePtr->IRsSync(0);
+
+    for (uint32_t layer = 0; layer < maxLayers; ++layer) {
+        std::fill(used.begin(), used.end(), 0);
+
+        for (size_t i = 0; i < s_terrainBatch.size(); ++i) {
+            if (used[i] || layer >= s_terrainBatch[i].chunk->m_layersCount) {
+                continue;
+            }
+
+            CMapRenderChunkLayer* key = &s_terrainBatch[i].chunk->m_layers[layer];
+            draws.clear();
+
+            for (size_t j = i; j < s_terrainBatch.size(); ++j) {
+                if (used[j] || layer >= s_terrainBatch[j].chunk->m_layersCount) {
+                    continue;
+                }
+
+                CMapRenderChunkLayer* other = &s_terrainBatch[j].chunk->m_layers[layer];
+
+                const TerrainCapture& cap = s_terrainBatch[j];
+
+                if (other->m_texture != key->m_texture || other->m_layerTexture != key->m_layerTexture || cap.fog != s_terrainBatch[i].fog || cap.fogColor != s_terrainBatch[i].fogColor || cap.fogStart != s_terrainBatch[i].fogStart || cap.fogEnd != s_terrainBatch[i].fogEnd) {
+                    continue;
+                }
+
+                used[j] = 1;
+                GxTerrainDraw draw = {};
+                FillTerrainDraw(draw, s_terrainBatch[j]);
+                draws.push_back(draw);
+            }
+
+            CGxTex* gxTex = TextureGetGxTex(key->m_texture, 0, nullptr);
+            g_theGxDevicePtr->RsSet(GxRs_Texture0, gxTex);
+
+            if (gxTex) {
+                GxTexSetWrap(gxTex, GxTex_Wrap, GxTex_Wrap);
+            }
+
+            if (key->m_layerTexture) {
+                g_theGxDevicePtr->RsSet(GxRs_Texture1, TextureGetGxTex(key->m_layerTexture, 1, nullptr));
+            } else {
+                GxRsSet(GxRs_Texture1, 0);
+            }
+
+            GxRsSet(GxRs_BlendingMode, layer == 0 ? GxBlend_Opaque : GxBlend_Alpha);
+            GxUpdateAlphaRef(GxRs_AlphaRef);
+            ApplyChunkFog(s_terrainBatch[i]);
+            GxPrimVertexPtr(s_terrainBatch[i].chunk->m_chunkBuf->m_vertexBuf, CMapRenderChunk::s_gxBufVertexFormat);
+            g_theGxDevicePtr->PrimIndexPtr(s_terrainBatch[i].chunk->m_chunkBuf->m_indexBuf);
+
+            if (!g_theGxDevicePtr->DrawTerrainBatch(draws.data(), static_cast<uint32_t>(draws.size()))) {
+                for (size_t j = i; j < s_terrainBatch.size(); ++j) {
+                    CMapRenderChunkLayer* other = &s_terrainBatch[j].chunk->m_layers[layer];
+
+                    if (layer < s_terrainBatch[j].chunk->m_layersCount && other->m_texture == key->m_texture && other->m_layerTexture == key->m_layerTexture && s_terrainBatch[j].fog == s_terrainBatch[i].fog && s_terrainBatch[j].fogColor == s_terrainBatch[i].fogColor && s_terrainBatch[j].fogStart == s_terrainBatch[i].fogStart && s_terrainBatch[j].fogEnd == s_terrainBatch[i].fogEnd) {
+                        DrawTerrainChunk(s_terrainBatch[j]);
+                    }
+                }
+            }
+        }
+    }
+
+    for (const TerrainCapture& cap : s_terrainBatch) {
+        if (!cap.chunk->m_shadowTexture || !(CWorld::enables & Enable_Shadow)) {
+            continue;
+        }
+
+        ApplyChunkFog(cap);
+        GxXformSet(GxXform_World, cap.world);
+        GxXformSet(GxXform_Tex0, cap.tex0);
+        GxXformSet(GxXform_Tex1, cap.tex1);
+        GxPrimVertexPtr(cap.chunk->m_chunkBuf->m_vertexBuf, CMapRenderChunk::s_gxBufVertexFormat);
+        g_theGxDevicePtr->PrimIndexPtr(cap.chunk->m_chunkBuf->m_indexBuf);
+        GxRsSet(GxRs_BlendingMode, GxBlend_Alpha);
+        GxUpdateAlphaRef(GxRs_AlphaRef);
+        g_theGxDevicePtr->RsSet(GxRs_Texture0, TextureGetGxTex(CWorld::shadowModTexture, 1, nullptr));
+        g_theGxDevicePtr->RsSet(GxRs_Texture1, TextureGetGxTex(cap.chunk->m_shadowTexture, 1, nullptr));
+        g_theGxDevicePtr->Draw(&cap.chunk->m_batch, 1);
+    }
+
+    s_terrainBatch.clear();
 }
 
 // VERIFY: 18189b69 manual

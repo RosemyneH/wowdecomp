@@ -85,6 +85,17 @@ struct VkSetKeyHash {
     }
 };
 
+// ʕ •ᴥ•ʔ✿ std430 row-major record. Must stay 448 bytes, matching Shaders/Ffp.vert GpuDrawItem ✿ ʕ •ᴥ•ʔ
+struct GpuDrawItem {
+    float world[16];
+    float tex0[16];
+    float tex1[16];
+    float lightPos[4][4];
+    float lightDiffuse[4][4];
+    float lightAmbient[4][4];
+    float lightAtten[4][4];
+};
+
 struct VkFrame {
     VkCommandBuffer cmd;
     VkCommandBuffer uploadCmd;
@@ -95,6 +106,10 @@ struct VkFrame {
     std::unordered_map<VkSetKey, VkDescriptorSet, VkSetKeyHash> sets;
     VkBufferAlloc uniforms;
     VkDeviceSize uniformOffset;
+    VkBufferAlloc items;
+    uint32_t itemCursor = 0;
+    VkBufferAlloc indirect;
+    VkDeviceSize indirectCursor = 0;
     std::vector<VkBufferAlloc> stagingChunks;
     uint32_t stagingChunk = 0;
     VkDeviceSize stagingOffset = 0;
@@ -118,6 +133,8 @@ class VkContext {
         StagingRingSize = 16 << 20,
         // ʕ •ᴥ•ʔ✿ Chunks stay on the frame. A fresh buffer per lock after the first chunk filled was the stall ✿ ʕ •ᴥ•ʔ
         StreamRingSize = 64 << 20,
+        ItemRingSize = 8 << 20,
+        IndirectRingSize = 1 << 20,
         DescriptorSetsPerFrame = 8192,
     };
 
@@ -187,6 +204,8 @@ class VkContext {
 
     uint32_t FindMemoryType(uint32_t typeBits, VkMemoryPropertyFlags flags);
     int32_t CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkBufferAlloc& out);
+    int32_t AllocDrawItems(uint32_t count, uint32_t& first, GpuDrawItem*& mapped);
+    int32_t AllocIndirect(uint32_t count, VkDeviceSize& offset, VkDrawIndexedIndirectCommand*& mapped);
     int32_t BumpChunk(std::vector<VkBufferAlloc>& chunks, uint32_t& chunkIndex, VkDeviceSize& cursor, VkDeviceSize chunkSize, VkBufferUsageFlags usage, uint32_t align, uint32_t bytes, uint32_t& index, VkBufferAlloc& out);
     int32_t StreamLock(uint32_t align, uint32_t bytes, uint32_t& index, VkBufferAlloc& out);
     void DestroyBuffer(VkBufferAlloc& buffer);

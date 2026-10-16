@@ -14,7 +14,22 @@ layout(location = 1) out vec3 outTexCoord0;
 layout(location = 2) out vec3 outTexCoord1;
 layout(location = 3) out float outFog;
 
-vec3 StageTexCoord(int stage, vec3 viewPos, vec3 viewNormal) {
+// ʕ •ᴥ•ʔ✿ Row-major, matching C44Matrix. One record per instance or per terrain draw ✿ ʕ •ᴥ•ʔ
+struct GpuDrawItem {
+    mat4 world;
+    mat4 tex0;
+    mat4 tex1;
+    vec4 lightPos[4];
+    vec4 lightDiffuse[4];
+    vec4 lightAmbient[4];
+    vec4 lightAtten[4];
+};
+
+layout(std430, set = 0, binding = 3, row_major) readonly buffer GpuDrawItems {
+    GpuDrawItem items[];
+} gpu;
+
+vec3 StageTexCoord(int stage, vec3 viewPos, vec3 viewNormal, mat4 texMatrix) {
     int gen = u.stageTexGen[stage];
     vec4 src;
 
@@ -34,17 +49,40 @@ vec3 StageTexCoord(int stage, vec3 viewPos, vec3 viewNormal) {
         return vec3(src.xy, 1.0);
     }
 
-    vec4 t = src * u.texMatrix[stage];
+    vec4 t = src * texMatrix;
     return mode == 2 ? t.xyz : vec3(t.xy, 1.0);
 }
 
 void main() {
-    vec4 worldPos = vec4(inPosition, 1.0) * u.world;
+    int gpuMode = int(u.misc.y);
+    mat4 worldMat = u.world;
+    mat4 tex0 = u.texMatrix[0];
+    mat4 tex1 = u.texMatrix[1];
+    vec4 lightPos[4] = u.lightPos;
+    vec4 lightDiffuse[4] = u.lightDiffuse;
+    vec4 lightAmbient[4] = u.lightAmbient;
+    vec4 lightAtten[4] = u.lightAtten;
+
+    if (gpuMode != 0) {
+        GpuDrawItem item = gpu.items[gl_InstanceIndex];
+        worldMat = item.world;
+
+        if (gpuMode == 2) {
+            tex0 = item.tex0;
+            tex1 = item.tex1;
+            lightPos = item.lightPos;
+            lightDiffuse = item.lightDiffuse;
+            lightAmbient = item.lightAmbient;
+            lightAtten = item.lightAtten;
+        }
+    }
+
+    vec4 worldPos = vec4(inPosition, 1.0) * worldMat;
     vec4 viewPos = worldPos * u.view;
     gl_Position = viewPos * u.proj;
     gl_PointSize = u.misc.x;
 
-    vec3 worldNormal = (vec4(inNormal, 0.0) * u.world).xyz;
+    vec3 worldNormal = (vec4(inNormal, 0.0) * worldMat).xyz;
     worldNormal = dot(worldNormal, worldNormal) > 0.0 ? normalize(worldNormal) : worldNormal;
     vec3 viewNormal = (vec4(worldNormal, 0.0) * u.view).xyz;
 
@@ -57,31 +95,31 @@ void main() {
         vec3 diff = vec3(0.0);
 
         for (int i = 0; i < 4; i++) {
-            if (u.lightDiffuse[i].w == 0.0) {
+            if (lightDiffuse[i].w == 0.0) {
                 continue;
             }
 
             vec3 dir;
             float atten = 1.0;
 
-            if (u.lightPos[i].w != 0.0) {
-                vec3 delta = u.lightPos[i].xyz - worldPos.xyz;
+            if (lightPos[i].w != 0.0) {
+                vec3 delta = lightPos[i].xyz - worldPos.xyz;
                 float dist = length(delta);
                 dir = delta / max(dist, 1e-6);
-                atten = 1.0 / max(dot(u.lightAtten[i].xyz, vec3(1.0, dist, dist * dist)), 1e-6);
+                atten = 1.0 / max(dot(lightAtten[i].xyz, vec3(1.0, dist, dist * dist)), 1e-6);
             } else {
-                dir = -normalize(u.lightPos[i].xyz);
+                dir = -normalize(lightPos[i].xyz);
             }
 
-            amb += u.lightAmbient[i].rgb * atten;
-            diff += u.lightDiffuse[i].rgb * max(dot(worldNormal, dir), 0.0) * atten;
+            amb += lightAmbient[i].rgb * atten;
+            diff += lightDiffuse[i].rgb * max(dot(worldNormal, dir), 0.0) * atten;
         }
 
         color = vec4(emissive + diffuse.rgb * (amb + diff), diffuse.a);
     }
 
     outColor = clamp(color, 0.0, 1.0);
-    outTexCoord0 = StageTexCoord(0, viewPos.xyz, viewNormal);
-    outTexCoord1 = StageTexCoord(1, viewPos.xyz, viewNormal);
+    outTexCoord0 = StageTexCoord(0, viewPos.xyz, viewNormal, tex0);
+    outTexCoord1 = StageTexCoord(1, viewPos.xyz, viewNormal, tex1);
     outFog = u.flags.z != 0 ? clamp((u.fogParams.y - abs(viewPos.z)) / (u.fogParams.y - u.fogParams.x), 0.0, 1.0) : 1.0;
 }

@@ -55,14 +55,27 @@ def expected_layout():
     return offsets, offset
 
 
+def uniform_block_offsets(text, member_count):
+    """Member offsets of the std140 block. Other structs in the module are ignored."""
+    groups = {}
+    for struct, index, offset in re.findall(r"OpMemberDecorate (%\w+) (\d+) Offset (\d+)", text):
+        groups.setdefault(struct, []).append((int(index), int(offset)))
+    for members in groups.values():
+        if len(members) != member_count:
+            continue
+        members.sort()
+        return [offset for _, offset in members]
+    return None
+
+
 def check_invariants(spv, label):
     problems = []
     text = run("spirv-dis", "--no-color", str(spv)).stdout
     offsets, total = expected_layout()
     if total != 768:
         problems.append(f"computed block size {total} != 768")
-    offsets_found = sorted(int(x) for x in re.findall(r"OpMemberDecorate %\w+ \d+ Offset (\d+)", text))
     expected_offsets = [o for o, _, _, _ in offsets]
+    offsets_found = uniform_block_offsets(text, len(expected_offsets))
     if offsets_found != expected_offsets:
         problems.append(f"{label}: member offsets {offsets_found} != expected {expected_offsets}")
     if len(re.findall(r"RowMajor", text)) < 4:

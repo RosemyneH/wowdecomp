@@ -194,6 +194,8 @@ int32_t VkContext::CreateDevice(VkSurfaceKHR surface) {
     this->m_features.samplerAnisotropy = supported.samplerAnisotropy;
     this->m_features.fillModeNonSolid = supported.fillModeNonSolid;
     this->m_features.largePoints = supported.largePoints;
+    // ʕ •ᴥ•ʔ✿ Indirect terrain draws put the chunk index in firstInstance ✿ ʕ •ᴥ•ʔ
+    this->m_features.drawIndirectFirstInstance = supported.drawIndirectFirstInstance;
 
     float priority = 1.0f;
     VkDeviceQueueCreateInfo queueInfo = { VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
@@ -286,6 +288,14 @@ int32_t VkContext::CreateDeviceResources() {
         frame.descriptorPools.push_back(pool);
 
         if (!this->CreateBuffer(UniformRingSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, frame.uniforms)) {
+            return 0;
+        }
+
+        if (!this->CreateBuffer(ItemRingSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, frame.items)) {
+            return 0;
+        }
+
+        if (!this->CreateBuffer(IndirectRingSize, VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, frame.indirect)) {
             return 0;
         }
     }
@@ -639,6 +649,8 @@ void VkContext::DestroyDevice() {
     for (VkFrame& frame : this->m_frames) {
         this->Collect(frame);
         this->DestroyBuffer(frame.uniforms);
+        this->DestroyBuffer(frame.items);
+        this->DestroyBuffer(frame.indirect);
         for (VkBufferAlloc& chunk : frame.stagingChunks) this->DestroyBuffer(chunk);
         for (VkBufferAlloc& chunk : frame.streamChunks) this->DestroyBuffer(chunk);
         for (VkDescriptorPool pool : frame.descriptorPools) vkDestroyDescriptorPool(this->m_device, pool, nullptr);
@@ -703,6 +715,8 @@ void VkContext::PrepareFrame() {
     frame.descriptorPoolCursor = 0;
     frame.sets.clear();
     frame.uniformOffset = 0;
+    frame.itemCursor = 0;
+    frame.indirectCursor = 0;
     frame.stagingChunk = 0;
     frame.stagingOffset = 0;
     frame.streamChunk = 0;
@@ -716,10 +730,11 @@ VkDescriptorPool VkContext::CreateDescriptorPool() {
     VkDescriptorPoolSize poolSizes[] = {
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, DescriptorSetsPerFrame },
         { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, DescriptorSetsPerFrame * 2 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, DescriptorSetsPerFrame },
     };
     VkDescriptorPoolCreateInfo info = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
     info.maxSets = DescriptorSetsPerFrame;
-    info.poolSizeCount = 2;
+    info.poolSizeCount = 3;
     info.pPoolSizes = poolSizes;
     VkDescriptorPool pool = VK_NULL_HANDLE;
     if (vkCreateDescriptorPool(this->m_device, &info, nullptr, &pool) != VK_SUCCESS) {
@@ -1036,6 +1051,36 @@ int32_t VkContext::BumpChunk(std::vector<VkBufferAlloc>& chunks, uint32_t& chunk
         chunkIndex++;
         cursor = 0;
     }
+}
+
+int32_t VkContext::AllocDrawItems(uint32_t count, uint32_t& first, GpuDrawItem*& mapped) {
+    this->PrepareFrame();
+    VkFrame& frame = this->Frame();
+    uint32_t capacity = frame.items.mapped ? static_cast<uint32_t>(frame.items.size / sizeof(GpuDrawItem)) : 0;
+
+    if (!count || frame.itemCursor + count > capacity) {
+        return 0;
+    }
+
+    first = frame.itemCursor;
+    mapped = reinterpret_cast<GpuDrawItem*>(frame.items.mapped) + frame.itemCursor;
+    frame.itemCursor += count;
+    return 1;
+}
+
+int32_t VkContext::AllocIndirect(uint32_t count, VkDeviceSize& offset, VkDrawIndexedIndirectCommand*& mapped) {
+    this->PrepareFrame();
+    VkFrame& frame = this->Frame();
+    VkDeviceSize bytes = static_cast<VkDeviceSize>(count) * sizeof(VkDrawIndexedIndirectCommand);
+
+    if (!count || !frame.indirect.mapped || frame.indirectCursor + bytes > frame.indirect.size) {
+        return 0;
+    }
+
+    offset = frame.indirectCursor;
+    mapped = reinterpret_cast<VkDrawIndexedIndirectCommand*>(frame.indirect.mapped + frame.indirectCursor);
+    frame.indirectCursor += bytes;
+    return 1;
 }
 
 int32_t VkContext::StreamLock(uint32_t align, uint32_t bytes, uint32_t& index, VkBufferAlloc& out) {

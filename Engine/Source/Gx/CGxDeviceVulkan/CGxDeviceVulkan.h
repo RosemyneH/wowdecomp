@@ -123,6 +123,11 @@ class CGxDeviceVulkan : public CGxDevice {
     VkBuffer m_boundBuffers[MaxBindings] = {};
     VkDeviceSize m_boundOffsets[MaxBindings] = {};
     VkBuffer m_boundIndexBuffer = VK_NULL_HANDLE;
+    int32_t m_gpuDrawMode = 0;
+    uint32_t m_drawInstances = 0;
+    uint32_t m_firstInstance = 0;
+    uint32_t m_indirectCount = 0;
+    VkDeviceSize m_indirectOffset = 0;
     VkViewport m_boundViewport = {};
     VkRect2D m_boundScissor = {};
     float m_boundDepthBias = 0.0f;
@@ -151,6 +156,9 @@ class CGxDeviceVulkan : public CGxDevice {
     virtual void SceneClear(uint32_t mask, CImVector color);
     virtual void XformSetProjection(const C44Matrix& matrix);
     virtual void Draw(CGxBatch* batch, int32_t count);
+    virtual void DrawInstanced(CGxBatch* batch, const C44Matrix* worlds, uint32_t count);
+    virtual int32_t DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t count);
+    virtual void ResolveTexMatrix(uint32_t tmu, C44Matrix& matrix);
     virtual void PoolSizeSet(CGxPool* pool, uint32_t size);
     virtual void PoolDestroy(CGxPool* pool);
     virtual char* BufLock(CGxBuf* buf);

@@ -17,6 +17,12 @@ static const uint32_t s_ffpFragmentCode[] =
 #include "Ffp.frag.inc"
 ;
 
+static_assert(sizeof(GpuDrawItem) == 448, "GpuDrawItem must match Ffp.vert");
+static_assert(offsetof(GpuDrawItem, tex0) == 64, "GpuDrawItem.tex0");
+static_assert(offsetof(GpuDrawItem, tex1) == 128, "GpuDrawItem.tex1");
+static_assert(offsetof(GpuDrawItem, lightPos) == 192, "GpuDrawItem.lightPos");
+static_assert(offsetof(GpuDrawItem, lightAtten) == 384, "GpuDrawItem.lightAtten");
+
 const VkFormat CGxDeviceVulkan::s_gxTexFmtToVkFmt[GxTexFormats_Last] = { VK_FORMAT_UNDEFINED, VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_B4G4R4A4_UNORM_PACK16, VK_FORMAT_A1R5G5B5_UNORM_PACK16, VK_FORMAT_R5G6B5_UNORM_PACK16, VK_FORMAT_BC1_RGBA_UNORM_BLOCK, VK_FORMAT_BC2_UNORM_BLOCK, VK_FORMAT_BC3_UNORM_BLOCK, VK_FORMAT_R8G8_SNORM, VK_FORMAT_R16G16_SFLOAT, VK_FORMAT_R32_SFLOAT, VK_FORMAT_UNDEFINED };
 
 const VkPrimitiveTopology CGxDeviceVulkan::s_primitiveConversion[GxPrims_Last] = { VK_PRIMITIVE_TOPOLOGY_POINT_LIST, VK_PRIMITIVE_TOPOLOGY_LINE_LIST, VK_PRIMITIVE_TOPOLOGY_LINE_STRIP, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN };
@@ -270,14 +276,15 @@ int32_t CGxDeviceVulkan::ICreateVulkan(const CGxFormat& format) {
 int32_t CGxDeviceVulkan::ICreateDeviceObjects() {
     VkDevice device = this->m_vk.m_device;
 
-    VkDescriptorSetLayoutBinding bindings[3] = {
+    VkDescriptorSetLayoutBinding bindings[4] = {
         { 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
         { 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
         { 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+        { 3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr },
     };
 
     VkDescriptorSetLayoutCreateInfo setInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
-    setInfo.bindingCount = 3;
+    setInfo.bindingCount = 4;
     setInfo.pBindings = bindings;
 
     VkDescriptorSetLayout setLayout = VK_NULL_HANDLE;
@@ -919,6 +926,11 @@ void CGxDeviceVulkan::ISetTexGen(uint32_t tmu, int32_t texGen) {
     stack.m_mtx[stack.m_level] = matrix;
 }
 
+void CGxDeviceVulkan::ResolveTexMatrix(uint32_t tmu, C44Matrix& matrix) {
+    int32_t mode = 0;
+    this->IXformTex(tmu, mode, matrix);
+}
+
 void CGxDeviceVulkan::IXformTex(uint32_t tmu, int32_t& mode, C44Matrix& matrix) {
     CGxMatrixStack& texGen = this->m_texGen[tmu];
     CGxMatrixStack& xform = this->m_xforms[tmu];
@@ -1030,6 +1042,7 @@ void CGxDeviceVulkan::IBuildUniforms(VkDrawUniforms& uniforms) {
 
     float pointSize = rs[GxRs_PointScale].m_value.m_data.f[0];
     uniforms.misc[0] = pointSize > 1.0f && this->m_vk.m_features.largePoints ? pointSize : 1.0f;
+    uniforms.misc[1] = static_cast<float>(this->m_gpuDrawMode);
 }
 
 void CGxDeviceVulkan::IRsSendToHw(EGxRenderState which) {
@@ -1168,6 +1181,16 @@ VkSampler CGxDeviceVulkan::ISampler(const CGxTexFlags& flags) {
 }
 
 void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
+    struct ResetGpuDraw {
+        CGxDeviceVulkan* self;
+        ~ResetGpuDraw() {
+            self->m_gpuDrawMode = 0;
+            self->m_drawInstances = 0;
+            self->m_firstInstance = 0;
+            self->m_indirectCount = 0;
+        }
+    } resetGpuDraw{this};
+
     if (!this->m_context || this->m_intF5C || !this->m_frameActive || this->m_targetInvalid) {
         return;
     }
@@ -1237,7 +1260,7 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
         }
 
         buffers[i] = alloc->buffer;
-        offsets[i] = streamBufs[i]->m_index;
+        offsets[i] = this->m_indirectCount ? 0 : streamBufs[i]->m_index;
         key.bindingStride[i] = static_cast<uint16_t>(strides[i]);
     }
 
@@ -1384,25 +1407,30 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
 
         if (created) {
         VkDescriptorBufferInfo bufferInfo = { frame.uniforms.buffer, 0, sizeof(VkDrawUniforms) };
+        VkDescriptorBufferInfo itemInfo = { frame.items.buffer, 0, VK_WHOLE_SIZE };
         VkDescriptorImageInfo imageInfo[2] = {
             { samplers[0], views[0], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
             { samplers[1], views[1], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
         };
 
-        VkWriteDescriptorSet writes[3] = {};
+        VkWriteDescriptorSet writes[4] = {};
 
-        for (uint32_t i = 0; i < 3; i++) {
+        for (uint32_t i = 0; i < 4; i++) {
             writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             writes[i].dstSet = set;
             writes[i].dstBinding = i;
             writes[i].descriptorCount = 1;
-            writes[i].descriptorType = i ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
         }
 
+        writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+        writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         writes[0].pBufferInfo = &bufferInfo;
         writes[1].pImageInfo = &imageInfo[0];
         writes[2].pImageInfo = &imageInfo[1];
-        vkUpdateDescriptorSets(this->m_vk.m_device, 3, writes, 0, nullptr);
+        writes[3].pBufferInfo = &itemInfo;
+        vkUpdateDescriptorSets(this->m_vk.m_device, 4, writes, 0, nullptr);
         }
 
         this->m_boundSet = set;
@@ -1435,10 +1463,80 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
             this->m_boundIndexBuffer = indices->buffer;
         }
 
-        vkCmdDrawIndexed(cmd, batch->m_count, 1, batch->m_start + (this->m_primIndexBuf->m_index >> 1), 0, 0);
+        if (this->m_indirectCount) {
+            vkCmdDrawIndexedIndirect(cmd, frame.indirect.buffer, this->m_indirectOffset, this->m_indirectCount, sizeof(VkDrawIndexedIndirectCommand));
+        } else {
+            uint32_t instances = this->m_drawInstances ? this->m_drawInstances : 1;
+            vkCmdDrawIndexed(cmd, batch->m_count, instances, batch->m_start + (this->m_primIndexBuf->m_index >> 1), 0, this->m_firstInstance);
+        }
     } else {
-        vkCmdDraw(cmd, batch->m_count, 1, 0, 0);
+        uint32_t instances = this->m_drawInstances ? this->m_drawInstances : 1;
+        vkCmdDraw(cmd, batch->m_count, instances, 0, this->m_firstInstance);
     }
+}
+
+void CGxDeviceVulkan::DrawInstanced(CGxBatch* batch, const C44Matrix* worlds, uint32_t count) {
+    if (!batch || !worlds || !count) {
+        return;
+    }
+
+    uint32_t first = 0;
+    GpuDrawItem* items = nullptr;
+
+    if (!this->m_vk.AllocDrawItems(count, first, items)) {
+        CGxDevice::DrawInstanced(batch, worlds, count);
+        return;
+    }
+
+    for (uint32_t i = 0; i < count; ++i) {
+        items[i] = {};
+        memcpy(items[i].world, &worlds[i], sizeof(items[i].world));
+    }
+
+    this->m_gpuDrawMode = 1;
+    this->m_drawInstances = count;
+    this->m_firstInstance = first;
+    this->Draw(batch, 1);
+}
+
+int32_t CGxDeviceVulkan::DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t count) {
+    if (!draws || !count || !this->m_primIndexBuf || !this->m_vk.m_features.drawIndirectFirstInstance) {
+        return 0;
+    }
+
+    uint32_t first = 0;
+    GpuDrawItem* items = nullptr;
+    VkDeviceSize indirectOffset = 0;
+    VkDrawIndexedIndirectCommand* commands = nullptr;
+
+    if (!this->m_vk.AllocDrawItems(count, first, items) || !this->m_vk.AllocIndirect(count, indirectOffset, commands)) {
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < count; ++i) {
+        items[i] = {};
+        memcpy(items[i].world, &draws[i].world, sizeof(items[i].world));
+        memcpy(items[i].tex0, &draws[i].tex0, sizeof(items[i].tex0));
+        memcpy(items[i].tex1, &draws[i].tex1, sizeof(items[i].tex1));
+        memcpy(items[i].lightPos, draws[i].lightPos, sizeof(items[i].lightPos));
+        memcpy(items[i].lightDiffuse, draws[i].lightDiffuse, sizeof(items[i].lightDiffuse));
+        memcpy(items[i].lightAmbient, draws[i].lightAmbient, sizeof(items[i].lightAmbient));
+        memcpy(items[i].lightAtten, draws[i].lightAtten, sizeof(items[i].lightAtten));
+        commands[i].indexCount = draws[i].indexCount;
+        commands[i].instanceCount = 1;
+        commands[i].firstIndex = draws[i].firstIndex;
+        commands[i].vertexOffset = draws[i].baseVertex;
+        commands[i].firstInstance = first + i;
+    }
+
+    this->m_gpuDrawMode = 2;
+    this->m_indirectCount = count;
+    this->m_indirectOffset = indirectOffset;
+
+    CGxBatch batch = {};
+    batch.m_primType = GxPrim_Triangles;
+    this->Draw(&batch, 1);
+    return 1;
 }
 
 VkBufferAlloc* CGxDeviceVulkan::IPoolBuffer(CGxPool* pool) {

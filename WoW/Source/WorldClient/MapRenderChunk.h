@@ -98,6 +98,8 @@ class CMapRenderChunk {
     static void UpdateLayerGxTexture(EGxTexCommand cmd, uint32_t w, uint32_t h, uint32_t d, uint32_t mipLevel, void* userArg, uint32_t& texelStrideInBytes, const void*& texels);
     static void UpdateShadowGxTexture(EGxTexCommand cmd, uint32_t w, uint32_t h, uint32_t d, uint32_t mipLevel, void* userArg, uint32_t& texelStrideInBytes, const void*& texels);
     static void RenderMultiPassAlpha(CMapRenderChunk* renderChunk);
+    static void QueueMultiPass(CMapRenderChunk* renderChunk);
+    static void FlushMultiPass();
     static void RenderMultiPassAdditive(CMapRenderChunk* renderChunk);
     static void SetShaders(int32_t a1, int32_t a2);
     static void InitializeVertexShaderConstants(const C44Matrix& world, const C44Matrix& view);

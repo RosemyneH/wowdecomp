@@ -1,5 +1,7 @@
 #include <cmath>
 #include <cstdint>
+#include <vector>
+#include "Engine/Source/Base/Job/JobSystem.h"
 #include "Engine/Source/Model2/CM2SceneRender.h"
 #include "Engine/Source/Gx/CGxBuf.h"
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
@@ -583,6 +585,113 @@ void CM2SceneRender::DrawBatchProj() {
     world.m_mtx[world.m_level] = s_identity;
 }
 
+struct DoodadSkin {
+    M2Element* elements;
+    uint32_t* indices;
+    uint32_t done;
+    M2SkinSection* section;
+    uint8_t* vertices;
+    uint32_t stride;
+    int32_t influences;
+};
+
+static void FillDoodadSkin(Job::Range range, void* user) {
+    DoodadSkin* skin = static_cast<DoodadSkin*>(user);
+
+    for (uint32_t n = range.begin; n < range.end; ++n) {
+        CM2Model* model = skin->elements[skin->indices[skin->done + n]].m_model;
+        CM2Model::s_transformVertices[skin->influences](model, skin->section, skin->vertices + n * skin->stride, 0);
+    }
+}
+
+// ʕ •ᴥ•ʔ✿ One bone means the mesh stays on the GPU and each copy is a matrix ✿ ʕ •ᴥ•ʔ
+static int32_t DrawRigidDoodads(M2Data* data, CM2Shared* shared, M2SkinSection* section, M2Element* elements, uint32_t* indices, uint32_t total) {
+    if (!data || !shared || !shared->m_cache || !section || section->m_boneCount != 1 || !section->m_vertexCount || !section->m_indexCount) {
+        return 0;
+    }
+
+    if ((shared->m_cache->m_flags & 8) || (data->m_bones.m_count == 1 && (shared->m_cache->m_flags & 0x40))) {
+        return 0;
+    }
+
+    M2Vertex* verts = &data->m_vertices[section->m_vertexStart];
+    uint8_t bone = verts[0].m_indices.b[0];
+
+    for (uint32_t i = 1; i < section->m_vertexCount; ++i) {
+        if (verts[i].m_indices.b[0] != bone) {
+            return 0;
+        }
+    }
+
+    if (bone >= data->m_bones.m_count) {
+        return 0;
+    }
+
+    uint32_t sectionIndex = static_cast<uint32_t>(section - shared->m_skinSections);
+
+    if (sectionIndex >= shared->m_skinData->m_skinSections.m_count) {
+        return 0;
+    }
+
+    static std::vector<C44Matrix> worlds;
+    worlds.clear();
+    worlds.reserve(total);
+
+    for (uint32_t n = 0; n < total; ++n) {
+        worlds.push_back(elements[indices[n]].m_model->m_boneMatrices[bone]);
+    }
+
+    CGxBuf* vertices = g_theGxDevicePtr->BufStream(GxPoolTarget_Vertex, 32, section->m_vertexCount);
+    float* out = reinterpret_cast<float*>(g_theGxDevicePtr->BufLock(vertices));
+
+    if (!out) {
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < section->m_vertexCount; ++i) {
+        out[0] = verts[i].m_position.x;
+        out[1] = verts[i].m_position.y;
+        out[2] = verts[i].m_position.z;
+        out[3] = verts[i].m_normal.x;
+        out[4] = verts[i].m_normal.y;
+        out[5] = verts[i].m_normal.z;
+        out[6] = verts[i].m_texcoord[0].x;
+        out[7] = verts[i].m_texcoord[0].y;
+        out += 8;
+    }
+
+    g_theGxDevicePtr->BufUnlock(vertices, 0);
+    vertices->m_hasData = 1;
+    GxPrimVertexPtr(vertices, GxVBF_PNT);
+
+    CGxBuf* indexBuf = g_theGxDevicePtr->BufStream(GxPoolTarget_Index, 2, section->m_indexCount);
+    uint16_t* indexOut = reinterpret_cast<uint16_t*>(g_theGxDevicePtr->BufLock(indexBuf));
+
+    if (!indexOut) {
+        return 0;
+    }
+
+    uint32_t indexStart = shared->m_skinData->m_skinSections[sectionIndex].m_indexStart;
+    uint16_t bias = static_cast<uint16_t>(-static_cast<int32_t>(section->m_vertexStart));
+
+    for (uint32_t j = 0; j < section->m_indexCount; ++j) {
+        indexOut[j] = static_cast<uint16_t>(bias + shared->m_skinData->m_indices[indexStart + j]);
+    }
+
+    g_theGxDevicePtr->BufUnlock(indexBuf, 0);
+    indexBuf->m_hasData = 1;
+    g_theGxDevicePtr->PrimIndexPtr(indexBuf);
+
+    CGxBatch batch;
+    batch.m_primType = GxPrim_Triangles;
+    batch.m_start = 0;
+    batch.m_count = section->m_indexCount;
+    batch.m_minIndex = 0;
+    batch.m_maxIndex = static_cast<uint16_t>(section->m_vertexCount - 1);
+    g_theGxDevicePtr->DrawInstanced(&batch, worlds.data(), total);
+    return 1;
+}
+
 // VERIFY: 2ff5e9df manual
 // OFFSET: 0x00820AE0
 void CM2SceneRender::DrawBatchDoodad(M2Element* elements, uint32_t* indices) {
@@ -603,6 +712,10 @@ void CM2SceneRender::DrawBatchDoodad(M2Element* elements, uint32_t* indices) {
 
     if (instances > total) {
         instances = total;
+    }
+
+    if (!CShaderEffect::s_enableShaders && DrawRigidDoodads(this->m_data, this->m_curShared, this->m_curSkinSection, elements, indices, total)) {
+        return;
     }
 
     this->m_curShared->SetIndices();
@@ -669,16 +782,30 @@ void CM2SceneRender::DrawBatchDoodad(M2Element* elements, uint32_t* indices) {
 
             M2SkinSection* section = this->m_curSkinSection;
             int32_t normalize = section->m_boneCount != 1;
+            DoodadSkin skin;
+            skin.elements = elements;
+            skin.indices = indices;
+            skin.done = done;
+            skin.section = section;
+            skin.vertices = vertices;
+            skin.stride = 32 * section->m_vertexCount;
+            skin.influences = section->m_boneInfluences;
 
-            for (uint32_t n = 0; n < instances; n++) {
-                CM2Model* model = elements[indices[done + n]].m_model;
-                CM2Model::s_transformVertices[section->m_boneInfluences](model, section, vertices, 0);
-                section = this->m_curSkinSection;
-                vertices += 32 * section->m_vertexCount;
+            if (instances >= 8) {
+                Job::ParallelFor(instances, FillDoodadSkin, &skin);
+            } else {
+                FillDoodadSkin(Job::Range{0, instances}, &skin);
+            }
 
-                if (!normalize) {
+            if (!normalize) {
+                for (uint32_t n = 0; n < instances; ++n) {
+                    CM2Model* model = elements[indices[done + n]].m_model;
                     const C44Matrix& bone = model->m_boneMatrices[this->m_data->m_boneCombos[section->m_boneComboIndex]];
-                    normalize = fabsf(bone.a2 * bone.a2 + bone.a1 * bone.a1 + bone.a0 * bone.a0 - 1.0f) > 0.001f;
+
+                    if (fabsf(bone.a2 * bone.a2 + bone.a1 * bone.a1 + bone.a0 * bone.a0 - 1.0f) > 0.001f) {
+                        normalize = 1;
+                        break;
+                    }
                 }
             }
 

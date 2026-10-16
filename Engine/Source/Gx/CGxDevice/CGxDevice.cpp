@@ -124,6 +124,40 @@ void CGxDevice::SceneClear(uint32_t mask, CImVector color) {
 void CGxDevice::Draw(CGxBatch* batch, int32_t count) {
 }
 
+void CGxDevice::DrawInstanced(CGxBatch* batch, const C44Matrix* worlds, uint32_t count) {
+    if (!batch || !worlds) {
+        return;
+    }
+
+    CGxMatrixStack& world = this->m_xforms[GxXform_World];
+    C44Matrix saved = world.m_mtx[world.m_level];
+
+    for (uint32_t i = 0; i < count; ++i) {
+        world.m_dirty = 1;
+        world.m_flags[world.m_level] &= ~CGxMatrixStack::F_Identity;
+        world.m_mtx[world.m_level] = worlds[i];
+        this->Draw(batch, 1);
+    }
+
+    world.m_dirty = 1;
+    world.m_mtx[world.m_level] = saved;
+}
+
+int32_t CGxDevice::DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t count) {
+    (void)draws;
+    (void)count;
+    return 0;
+}
+
+void CGxDevice::ResolveTexMatrix(uint32_t tmu, C44Matrix& matrix) {
+    if (tmu >= 8) {
+        return;
+    }
+
+    CGxMatrixStack& xform = this->m_xforms[tmu];
+    matrix = xform.m_mtx[xform.m_level];
+}
+
 void CGxDevice::PrimPointSize(float size) {
 }
 

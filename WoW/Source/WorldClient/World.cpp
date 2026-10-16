@@ -3707,6 +3707,8 @@ void CWorldScene::RenderChunksSinglePass() {
                         } else {
                             renderChunk->RenderSinglePassPixelShader();
                         }
+                    } else if (CMapRenderChunk::s_renderLayersFunc == CMapRenderChunk::RenderMultiPassAlpha) {
+                        CMapRenderChunk::QueueMultiPass(renderChunk);
                     } else {
                         CMapRenderChunk::s_renderLayersFunc(renderChunk);
                     }
@@ -3722,6 +3724,8 @@ void CWorldScene::RenderChunksSinglePass() {
 
                 renderChunk = next;
             }
+
+            CMapRenderChunk::FlushMultiPass();
         }
     }
 
@@ -5030,9 +5034,10 @@ void CWorldScene::RenderHorizon() {
         area->m_horizonLink.Unlink();
     }
 
-    uint32_t count = 0;
-    CMapObjGroup** groups = static_cast<CMapObjGroup**>(alloca(256 * sizeof(CMapObjGroup*)));
-    C44Matrix** matrices = static_cast<C44Matrix**>(alloca(256 * sizeof(C44Matrix*)));
+    static std::vector<CMapObjGroup*> groups;
+    static std::vector<C44Matrix*> matrices;
+    groups.clear();
+    matrices.clear();
     CMapObjDef* nextDef;
 
     for (CMapObjDef* def = CWorldScene::sortTable.m_horizonMapObjList.Head(); def; def = nextDef) {
@@ -5044,9 +5049,8 @@ void CWorldScene::RenderHorizon() {
                 CMapObjGroup* group = mapObj->GetGroup(i, 0);
 
                 if (group->m_flags & 0x8) {
-                    groups[count] = group;
-                    matrices[count] = &def->m_mat;
-                    count++;
+                    groups.push_back(group);
+                    matrices.push_back(&def->m_mat);
                 }
             } else if (!mapObj->IsGroupLoading(i)) {
                 mapObj->ReadGroup(i);
@@ -5056,7 +5060,7 @@ void CWorldScene::RenderHorizon() {
         def->m_horizonLink.Unlink();
     }
 
-    if (count) {
+    if (!groups.empty()) {
         DayNight::DNInfo* info = DayNight::GetInfo();
         GxRsSet(GxRs_FogStart, 0.0f);
         GxRsSet(GxRs_FogEnd, 1.0f);
@@ -5064,7 +5068,7 @@ void CWorldScene::RenderHorizon() {
         GxRsSet(GxRs_Fog, 1);
         GxRsSet(GxRs_Lighting, 0);
         int32_t a5 = -1;
-        CMapObj::RenderMapObjGroupsColor(groups, count, matrices, &world, &a5);
+        CMapObj::RenderMapObjGroupsColor(groups.data(), static_cast<uint32_t>(groups.size()), matrices.data(), &world, &a5);
     }
 
     g_theGxDevicePtr->m_xforms[GxXform_Tex0].Identity();

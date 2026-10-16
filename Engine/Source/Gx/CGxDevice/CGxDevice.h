@@ -68,6 +68,20 @@ struct CGxAppRenderState {
 
 typedef void (__fastcall* GxDeviceCallback)();
 
+// ʕ •ᴥ•ʔ✿ One terrain chunk inside a multi-draw. The matrices match the GPU record in Ffp.vert ✿ ʕ •ᴥ•ʔ
+struct GxTerrainDraw {
+    C44Matrix world;
+    C44Matrix tex0;
+    C44Matrix tex1;
+    float lightPos[4][4];
+    float lightDiffuse[4][4];
+    float lightAmbient[4][4];
+    float lightAtten[4][4];
+    uint32_t indexCount;
+    uint32_t firstIndex;
+    int32_t baseVertex;
+};
+
 class CGxDevice {
     public:
     struct TextureTarget {
@@ -201,6 +215,9 @@ class CGxDevice {
     virtual void XformSetProjection(const C44Matrix& matrix);
     virtual void XformSetView(const C44Matrix& matrix);
     virtual void Draw(CGxBatch* batch, int32_t count);
+    virtual void DrawInstanced(CGxBatch* batch, const C44Matrix* worlds, uint32_t count);
+    virtual int32_t DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t count);
+    virtual void ResolveTexMatrix(uint32_t tmu, C44Matrix& matrix);
     virtual void PrimBegin(EGxPrim primType);
     virtual void PrimDrawElements();
     virtual void PrimVertex(const C3Vector& v);
