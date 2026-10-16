@@ -720,6 +720,11 @@ void *MemPool::alloc(int len, const char *file, const int line, FMOD_MEMORY_TYPE
 // OFFSET: 0x008CFF30
 void MemPool::free(void *ptr, const char *file, const int line, FMOD_MEMORY_TYPE type)
 {
+    if (!ptr)
+    {
+        return;
+    }
+
 	MemBlockHeader *block = (MemBlockHeader *)ptr;
 
 #ifdef FMOD_MEMORY_THREADSAFE
