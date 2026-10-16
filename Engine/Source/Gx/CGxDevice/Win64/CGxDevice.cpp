@@ -210,6 +210,7 @@ int32_t CGxDevice::DeviceAdapterID(uint16_t& vendorID, uint16_t& deviceID, uint3
         }
     }
 
+#if !defined(WOWDECOMP_WIN_ARM64)
     if (!result) {
         HINSTANCE d3dLib = nullptr;
         LPDIRECT3D9 d3d = nullptr;
@@ -228,6 +229,7 @@ int32_t CGxDevice::DeviceAdapterID(uint16_t& vendorID, uint16_t& deviceID, uint3
             CGxDeviceD3d::IUnloadD3dLib(d3dLib, d3d);
         }
     }
+#endif
 
     CGxDevice::Log("CGxDevice::DeviceAdapterID(): RET: %d, VID: %x, DID: %x, DVER: %x.%x", result, vendorID, deviceID, driverVersionHi, driverVersionLo);
 
@@ -239,6 +241,10 @@ int32_t CGxDevice::DeviceAdapterInfer(uint16_t& deviceID) {
     int32_t result = 0;
     deviceID = 0;
 
+#if defined(WOWDECOMP_WIN_ARM64)
+    CGxDevice::Log("CGxDevice::DeviceAdapterInfer(): RET: %d, DID: %x", result, deviceID);
+    return result;
+#else
     HINSTANCE d3dLib = nullptr;
     LPDIRECT3D9 d3d = nullptr;
 
@@ -266,6 +272,7 @@ int32_t CGxDevice::DeviceAdapterInfer(uint16_t& deviceID) {
     CGxDevice::Log("CGxDevice::DeviceAdapterInfer(): RET: %d, DID: %x", result, deviceID);
 
     return result;
+#endif
 }
 
 // OFFSET: 0x00689E80
