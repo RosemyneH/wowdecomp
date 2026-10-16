@@ -781,6 +781,11 @@ void NETEVENTQUEUE::AddEvent(EVENTID eventId, void* connection, NetClient* clien
     this->m_critSect.Enter();
 
     NETEVENTQUEUENODE* node = this->m_eventQueue.NewNode(2, 0, 8);
+    if (!node) {
+        this->m_critSect.Leave();
+        return;
+    }
+
     node->m_eventId = eventId;
     node->m_data = nullptr;
     node->m_dataSize = 0;
