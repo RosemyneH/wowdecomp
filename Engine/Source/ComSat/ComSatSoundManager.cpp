@@ -24,7 +24,11 @@ ComSat::Sound::Manager::Callback::~Callback() {
 // VERIFY: 58ec21e6 auto
 // OFFSET: 0x00881260
 ComSat::Sound::Manager::RemoteTalker::RemoteTalker(ComSat::Allocator& allocator) : m_allocator(&allocator), m_packets(nullptr), m_frameTime(allocator) {
-    this->m_packets = static_cast<VoicePacket*>(allocator.Alloc(sizeof(VoicePacket) * s_jitterBufferSize));
+    void* packets = allocator.Alloc(sizeof(VoicePacket) * s_jitterBufferSize);
+    if (!packets) {
+        return;
+    }
+    this->m_packets = static_cast<VoicePacket*>(packets);
 }
 
 // VERIFY: 68ac5962 auto
@@ -136,6 +140,9 @@ int32_t ComSat::Sound::Manager::EnumerateCaptureDevices(ComSat::DeviceInfo* devi
 // VERIFY: cf900560 manual
 // OFFSET: 0x008813F0
 void ComSat::Sound::Manager::AdvancePlayCursorForRemoteTalker(ComSat::Sound::Manager::RemoteTalker* talker) {
+    if (!talker->m_packets) {
+        return;
+    }
     int32_t cursor = static_cast<int32_t>(talker->m_playCursor);
     talker->m_playCursor += ComSat::Sound::CODECIPMR6000::s_samplesPerFrame * 1000.0f / ComSat::Sound::CODECIPMR6000::s_sampleRate / talker->m_frameTime.GetCurrentAverage();
     int32_t end = static_cast<int32_t>(talker->m_playCursor) % s_jitterBufferSize;
@@ -303,7 +310,13 @@ void ComSat::Sound::Manager::RecenterJitterBufferForRemoteTalker(uint64_t talker
     if (!this->m_remoteTalkers.Get(ComSat::MapKey<uint64_t>(talker), remote)) {
         return;
     }
+    if (!remote->m_packets) {
+        return;
+    }
     VoicePacket* packets = static_cast<VoicePacket*>(this->m_allocator->Alloc(sizeof(VoicePacket) * s_jitterBufferSize));
+    if (!packets) {
+        return;
+    }
     memcpy(packets, remote->m_packets, sizeof(VoicePacket) * s_jitterBufferSize);
     for (int32_t i = 0; i < s_jitterBufferSize; i++) {
         remote->m_packets[i].m_valid = false;
@@ -374,6 +387,9 @@ void ComSat::Sound::Manager::SubmitIncomingVoicePacket(uint64_t session, uint64_
     }
     RemoteTalker* remote;
     if (!this->m_remoteTalkers.Get(ComSat::MapKey<uint64_t>(talker), remote)) {
+        return;
+    }
+    if (!remote->m_packets) {
         return;
     }
     VoicePacket* packets = remote->m_packets;
@@ -574,6 +590,9 @@ void ComSat::Sound::Manager::AssignTalkersToChannelsForLocalPlayer(uint8_t playe
         if (!this->m_remoteTalkers.Get(ComSat::MapKey<uint64_t>(talker), remote)) {
             continue;
         }
+        if (!remote->m_packets) {
+            continue;
+        }
         double average = remote->m_frameTime.GetCurrentAverage();
         uint64_t best = 0;
         uint8_t bestPriority = 0;
@@ -616,6 +635,9 @@ void ComSat::Sound::Manager::AssignTalkersToChannelsForLocalPlayer(uint8_t playe
             if (assigned) {
                 continue;
             }
+        }
+        if (!remote->m_packets) {
+            continue;
         }
         uint8_t bestPriority = 0;
         int32_t end = static_cast<int32_t>(ComSat::Sound::CODECIPMR6000::s_samplesPerFrame * 1000.0f / ComSat::Sound::CODECIPMR6000::s_sampleRate / average + remote->m_playCursor) % s_jitterBufferSize;
@@ -841,6 +863,10 @@ bool ComSat::Sound::Manager::RegisterRemoteTalkerForSession(uint64_t session, ui
             return false;
         }
         RemoteTalker* remote = new (memory) RemoteTalker(*this->m_allocator);
+        if (!remote->m_packets) {
+            ComSat::Delete(*this->m_allocator, remote);
+            return false;
+        }
         remote->m_guid = talker;
         for (int32_t i = 0; i < s_jitterBufferSize; i++) {
             remote->m_packets[i].m_valid = false;
@@ -963,6 +989,9 @@ void ComSat::Sound::Manager::PlayVoiceDataForLocalPlayer(uint8_t player, int32_t
         }
         RemoteTalker* remote;
         if (!this->m_remoteTalkers.Get(ComSat::MapKey<uint64_t>(info.m_talker), remote)) {
+            continue;
+        }
+        if (!remote->m_packets) {
             continue;
         }
         float sessionVolume;
