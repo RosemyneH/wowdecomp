@@ -1208,6 +1208,13 @@ void World::PrepareAreaOfInterest(const C3Vector& position) {
         streamDistance = distance;
     }
 
+    // ʕ •ᴥ•ʔ✿ Full-detail tiles stop at the horizon near plane. The WDL is the rest of the continent ✿ ʕ •ᴥ•ʔ
+    float detailFar = 160.0f * 33.333332f;
+
+    if (streamDistance > detailFar) {
+        streamDistance = detailFar;
+    }
+
     CWorld::s_groupAreaOfInterest.b = C3Vector(position.x - 150.0f, position.y - 150.0f, position.z - 150.0f);
     CWorld::s_groupAreaOfInterest.t = C3Vector(position.x + 150.0f, position.y + 150.0f, position.z + 150.0f);
     CWorld::s_objectAreaOfInterest.b = C3Vector(position.x - farClip, position.y - farClip, position.z - farClip);

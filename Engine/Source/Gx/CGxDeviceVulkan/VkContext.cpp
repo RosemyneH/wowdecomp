@@ -99,7 +99,7 @@ int32_t VkContext::CreateInstance(const char* const* extensions, uint32_t extens
     VkApplicationInfo app = { VK_STRUCTURE_TYPE_APPLICATION_INFO };
     app.pApplicationName = "World of Warcraft";
     app.pEngineName = "Gx";
-    app.apiVersion = VK_API_VERSION_1_1;
+    app.apiVersion = VK_API_VERSION_1_2;
 
     std::vector<const char*> enabled(extensions, extensions + extensionCount);
     const char* validation = "VK_LAYER_KHRONOS_validation";
@@ -190,14 +190,19 @@ int32_t VkContext::CreateDevice(VkSurfaceKHR surface) {
     vkGetPhysicalDeviceMemoryProperties(this->m_physicalDevice, &this->m_memoryProperties);
     this->ChooseHeaps();
 
-    VkPhysicalDeviceFeatures supported;
-    vkGetPhysicalDeviceFeatures(this->m_physicalDevice, &supported);
+    VkPhysicalDeviceDescriptorIndexingFeatures indexingSupported = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES };
+    VkPhysicalDeviceFeatures2 features2 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+    features2.pNext = &indexingSupported;
+    vkGetPhysicalDeviceFeatures2(this->m_physicalDevice, &features2);
+    VkPhysicalDeviceFeatures supported = features2.features;
     this->m_features.textureCompressionBC = supported.textureCompressionBC;
     this->m_features.samplerAnisotropy = supported.samplerAnisotropy;
     this->m_features.fillModeNonSolid = supported.fillModeNonSolid;
     this->m_features.largePoints = supported.largePoints;
-    // ʕ •ᴥ•ʔ✿ Indirect terrain draws put the chunk index in firstInstance ✿ ʕ •ᴥ•ʔ
+    // ʕ •ᴥ•ʔ✿ One indirect command covers a whole terrain layer. firstInstance still indexes doodad instances ✿ ʕ •ᴥ•ʔ
+    this->m_features.multiDrawIndirect = supported.multiDrawIndirect;
     this->m_features.drawIndirectFirstInstance = supported.drawIndirectFirstInstance;
+    this->m_bindless = indexingSupported.shaderSampledImageArrayNonUniformIndexing && indexingSupported.descriptorBindingPartiallyBound && indexingSupported.descriptorBindingSampledImageUpdateAfterBind && indexingSupported.runtimeDescriptorArray;
 
     float priority = 1.0f;
     VkDeviceQueueCreateInfo queueInfo = { VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
@@ -218,7 +223,17 @@ int32_t VkContext::CreateDevice(VkSurfaceKHR surface) {
         }
     }
 
+    VkPhysicalDeviceDescriptorIndexingFeatures indexing = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES };
+
+    if (this->m_bindless) {
+        indexing.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+        indexing.descriptorBindingPartiallyBound = VK_TRUE;
+        indexing.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+        indexing.runtimeDescriptorArray = VK_TRUE;
+    }
+
     VkDeviceCreateInfo info = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
+    info.pNext = this->m_bindless ? &indexing : nullptr;
     info.queueCreateInfoCount = 1;
     info.pQueueCreateInfos = &queueInfo;
     info.enabledExtensionCount = static_cast<uint32_t>(extensions.size());

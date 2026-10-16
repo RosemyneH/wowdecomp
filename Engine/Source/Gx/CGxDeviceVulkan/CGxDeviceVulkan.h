@@ -17,6 +17,8 @@ struct VkTexture {
     uint32_t depthGeneration;
     VkImageLayout layout;
     uint8_t initialized;
+    uint32_t terrainSlot = ~0u;
+    uint32_t terrainEpoch = 0;
 };
 
 struct VkDrawUniforms {
@@ -58,6 +60,7 @@ struct VkPipelineKey {
     uint8_t attribBinding[5];
     uint8_t attribType[5];
     uint8_t unused;
+    uint8_t bindless;
     uint16_t attribOffset[5];
     uint16_t bindingStride[6];
 
@@ -72,6 +75,7 @@ class CGxDeviceVulkan : public CGxDevice {
     public:
     enum {
         MaxBindings = 6,
+        TerrainSlots = 65536,
         DepthFunc_Always = 4,
     };
 
@@ -94,6 +98,14 @@ class CGxDeviceVulkan : public CGxDevice {
     VkPipelineCache m_pipelineCache = VK_NULL_HANDLE;
     VkShaderModule m_vertexModule = VK_NULL_HANDLE;
     VkShaderModule m_fragmentModule = VK_NULL_HANDLE;
+    VkShaderModule m_terrainFragment = VK_NULL_HANDLE;
+    VkDescriptorSetLayout m_terrainSetLayout = VK_NULL_HANDLE;
+    VkPipelineLayout m_terrainPipelineLayout = VK_NULL_HANDLE;
+    VkDescriptorPool m_terrainPools[2] = {};
+    VkDescriptorSet m_terrainSets[2] = {};
+    uint32_t m_terrainEpoch = 0;
+    uint32_t m_terrainCount = 0;
+    int32_t m_bindless = 0;
     std::unordered_map<VkPipelineKey, VkPipeline, VkPipelineKeyHash> m_pipelines;
     std::unordered_map<uint32_t, VkSampler> m_samplers;
     VkBufferAlloc m_dummyVertices = {};
@@ -116,8 +128,16 @@ class CGxDeviceVulkan : public CGxDevice {
     VkDrawUniforms m_uniforms = {};
     VkDeviceSize m_uniformOffset = 0;
     int32_t m_uniformsValid = 0;
+    uint32_t m_uniformEpoch = 0;
+    uint32_t m_uniformEpochBuilt = 0;
+    uint32_t m_uniformPrimMask = 0;
+    uint32_t m_uniformMasterEnables = 0;
+    int32_t m_uniformGpuDrawMode = 0;
+    int32_t m_uniformDisableTex = -1;
+    CGxApiLight m_uniformLights[4] = {};
     VkPipeline m_boundPipeline = VK_NULL_HANDLE;
     VkDescriptorSet m_boundSet = VK_NULL_HANDLE;
+    uint32_t m_boundDynamicOffset = 0xFFFFFFFFu;
     VkImageView m_setViews[2] = {};
     VkSampler m_setSamplers[2] = {};
     VkBuffer m_boundBuffers[MaxBindings] = {};
@@ -158,6 +178,8 @@ class CGxDeviceVulkan : public CGxDevice {
     virtual void Draw(CGxBatch* batch, int32_t count);
     virtual void DrawInstanced(CGxBatch* batch, const C44Matrix* worlds, uint32_t count);
     virtual int32_t DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t count);
+    virtual int32_t TerrainBindless();
+    virtual uint32_t TerrainTextureSlot(CGxTex* tex);
     virtual void ResolveTexMatrix(uint32_t tmu, C44Matrix& matrix);
     virtual void PoolSizeSet(CGxPool* pool, uint32_t size);
     virtual void PoolDestroy(CGxPool* pool);
@@ -219,6 +241,8 @@ class CGxDeviceVulkan : public CGxDevice {
     VkFramebuffer ITexFramebuffer(VkTexture* texture);
     VkSampler ISampler(const CGxTexFlags& flags);
     VkPipeline IPipeline(const VkPipelineKey& key);
+    void ResetTerrainTable();
+    int32_t EnsureTerrainSet();
     void ISetTexGen(uint32_t tmu, int32_t texGen);
     void IXformTex(uint32_t tmu, int32_t& mode, C44Matrix& matrix);
     void IBuildUniforms(VkDrawUniforms& uniforms);

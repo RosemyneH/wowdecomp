@@ -80,6 +80,8 @@ struct GxTerrainDraw {
     uint32_t indexCount;
     uint32_t firstIndex;
     int32_t baseVertex;
+    uint32_t texIndex0;
+    uint32_t texIndex1;
 };
 
 class CGxDevice {
@@ -217,6 +219,8 @@ class CGxDevice {
     virtual void Draw(CGxBatch* batch, int32_t count);
     virtual void DrawInstanced(CGxBatch* batch, const C44Matrix* worlds, uint32_t count);
     virtual int32_t DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t count);
+    virtual int32_t TerrainBindless() { return 0; }
+    virtual uint32_t TerrainTextureSlot(CGxTex*) { return ~0u; }
     virtual void ResolveTexMatrix(uint32_t tmu, C44Matrix& matrix);
     virtual void PrimBegin(EGxPrim primType);
     virtual void PrimDrawElements();

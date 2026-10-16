@@ -18,6 +18,10 @@ static const uint32_t s_ffpFragmentCode[] =
 #include "Ffp.frag.inc"
 ;
 
+static const uint32_t s_ffpTerrainCode[] =
+#include "FfpTerrain.frag.inc"
+;
+
 static_assert(sizeof(GpuDrawItem) == 448, "GpuDrawItem must match Ffp.vert");
 static_assert(offsetof(GpuDrawItem, tex0) == 64, "GpuDrawItem.tex0");
 static_assert(offsetof(GpuDrawItem, tex1) == 128, "GpuDrawItem.tex1");
@@ -341,6 +345,37 @@ int32_t CGxDeviceVulkan::ICreateDeviceObjects() {
     this->m_vertexModule = vertexModule;
     this->m_fragmentModule = fragmentModule;
 
+    if (this->m_vk.m_bindless) {
+        moduleInfo.codeSize = sizeof(s_ffpTerrainCode);
+        moduleInfo.pCode = s_ffpTerrainCode;
+
+        if (vkCreateShaderModule(device, &moduleInfo, nullptr, &this->m_terrainFragment) != VK_SUCCESS) {
+            this->m_terrainFragment = VK_NULL_HANDLE;
+        } else {
+            VkDescriptorBindingFlags bindingFlags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+            VkDescriptorSetLayoutBindingFlagsCreateInfo flagInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO };
+            flagInfo.bindingCount = 1;
+            flagInfo.pBindingFlags = &bindingFlags;
+            VkDescriptorSetLayoutBinding terrainBinding = { 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, TerrainSlots, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
+            VkDescriptorSetLayoutCreateInfo terrainSetInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+            terrainSetInfo.pNext = &flagInfo;
+            terrainSetInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+            terrainSetInfo.bindingCount = 1;
+            terrainSetInfo.pBindings = &terrainBinding;
+
+            if (vkCreateDescriptorSetLayout(device, &terrainSetInfo, nullptr, &this->m_terrainSetLayout) == VK_SUCCESS) {
+                VkDescriptorSetLayout sets[2] = { setLayout, this->m_terrainSetLayout };
+                VkPipelineLayoutCreateInfo terrainLayout = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+                terrainLayout.setLayoutCount = 2;
+                terrainLayout.pSetLayouts = sets;
+
+                if (vkCreatePipelineLayout(device, &terrainLayout, nullptr, &this->m_terrainPipelineLayout) == VK_SUCCESS) {
+                    this->m_bindless = 1;
+                }
+            }
+        }
+    }
+
     if (!this->m_vk.CreateBuffer(32, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, this->m_dummyVertices)) {
         return 0;
     }
@@ -392,6 +427,24 @@ void CGxDeviceVulkan::IDestroyVulkan() {
         this->m_pipelines.clear();
         this->m_samplers.clear();
 
+        for (VkDescriptorPool pool : this->m_terrainPools) {
+            if (pool) {
+                vkDestroyDescriptorPool(device, pool, nullptr);
+            }
+        }
+
+        if (this->m_terrainFragment) {
+            vkDestroyShaderModule(device, this->m_terrainFragment, nullptr);
+        }
+
+        if (this->m_terrainPipelineLayout) {
+            vkDestroyPipelineLayout(device, this->m_terrainPipelineLayout, nullptr);
+        }
+
+        if (this->m_terrainSetLayout) {
+            vkDestroyDescriptorSetLayout(device, this->m_terrainSetLayout, nullptr);
+        }
+
         vkDestroyShaderModule(device, this->m_vertexModule, nullptr);
         vkDestroyShaderModule(device, this->m_fragmentModule, nullptr);
         vkDestroyPipelineCache(device, this->m_pipelineCache, nullptr);
@@ -400,6 +453,14 @@ void CGxDeviceVulkan::IDestroyVulkan() {
 
         this->m_vertexModule = VK_NULL_HANDLE;
         this->m_fragmentModule = VK_NULL_HANDLE;
+        this->m_terrainFragment = VK_NULL_HANDLE;
+        this->m_terrainPipelineLayout = VK_NULL_HANDLE;
+        this->m_terrainSetLayout = VK_NULL_HANDLE;
+        this->m_terrainSets[0] = VK_NULL_HANDLE;
+        this->m_terrainSets[1] = VK_NULL_HANDLE;
+        this->m_terrainPools[0] = VK_NULL_HANDLE;
+        this->m_terrainPools[1] = VK_NULL_HANDLE;
+        this->m_bindless = 0;
         this->m_pipelineCache = VK_NULL_HANDLE;
         this->m_pipelineLayout = VK_NULL_HANDLE;
         this->m_setLayout = VK_NULL_HANDLE;
@@ -527,7 +588,9 @@ void CGxDeviceVulkan::IStateSetDefaults() {
 
 void CGxDeviceVulkan::IInvalidateCmdState() {
     this->m_boundPipeline = VK_NULL_HANDLE;
+    // ʕ •ᴥ•ʔ✿ New command buffer: the set and its dynamic uniform offset are unbound ✿ ʕ •ᴥ•ʔ
     this->m_boundSet = VK_NULL_HANDLE;
+    this->m_boundDynamicOffset = 0xFFFFFFFFu;
     memset(this->m_setViews, 0, sizeof(this->m_setViews));
     memset(this->m_setSamplers, 0, sizeof(this->m_setSamplers));
     memset(this->m_boundBuffers, 0, sizeof(this->m_boundBuffers));
@@ -560,6 +623,10 @@ void CGxDeviceVulkan::ISceneBegin() {
     }
 
     int32_t begun = this->m_vk.BeginFrame();
+
+    if (begun == 1) {
+        this->ResetTerrainTable();
+    }
 
     if (begun == 2) {
         // ʕ ●ᴥ●ʔ✿ No image yet (hidden/suspended surface): skip without rebuilding the swapchain ✿ ʕ ●ᴥ●ʔ
@@ -1047,6 +1114,9 @@ void CGxDeviceVulkan::IBuildUniforms(VkDrawUniforms& uniforms) {
 }
 
 void CGxDeviceVulkan::IRsSendToHw(EGxRenderState which) {
+    // ʕ •ᴥ•ʔ✿ One tick per state IRsSync actually pushes. Draw rebuilds when this moves ✿ ʕ •ᴥ•ʔ
+    this->m_uniformEpoch++;
+
     if (which >= GxRs_TexGen0 && which <= GxRs_TexGen7) {
         this->ISetTexGen(which - GxRs_TexGen0, this->m_appRenderStates[which].m_value.m_data.i[0]);
     }
@@ -1119,9 +1189,10 @@ VkPipeline CGxDeviceVulkan::IPipeline(const VkPipelineKey& key) {
     dynamic.dynamicStateCount = 4;
     dynamic.pDynamicStates = dynamicStates;
 
+    VkShaderModule fragment = key.bindless ? this->m_terrainFragment : this->m_fragmentModule;
     VkPipelineShaderStageCreateInfo stages[2] = {
         { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_VERTEX_BIT, this->m_vertexModule, "main", nullptr },
-        { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_FRAGMENT_BIT, this->m_fragmentModule, "main", nullptr },
+        { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_FRAGMENT_BIT, fragment, "main", nullptr },
     };
 
     VkGraphicsPipelineCreateInfo info = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
@@ -1135,7 +1206,7 @@ VkPipeline CGxDeviceVulkan::IPipeline(const VkPipelineKey& key) {
     info.pDepthStencilState = &depth;
     info.pColorBlendState = &blend;
     info.pDynamicState = &dynamic;
-    info.layout = this->m_pipelineLayout;
+    info.layout = key.bindless ? this->m_terrainPipelineLayout : this->m_pipelineLayout;
     info.renderPass = this->m_vk.m_passes[key.pass ? VkContext::Pass_Offscreen : VkContext::Pass_Load];
 
     VkPipeline pipeline = VK_NULL_HANDLE;
@@ -1301,6 +1372,7 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
     key.cull = (enables & 0x20) ? static_cast<uint8_t>(std::min<uint32_t>(rs[GxRs_Culling].m_value.m_data.u[0], 2)) : 0;
     key.fill = !(enables & (1 << GxMasterEnable_PolygonFill)) && this->m_vk.m_features.fillModeNonSolid;
     key.pass = this->m_passTarget != nullptr;
+    key.bindless = this->m_gpuDrawMode == 2 && this->m_bindless;
 
     VkPipeline pipeline = this->IPipeline(key);
 
@@ -1333,7 +1405,9 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
                 this->ITexReady(texId);
             }
 
-            this->ITexMarkAsUpdated(texId);
+            if (texId->m_needsUpdate) {
+                this->ITexMarkAsUpdated(texId);
+            }
             texture = static_cast<VkTexture*>(texId->m_apiSpecificData);
 
             if (!texture) {
@@ -1357,14 +1431,25 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
         }
     }
 
-    VkDrawUniforms uniforms;
-    this->IBuildUniforms(uniforms);
+    // ʕ •ᴥ•ʔ✿ Snapshot before the build. IXformTex clears tex dirty while it fills the block ✿ ʕ •ᴥ•ʔ
+    int32_t disableTex = disableTexStage[0] | (disableTexStage[1] << 1);
+    int32_t matrixDirty = this->m_xforms[GxXform_World].m_dirty
+        || this->m_xforms[GxXform_View].m_dirty
+        || this->m_xforms[GxXform_Projection].m_dirty
+        || this->m_xforms[GxXform_Tex0].m_dirty
+        || this->m_xforms[GxXform_Tex1].m_dirty
+        || this->m_texGen[0].m_dirty
+        || this->m_texGen[1].m_dirty;
+    int32_t rebuildUniforms = !this->m_uniformsValid
+        || matrixDirty
+        || this->m_uniformEpoch != this->m_uniformEpochBuilt
+        || this->m_uniformPrimMask != this->m_primVertexMask
+        || this->m_uniformMasterEnables != this->m_appMasterEnables
+        || this->m_uniformGpuDrawMode != this->m_gpuDrawMode
+        || this->m_uniformDisableTex != disableTex;
 
-    for (uint32_t tmu = 0; tmu < 2; tmu++) {
-        if (disableTexStage[tmu]) {
-            uniforms.stageColorOp[tmu] = -1;
-            uniforms.stageAlphaOp[tmu] = -1;
-        }
+    if (!rebuildUniforms && memcmp(this->m_lights, this->m_uniformLights, sizeof(this->m_lights))) {
+        rebuildUniforms = 1;
     }
 
     this->IBeginPass();
@@ -1376,19 +1461,43 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
     VkFrame& frame = this->m_vk.Frame();
     VkCommandBuffer cmd = frame.cmd;
 
-    if (!this->m_uniformsValid || memcmp(&uniforms, &this->m_uniforms, sizeof(VkDrawUniforms))) {
-        VkDeviceSize alignment = this->m_vk.m_properties.limits.minUniformBufferOffsetAlignment;
-        VkDeviceSize offset = (frame.uniformOffset + alignment - 1) / alignment * alignment;
+    if (rebuildUniforms) {
+        VkDrawUniforms uniforms;
+        this->IBuildUniforms(uniforms);
 
-        if (offset + sizeof(VkDrawUniforms) > frame.uniforms.size) {
-            // ʕ •ᴥ•ʔ✿ Never draw with the previous draw's matrices ✿ ʕ •ᴥ•ʔ
-            return;
+        for (uint32_t tmu = 0; tmu < 2; tmu++) {
+            if (disableTexStage[tmu]) {
+                uniforms.stageColorOp[tmu] = -1;
+                uniforms.stageAlphaOp[tmu] = -1;
+            }
         }
-        memcpy(frame.uniforms.mapped + offset, &uniforms, sizeof(VkDrawUniforms));
-        frame.uniformOffset = offset + sizeof(VkDrawUniforms);
-        this->m_uniformOffset = offset;
-        this->m_uniforms = uniforms;
-        this->m_uniformsValid = 1;
+
+        if (!this->m_uniformsValid || memcmp(&uniforms, &this->m_uniforms, sizeof(VkDrawUniforms))) {
+            VkDeviceSize alignment = this->m_vk.m_properties.limits.minUniformBufferOffsetAlignment;
+            VkDeviceSize offset = (frame.uniformOffset + alignment - 1) / alignment * alignment;
+
+            if (offset + sizeof(VkDrawUniforms) > frame.uniforms.size) {
+                // ʕ •ᴥ•ʔ✿ Never draw with the previous draw's matrices. Tex dirty was consumed, so the next draw must rebuild ✿ ʕ •ᴥ•ʔ
+                this->m_uniformsValid = 0;
+                return;
+            }
+            memcpy(frame.uniforms.mapped + offset, &uniforms, sizeof(VkDrawUniforms));
+            frame.uniformOffset = offset + sizeof(VkDrawUniforms);
+            this->m_uniformOffset = offset;
+            this->m_uniforms = uniforms;
+            this->m_uniformsValid = 1;
+        }
+
+        this->m_uniformEpochBuilt = this->m_uniformEpoch;
+        this->m_uniformPrimMask = this->m_primVertexMask;
+        this->m_uniformMasterEnables = this->m_appMasterEnables;
+        this->m_uniformGpuDrawMode = this->m_gpuDrawMode;
+        this->m_uniformDisableTex = disableTex;
+        memcpy(this->m_uniformLights, this->m_lights, sizeof(this->m_lights));
+        // ʕ •ᴥ•ʔ✿ Dirty means changed since the last landed build. Tex stacks are cleared in IXformTex ✿ ʕ •ᴥ•ʔ
+        this->m_xforms[GxXform_World].m_dirty = 0;
+        this->m_xforms[GxXform_View].m_dirty = 0;
+        this->m_xforms[GxXform_Projection].m_dirty = 0;
     }
 
     if (pipeline != this->m_boundPipeline) {
@@ -1398,7 +1507,9 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
 
     this->ISetDynamicState();
 
-    if (!this->m_boundSet || memcmp(views, this->m_setViews, sizeof(views)) || memcmp(samplers, this->m_setSamplers, sizeof(samplers))) {
+    int32_t setChanged = !this->m_boundSet || memcmp(views, this->m_setViews, sizeof(views)) || memcmp(samplers, this->m_setSamplers, sizeof(samplers));
+
+    if (setChanged) {
         VkSetKey setKey = { { views[0], views[1] }, { samplers[0], samplers[1] } };
         int32_t created = 0;
         VkDescriptorSet set = this->m_vk.CachedSet(setKey, this->m_setLayout, created);
@@ -1441,7 +1552,22 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
     }
 
     uint32_t dynamicOffset = static_cast<uint32_t>(this->m_uniformOffset);
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->m_pipelineLayout, 0, 1, &this->m_boundSet, 1, &dynamicOffset);
+
+    // ʕ •ᴥ•ʔ✿ Command-buffer state. A new set, a recreated set, or a new dynamic offset still binds ✿ ʕ •ᴥ•ʔ
+    if (key.bindless) {
+        VkDescriptorSet terrainSet = this->m_terrainSets[this->m_vk.m_frameIndex];
+
+        if (!terrainSet) {
+            return;
+        }
+
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->m_terrainPipelineLayout, 0, 1, &this->m_boundSet, 1, &dynamicOffset);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->m_terrainPipelineLayout, 1, 1, &terrainSet, 0, nullptr);
+        this->m_boundDynamicOffset = dynamicOffset;
+    } else if (setChanged || dynamicOffset != this->m_boundDynamicOffset) {
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->m_pipelineLayout, 0, 1, &this->m_boundSet, 1, &dynamicOffset);
+        this->m_boundDynamicOffset = dynamicOffset;
+    }
 
     if (memcmp(buffers, this->m_boundBuffers, sizeof(VkBuffer) * bindingCount) || memcmp(offsets, this->m_boundOffsets, sizeof(VkDeviceSize) * bindingCount)) {
         vkCmdBindVertexBuffers(cmd, 0, bindingCount, buffers, offsets);
@@ -1501,6 +1627,107 @@ void CGxDeviceVulkan::DrawInstanced(CGxBatch* batch, const C44Matrix* worlds, ui
     this->Draw(batch, 1);
 }
 
+int32_t CGxDeviceVulkan::TerrainBindless() {
+    return this->m_bindless;
+}
+
+void CGxDeviceVulkan::ResetTerrainTable() {
+    this->m_terrainEpoch++;
+    this->m_terrainCount = 0;
+    uint32_t frame = this->m_vk.m_frameIndex;
+    this->m_terrainSets[frame] = VK_NULL_HANDLE;
+
+    if (this->m_terrainPools[frame]) {
+        vkResetDescriptorPool(this->m_vk.m_device, this->m_terrainPools[frame], 0);
+    }
+}
+
+int32_t CGxDeviceVulkan::EnsureTerrainSet() {
+    uint32_t frame = this->m_vk.m_frameIndex;
+
+    if (this->m_terrainSets[frame]) {
+        return 1;
+    }
+
+    VkDevice device = this->m_vk.m_device;
+
+    if (!this->m_terrainPools[frame]) {
+        VkDescriptorPoolSize size = { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, TerrainSlots };
+        VkDescriptorPoolCreateInfo info = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+        info.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+        info.maxSets = 1;
+        info.poolSizeCount = 1;
+        info.pPoolSizes = &size;
+
+        if (vkCreateDescriptorPool(device, &info, nullptr, &this->m_terrainPools[frame]) != VK_SUCCESS) {
+            this->m_terrainPools[frame] = VK_NULL_HANDLE;
+            return 0;
+        }
+    }
+
+    VkDescriptorSetAllocateInfo alloc = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+    alloc.descriptorPool = this->m_terrainPools[frame];
+    alloc.descriptorSetCount = 1;
+    alloc.pSetLayouts = &this->m_terrainSetLayout;
+
+    if (vkAllocateDescriptorSets(device, &alloc, &this->m_terrainSets[frame]) != VK_SUCCESS) {
+        this->m_terrainSets[frame] = VK_NULL_HANDLE;
+        return 0;
+    }
+
+    return 1;
+}
+
+uint32_t CGxDeviceVulkan::TerrainTextureSlot(CGxTex* tex) {
+    if (!this->m_bindless) {
+        return ~0u;
+    }
+
+    if (!tex) {
+        tex = this->m_defaultTexture;
+    }
+
+    if (!tex) {
+        return ~0u;
+    }
+
+    this->ITexMarkAsUpdated(tex);
+    VkTexture* texture = this->ITexReady(tex);
+
+    if (!texture || !texture->image.view) {
+        return ~0u;
+    }
+
+    if (texture->terrainEpoch == this->m_terrainEpoch) {
+        return texture->terrainSlot;
+    }
+
+    if (this->m_terrainCount >= TerrainSlots || !this->EnsureTerrainSet()) {
+        return ~0u;
+    }
+
+    VkSampler sampler = this->ISampler(tex->m_flags);
+
+    if (!sampler) {
+        return ~0u;
+    }
+
+    uint32_t slot = this->m_terrainCount++;
+    uint32_t frame = this->m_vk.m_frameIndex;
+    VkDescriptorImageInfo image = { sampler, texture->image.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+    VkWriteDescriptorSet write = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+    write.dstSet = this->m_terrainSets[frame];
+    write.dstBinding = 0;
+    write.dstArrayElement = slot;
+    write.descriptorCount = 1;
+    write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    write.pImageInfo = &image;
+    vkUpdateDescriptorSets(this->m_vk.m_device, 1, &write, 0, nullptr);
+    texture->terrainEpoch = this->m_terrainEpoch;
+    texture->terrainSlot = slot;
+    return slot;
+}
+
 int32_t CGxDeviceVulkan::DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t count) {
     if (!draws || !count || !this->m_primIndexBuf || !this->m_vk.m_features.drawIndirectFirstInstance) {
         return 0;
@@ -1524,6 +1751,8 @@ int32_t CGxDeviceVulkan::DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t c
         memcpy(items[i].lightDiffuse, draws[i].lightDiffuse, sizeof(items[i].lightDiffuse));
         memcpy(items[i].lightAmbient, draws[i].lightAmbient, sizeof(items[i].lightAmbient));
         memcpy(items[i].lightAtten, draws[i].lightAtten, sizeof(items[i].lightAtten));
+        memcpy(&items[i].lightAmbient[0][3], &draws[i].texIndex0, sizeof(uint32_t));
+        memcpy(&items[i].lightAmbient[1][3], &draws[i].texIndex1, sizeof(uint32_t));
         commands[i].indexCount = draws[i].indexCount;
         commands[i].instanceCount = 1;
         commands[i].firstIndex = draws[i].firstIndex;

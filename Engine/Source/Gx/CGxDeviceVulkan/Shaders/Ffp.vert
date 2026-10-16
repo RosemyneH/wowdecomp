@@ -13,6 +13,7 @@ layout(location = 0) out vec4 outColor;
 layout(location = 1) out vec3 outTexCoord0;
 layout(location = 2) out vec3 outTexCoord1;
 layout(location = 3) out float outFog;
+layout(location = 4) flat out ivec2 outTexIndex;
 
 // ʕ •ᴥ•ʔ✿ Row-major, matching C44Matrix. One record per instance or per terrain draw ✿ ʕ •ᴥ•ʔ
 struct GpuDrawItem {
@@ -62,6 +63,7 @@ void main() {
     vec4 lightDiffuse[4] = u.lightDiffuse;
     vec4 lightAmbient[4] = u.lightAmbient;
     vec4 lightAtten[4] = u.lightAtten;
+    ivec2 texIndex = ivec2(0);
 
     if (gpuMode != 0) {
         GpuDrawItem item = gpu.items[gl_InstanceIndex];
@@ -74,8 +76,11 @@ void main() {
             lightDiffuse = item.lightDiffuse;
             lightAmbient = item.lightAmbient;
             lightAtten = item.lightAtten;
+            texIndex = ivec2(floatBitsToInt(item.lightAmbient[0].w), floatBitsToInt(item.lightAmbient[1].w));
         }
     }
+
+    outTexIndex = texIndex;
 
     vec4 worldPos = vec4(inPosition, 1.0) * worldMat;
     vec4 viewPos = worldPos * u.view;

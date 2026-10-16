@@ -133,8 +133,8 @@ class VkContext {
         StagingRingSize = 16 << 20,
         // ʕ •ᴥ•ʔ✿ Chunks stay on the frame. A fresh buffer per lock after the first chunk filled was the stall ✿ ʕ •ᴥ•ʔ
         StreamRingSize = 64 << 20,
-        ItemRingSize = 8 << 20,
-        IndirectRingSize = 1 << 20,
+        ItemRingSize = 32 << 20,
+        IndirectRingSize = 4 << 20,
         DescriptorSetsPerFrame = 8192,
     };
 
@@ -180,6 +180,7 @@ class VkContext {
     uint32_t m_localType = UINT32_MAX;
     VkDeviceSize m_rebarHeap = 0;
     uint32_t m_frameIndex = 0;
+    int32_t m_bindless = 0;
     uint32_t m_imageIndex = 0;
 
     int32_t CreateInstance(const char* const* extensions, uint32_t extensionCount);
