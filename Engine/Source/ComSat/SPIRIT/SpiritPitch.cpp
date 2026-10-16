@@ -1,6 +1,10 @@
 #include <cmath>
 #include <cstdint>
+#if defined(__aarch64__) || defined(__arm64__)
+#include "ThirdParty/sse2neon/sse2neon.h"
+#else
 #include <xmmintrin.h>
+#endif
 #include "Engine/Source/ComSat/SPIRIT/ipmr.h"
 
 extern "C" {
