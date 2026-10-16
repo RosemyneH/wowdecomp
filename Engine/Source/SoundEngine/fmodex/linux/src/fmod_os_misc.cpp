@@ -104,7 +104,10 @@ FMOD_RESULT FMOD_OS_File_Close(void *handle)
         return FMOD_ERR_FILE_BAD;
     }
 
-    fclose((FILE *)handle);
+    if (fclose((FILE *)handle))
+    {
+        return FMOD_ERR_FILE_BAD;
+    }
 
     return FMOD_OK;
 }
