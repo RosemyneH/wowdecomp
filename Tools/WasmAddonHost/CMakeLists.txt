@@ -11,7 +11,7 @@ target_include_directories(wasm_storage_fuzz PRIVATE ${CMAKE_SOURCE_DIR})
 add_test(NAME wasm_storage_fuzz COMMAND wasm_storage_fuzz --iterations 20000)
 
 add_executable(wasm_addon_bench bench.cpp)
-if (UNIX)
+if (WOWDECOMP_LINUX)
     target_link_libraries(wasm_addon_bench PRIVATE "$<LINK_GROUP:RESCAN,WasmAddon,lua,Base,Os,BlizzardCore,Storm>")
 else ()
     target_link_libraries(wasm_addon_bench PRIVATE WasmAddon lua Base Os BlizzardCore Storm)

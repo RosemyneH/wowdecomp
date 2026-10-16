@@ -1,0 +1,41 @@
+name: linux-x64
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ninja-build g++ \
+            libsdl2-dev libx11-dev libcurl4-openssl-dev libasound2-dev libvulkan-dev
+
+      - name: Configure
+        run: cmake -S . -B build/linux -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      - name: Build WowClient
+        run: cmake --build build/linux --target WowClient -j"$(nproc)" -- -k 0
+
+      - name: Smoke
+        run: |
+          file bin/Linux/WowClient64
+          ldd bin/Linux/WowClient64 | head -20
+
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: linux-x64-WowClient64
+          path: bin/Linux/WowClient64
+          if-no-files-found: error

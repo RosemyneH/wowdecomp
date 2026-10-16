@@ -1,0 +1,133 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  macos-arm64:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deps
+        run: brew install ninja sdl2 xvid molten-vk vulkan-loader vulkan-headers vulkan-tools
+
+      - name: Configure
+        run: |
+          cmake -S . -B build/mac -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix)"
+
+      - name: Build WowClient
+        run: cmake --build build/mac --target WowClient -j3
+
+      - name: Package
+        run: tar czf wowdecomp-macos-arm64.tar.gz -C bin/Mac WowClient64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-macos-arm64
+          path: wowdecomp-macos-arm64.tar.gz
+
+  linux-x64:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ninja-build g++ \
+            libsdl2-dev libx11-dev libcurl4-openssl-dev libasound2-dev libvulkan-dev
+
+      - name: Configure
+        run: cmake -S . -B build/linux -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build WowClient
+        run: cmake --build build/linux --target WowClient -j"$(nproc)"
+
+      - name: Package
+        run: tar czf wowdecomp-linux-x86_64.tar.gz -C bin/Linux WowClient64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-linux-x64
+          path: wowdecomp-linux-x86_64.tar.gz
+
+  windows-x64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build/x64 -G "Visual Studio 17 2022" -A x64
+
+      - name: Build WowClient
+        run: cmake --build build/x64 --config Release --target WowClient --parallel
+
+      - name: Package
+        shell: pwsh
+        run: Compress-Archive -Path bin/Win/WowClient64.exe -DestinationPath wowdecomp-windows-x64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-windows-x64
+          path: wowdecomp-windows-x64.zip
+
+  windows-arm64:
+    runs-on: windows-11-arm
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build/arm64 -G "Visual Studio 17 2022" -A ARM64
+
+      - name: Build WowClient
+        run: cmake --build build/arm64 --config Release --target WowClient --parallel
+
+      - name: Package
+        shell: pwsh
+        run: Compress-Archive -Path bin/Win/WowClient64.exe -DestinationPath wowdecomp-windows-arm64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-windows-arm64
+          path: wowdecomp-windows-arm64.zip
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [macos-arm64, linux-x64, windows-x64, windows-arm64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: package-*
+          merge-multiple: true
+          path: dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          body: |
+            **Experimental build.** You still need a retail **WoW 3.3.5a (12340)** install — place `WowClient64` (or `.exe`) beside your `Data` folder (see README).
+
+            | Archive | Platform |
+            |---------|----------|
+            | `wowdecomp-macos-arm64.tar.gz` | macOS Apple Silicon |
+            | `wowdecomp-linux-x86_64.tar.gz` | Linux x86_64 |
+            | `wowdecomp-windows-x64.zip` | Windows x64 |
+            | `wowdecomp-windows-arm64.zip` | Windows on ARM (when the ARM job succeeds) |

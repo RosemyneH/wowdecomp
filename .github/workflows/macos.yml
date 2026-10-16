@@ -1,12 +1,23 @@
 name: macos-arm64
-on: [push, pull_request, workflow_dispatch]
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+
       - name: Deps
         run: brew install ninja sdl2 xvid molten-vk vulkan-loader vulkan-headers vulkan-tools
+
       - name: Configure
         run: |
           cmake -S . -B build/mac -G Ninja \
@@ -14,18 +25,23 @@ jobs:
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
             -DCMAKE_PREFIX_PATH="$(brew --prefix)"
+
       - name: Build Os + Gx
         run: cmake --build build/mac --target Os Gx -j3
+
       - name: Build WowClient
         run: cmake --build build/mac --target WowClient -j3 -- -k 0
+
       - name: Smoke
         env:
           DYLD_FALLBACK_LIBRARY_PATH: /opt/homebrew/lib
         run: |
           file bin/Mac/WowClient64
           otool -L bin/Mac/WowClient64
+
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: success()
         with:
-          name: mac-build-log
-          path: build/mac/.ninja_log
+          name: macos-arm64-WowClient64
+          path: bin/Mac/WowClient64
+          if-no-files-found: error

@@ -1,106 +1,176 @@
-# wowdecomp
+# wowdecomp (experimental fork)
 
-A C++ decompilation of the World of Warcraft 3.3.5a client (`Wow.exe`, build 12340, June 2010).
+**This repository is an extremely experimental fork** of the [SatyPardus/wowdecomp](https://github.com/SatyPardus/wowdecomp) project: a C++ decompilation of the World of Warcraft **3.3.5a** client (`Wow.exe`, build **12340**, June 2010). The upstream tree is a faithful, address-tagged reconstruction of the original binary; **this fork layers on rendering, platform, and performance work that is incomplete, unstable, and not suitable for production use.**
 
-Join the discord for other clients and to show off some cool stuff you build.
+If you want the closest match to the reference decompilation effort, use upstream. If you want to break things on purpose—Vulkan, new platforms, WASM addons, and a multithreaded client rewrite—you are in the right place.
 
-https://discord.gg/DsZMGUD8aT
+**Not the other Vulkan / Linux / macOS clients.** Several independent 3.3.5a clients and ports (Vulkan renderers, native Linux builds, macOS wrappers, and similar projects) exist in the modding ecosystem. **This fork is a separate codebase and lineage** (SatyPardus decomp → this tree). We have **not** tested compatibility, interchangeability, or parity with those projects—do not assume patches, addons, binaries, or docs from them apply here.
 
-Every function is reconstructed from the original binary and keeps the address it came from in an
-`// OFFSET:` tag, so each one can be compared against the original. The source tree follows the layout
-of the original client (`Engine/Source/<Module>`, `WoW/Source/<Module>`, original file names).
+Join the Discord for other clients and to show off cool stuff you build: https://discord.gg/DsZMGUD8aT
 
-x64 is the main target. Win32 still builds and is used to check struct layouts against the 32-bit
-original.
+---
 
-## Progress
+## What this fork adds (high level)
 
-The percentages below measure how much of the original binary has a counterpart in this source tree. They do
-**not** say how much of the game works, and the missing part is not missing gameplay: the client builds into a
-complete executable and the game is 100% playable. Bugs could still be hiding, though; a ported function can behave differently
-from the original.
+| Area | Status in this fork |
+|------|---------------------|
+| **Vulkan renderer** | Primary graphics backend on every supported OS (MoltenVK on macOS). Direct3D 9 remains a selectable fallback on Windows. |
+| **Cross-platform** | **Windows** (x64 and **Windows on ARM64**), **Linux** (x86_64 and **aarch64**), and **macOS** (Intel and **Apple Silicon**). Linux aarch64 cross-builds use `cmake/Toolchain-Clang-aarch64-linux.cmake`. |
+| **Custom Vulkan shaders** | GLSL sources under `Engine/Source/Gx/CGxDeviceVulkan/Shaders/`; SPIR-V is embedded in-tree. Regenerate with the `GxVulkanShadersRegenerate` CMake target when `glslc` is installed. |
+| **Lighting & fog** | Modernized lighting paths through the Vulkan fixed-function pipeline and existing `ShaderEffect` stack; **volumetric fog** and related atmosphere work are part of this experimental rendering push (behavior and quality will change). |
+| **WASM addons** | Host runtime (`WasmAddon`, Wasmtime) for sandboxed `wasm32` addons—see `Addons/Wasm/README.html` and `docs/wasm-addon-architecture.html`. Install addons under `Interface/WasmAddOns/`. |
+| **Multithreaded performance** | Shared **job pool** (`Engine/Source/Base/Job/JobSystem.h`) drives parallel terrain, models, UI, and other hot paths—a broad performance rewrite on top of the decompiled client. |
 
-Measured against the 12340 binary on 2026-10-15. A function counts as ported when its address is
-tagged in the source.
+Everything above is **experimental**: APIs move, backends differ per OS, and regressions are expected. Treat nightly-quality builds as the norm.
+
+---
+
+## Decompilation baseline (shared with upstream)
+
+Every ported function keeps an `// OFFSET:` tag tied to the original binary so it can be compared against 12340. The source tree follows the original layout (`Engine/Source/<Module>`, `WoW/Source/<Module>`, original file names).
+
+x64 is the main target. Win32 still builds on Windows and is used to check struct layouts against the 32-bit original.
+
+### Progress
+
+The percentages below measure how much of the original binary has a counterpart in this source tree. They do **not** say how much of the game works on every platform; on the reference Windows x64 path the client builds into a complete executable and the game is largely playable. **Non-Windows and Vulkan paths are less mature.** Bugs are always possible—a ported function can behave differently from the original.
+
+Measured against the 12340 binary on 2026-10-15. A function counts as ported when its address is tagged in the source.
 
 | | Ported | Total | Share of the original |
 |---|---:|---:|---:|
 | Functions | 24,515 | 27,157 | 90.3% |
 | Code bytes | 5,270,186 | 5,656,573 | 93.2% |
 
-The total leaves out 658 functions that IDA identifies as compiler library code and 132 import thunks.
-Most of the untagged remainder is code the build gets elsewhere: compiler-generated code (static
-initializers, template instances) that our compiler emits on its own, C runtime helpers, and third-party
-libraries that are linked from their upstream sources instead of being decompiled (FreeType, zlib, PCRE,
-parts of FMOD Ex).
+The total leaves out 658 functions that IDA identifies as compiler library code and 132 import thunks. Most of the untagged remainder is code the build gets elsewhere: compiler-generated code, C runtime helpers, and third-party libraries linked from upstream sources instead of being decompiled (FreeType, zlib, PCRE, parts of FMOD Ex).
+
+---
 
 ## Requirements
 
-- Windows 10 or 11
-- Visual Studio 2022 with the **Desktop development with C++** workload (MSVC v143 and a Windows SDK)
-- CMake 3.10 or newer (the one that ships with Visual Studio works)
-- For Win32 builds only: [NASM](https://www.nasm.us/), on `PATH` or passed as `-DNASM_EXECUTABLE=<path>`, and
-  `DivxDecoder.dll` from your 3.3.5a client copied to `ThirdParty/DivxDecoder/` (the build copies it next to the
-  executables; the x64 build uses its own decoder instead)
-- A World of Warcraft **3.3.5a (12340)** client. No game data is included in this repository.
+- A World of Warcraft **3.3.5a (12340)** client. **No game data is included** in this repository.
+- **CMake 3.24+**
+- **C++17** toolchain (Visual Studio 2022 on Windows; Clang or GCC on Linux/macOS)
+
+### Windows
+
+- Windows 10 or 11 (x64 PCs and **ARM64** devices such as Snapdragon laptops)
+- Visual Studio 2022 with **Desktop development with C++** (MSVC v143 and a Windows SDK). Install the **ARM64** MSVC toolset when building for Windows on ARM.
+- Optional: [NASM](https://www.nasm.us/) for Win32 builds; `DivxDecoder.dll` from your 3.3.5a client in `ThirdParty/DivxDecoder/` for Win32 only (x64/ARM64 use the in-tree Xvid decoder where applicable)
+
+### Linux
+
+- SDL2, X11, OpenAL (ALSA), libcurl, pthreads
+- Vulkan loader and drivers (or Mesa); headers are vendored via `ThirdParty/Vulkan-Headers` and volk
+- Optional: system Wasmtime for WASM addons (see `cmake/Wasmtime.cmake`); otherwise addons may be compiled out
+
+### macOS
+
+- Xcode / Command Line Tools
+- SDL2 (e.g. Homebrew)
+- MoltenVK / Vulkan via the usual macOS Vulkan SDK or Homebrew stack
+- Apple Silicon (`arm64`) and Intel are both targeted
+
+---
 
 ## Building
 
-From a Developer PowerShell or any shell with `cmake` on `PATH`:
+In-source builds are refused—use a separate `build/` directory.
+
+### Windows (x64, main target)
 
 ```powershell
-git clone https://github.com/SatyPardus/wowdecomp.git
+git clone https://github.com/RosemyneH/wowdecomp.git
 cd wowdecomp
 
-# x64 (main target)
 cmake -S . -B build/x64 -G "Visual Studio 17 2022" -A x64
 cmake --build build/x64 --config Release --target WowClient --parallel
+```
 
-# Win32 (optional, needs NASM)
+Windows on ARM64 (experimental; same client, native ARM64 binary):
+
+```powershell
+cmake -S . -B build/arm64 -G "Visual Studio 17 2022" -A ARM64
+cmake --build build/arm64 --config Release --target WowClient --parallel
+```
+
+Win32 (optional, needs NASM):
+
+```powershell
 cmake -S . -B build/win32 -G "Visual Studio 17 2022" -A Win32
 cmake --build build/win32 --config Release --target WowClient --parallel
 ```
 
-In-source builds are refused, so keep the build directory separate (`build/` above).
+### Linux / macOS (experimental)
 
-The client is written to `bin/Win/`:
+Example Ninja release build on Linux:
 
-| Target | x64 | Win32 |
-|---|---|---|
-| `WowClient` | `WowClient64.exe` | `WowClient32.exe` |
-| `Wow` | `Wow64.exe` | `Wow32.exe` |
+```bash
+cmake -S . -B build/linux -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build/linux --target WowClient
+```
 
-`WowClient` is the client with a crash logger: it opens a console window and writes
-`WowClient_crash.log` when the client crashes. `Wow` is the same client without it. You can also turn the
-logger off in `WowClient` with `-DWOWCLIENT_CRASH_LOG=OFF`.
+On Apple Silicon, pass `-DCMAKE_OSX_ARCHITECTURES=arm64` if needed. For aarch64 Linux cross-builds, see `cmake/Toolchain-Clang-aarch64-linux.cmake`.
 
-### Options
+### CMake options (selected)
 
-| CMake option | Default | Effect |
-|---|---|---|
-| `WOWDECOMP_DISABLE_SIGNATURE_CHECKS` | `OFF` | Skip the MPQ file and `.toc.sig` signature checks, so modified game data and interface files load |
-| `WOWCLIENT_CRASH_LOG` | `ON` | Build `WowClient` with the crash logger |
-| `WOWCLIENT_OUTPUT_OVERRIDE` | empty | Name the `WowClient` executable something other than `WowClient64` / `WowClient32` |
+| Option | Default | Effect |
+|--------|---------|--------|
+| `WOWDECOMP_ENABLE_VULKAN` | `ON` | Build the Vulkan Gx backend (MoltenVK on macOS) |
+| `WOWDECOMP_DISABLE_SIGNATURE_CHECKS` | `OFF` | Skip MPQ and `.toc.sig` signature checks (modded data/UI) |
+| `WOWCLIENT_CRASH_LOG` | `ON` (Windows) | Crash logger executable variant where enabled |
+| `WOWCLIENT_OUTPUT_OVERRIDE` | empty | Override the `WowClient` binary name |
+
+Regenerate embedded Vulkan SPIR-V (requires matching `glslc`—see `Engine/Source/Gx/CGxDeviceVulkan/Shaders/glslc.version`):
+
+```bash
+cmake --build <build-dir> --target GxVulkanShadersRegenerate
+```
+
+### CI and releases
+
+GitHub Actions build **WowClient** on push/PR: `macos-arm64`, `linux-x64`, and `windows-x64` (plus an experimental `windows-arm64` job). Shader drift is checked by `generated-drift` when GLSL under `Engine/Source/Gx/CGxDeviceVulkan/Shaders/` changes.
+
+**Prebuilt binaries:** push a version tag (`v0.1.0`, etc.) to run the **Release** workflow and attach platform packages to a GitHub Release. You can also run **Release** manually from the Actions tab (publish step runs only for tag pushes). Game `Data` is never included—use your own 3.3.5a install.
+
+---
 
 ## Running
 
-1. Copy the `Data` folder of your 3.3.5a client into `bin/Win/`, so you have `bin/Win/Data/`.
-2. Point `Data/<locale>/realmlist.wtf` at the server you want to connect to.
-3. Start `bin/Win/WowClient64.exe` (or `Wow64.exe`).
+1. Copy the `Data` folder from your 3.3.5a install next to the client binary.
+2. Point `Data/<locale>/realmlist.wtf` at your realm.
+3. Launch the client from the platform output directory:
+
+| Platform | Typical binary path |
+|----------|---------------------|
+| Windows (x64) | `bin/Win/WowClient64.exe` (or `Wow64.exe`) |
+| Windows (ARM64) | `bin/Win/WowClient64.exe` (ARM64 build from `-A ARM64`) |
+| Linux | `bin/Linux/WowClient64` |
+| macOS | `bin/Mac/WowClient64` |
+
+`WowClient` is the variant with extra diagnostics where the platform supports them; `Wow` is the same client without that wrapper on Windows.
+
+---
 
 ## Layout
 
 | Path | Contents |
-|---|---|
-| `Engine/Source/` | Engine modules: Storm, Gx (Direct3D 9 / OpenGL), Model2, Frame/FrameXML UI, SoundEngine, Lua, ... |
-| `WoW/Source/` | Game modules: objects, world rendering, UI, networking, database, glue screens |
-| `WoW/Common/` | Code shared by the game modules |
-| `ThirdParty/` | Libraries linked from their upstream sources |
-| `Tools/WowClient/` | The `WowClient` executable target |
-| `Tools/XvidDecoder/` | x64 movie decoder that replaces the original 32-bit `DivxDecoder.dll` |
+|------|----------|
+| `Engine/Source/Gx/CGxDeviceVulkan/` | Vulkan device, shaders, platform glue |
+| `Engine/Source/WasmAddon/` | WASM addon host (Wasmtime) |
+| `Engine/Source/Base/Job/` | Multithreaded job pool |
+| `Engine/Source/` | Other engine modules: Storm, Gx, Model2, Frame/FrameXML, SoundEngine, Lua, … |
+| `WoW/Source/` | Game modules: world rendering, UI, networking, database, glue |
+| `Addons/Wasm/` | Addon SDK, examples, packaging docs |
+| `ThirdParty/` | Libraries linked from upstream sources (Vulkan headers, volk, …) |
+| `Tools/WowClient/` | Client executable target |
+| `Tools/WasmAddonHost/` | Headless addon test host |
+
+---
 
 ## Special thanks
 
+- [SatyPardus/wowdecomp](https://github.com/SatyPardus/wowdecomp) and everyone upstream credited there
 - [binana](https://github.com/thunderbrewhq/binana)
 - [thunderbrew](https://github.com/thunderbrewhq/thunderbrew)
 - [whoa](https://github.com/whoahq/whoa)
