@@ -206,6 +206,12 @@ HANDLE SCreateThread(uint32_t dwStackSize, uint32_t (STORMAPI* lpStartAddress)(v
     launch->param = lpParameter;
     launch->threadH = SSyncCreate(SSYNC_THREAD, 0, 1, 1);
     launch->started = SSyncCreate(SSYNC_EVENT, 0, 1, 1);
+    if (!launch->threadH || !launch->started) {
+        SSyncClose(launch->threadH);
+        SSyncClose(launch->started);
+        SMemFree(launch, __FILE__, __LINE__, 0);
+        return nullptr;
+    }
 
     HANDLE hThread = launch->threadH;
     HANDLE started = launch->started;
