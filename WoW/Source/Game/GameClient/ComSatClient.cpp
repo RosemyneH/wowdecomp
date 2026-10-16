@@ -585,7 +585,7 @@ void ComSatClient_SetCaptureDevice(int32_t index) {
 // VERIFY: 6dafafe1 manual
 // OFFSET: 0x007DB5C0
 int32_t ComSatClient_GetCurrentSessionType() {
-    if (s_currentSession >= 0) {
+    if (s_currentSession >= 0 && s_currentSession < 32) {
         return s_comsatData[s_currentSession].m_type;
     }
 
