@@ -1616,24 +1616,27 @@ void CGxDeviceVulkan::ITexCreate(CGxTex* texId) {
 
     VkCommandBuffer upload = this->m_vk.UploadCmd();
 
-    if (upload) {
-        if (renderTarget) {
-            texture->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            VkContext::Barrier(upload, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        } else {
-            texture->layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-            VkContext::Barrier(upload, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    // ʕ •ᴥ•ʔ✿ Draw binds the view with no layout check, so an UNDEFINED image would be sampled ✿ ʕ •ᴥ•ʔ
+    if (!upload) {
+        this->m_vk.RetireImage(texture->image);
+        delete texture;
+        texId->m_needsCreation = 1;
+        return;
+    }
 
-            VkImageSubresourceRange range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, texture->levels, 0, 1 };
-            VkClearColorValue clear = {};
-            vkCmdClearColorImage(upload, texture->image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear, 1, &range);
-            VkContext::Barrier(upload, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-            texture->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            texture->initialized = 1;
-        }
+    if (renderTarget) {
+        texture->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        VkContext::Barrier(upload, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     } else {
-        texture->layout = VK_IMAGE_LAYOUT_UNDEFINED;
-        texture->initialized = 0;
+        texture->layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        VkContext::Barrier(upload, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+        VkImageSubresourceRange range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, texture->levels, 0, 1 };
+        VkClearColorValue clear = {};
+        vkCmdClearColorImage(upload, texture->image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear, 1, &range);
+        VkContext::Barrier(upload, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        texture->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        texture->initialized = 1;
     }
 
     texId->m_apiSpecificData = texture;
