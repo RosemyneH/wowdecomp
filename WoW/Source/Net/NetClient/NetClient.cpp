@@ -213,10 +213,27 @@ int32_t NetClient::Initialize() {
 
     NetClient::s_clientCount++;
 
-    this->m_netEventQueue = new (SMemAlloc(sizeof(NETEVENTQUEUE), __FILE__, __LINE__, 0)) NETEVENTQUEUE(this);
+    void* queueMem = SMemAlloc(sizeof(NETEVENTQUEUE), __FILE__, __LINE__, 0);
+
+    if (!queueMem) {
+        NetClient::s_clientCount--;
+        return 0;
+    }
+
+    this->m_netEventQueue = new (queueMem) NETEVENTQUEUE(this);
     memset(this->m_handlers, 0, sizeof(this->m_handlers));
     memset(this->m_handlerParams, 0, sizeof(this->m_handlerParams));
-    this->m_serverConnection = new (SMemAlloc(sizeof(WowConnection), __FILE__, __LINE__, 0)) WowConnection(this, nullptr);
+
+    void* connectionMem = SMemAlloc(sizeof(WowConnection), __FILE__, __LINE__, 0);
+
+    if (!connectionMem) {
+        delete this->m_netEventQueue;
+        this->m_netEventQueue = nullptr;
+        NetClient::s_clientCount--;
+        return 0;
+    }
+
+    this->m_serverConnection = new (connectionMem) WowConnection(this, nullptr);
     this->m_netState = NS_INITIALIZED;
     s_initializeTime = OsGetAsyncTimeMs();
 
