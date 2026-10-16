@@ -1774,7 +1774,7 @@ int32_t CGxDeviceVulkan::IBlitFromBackBuffer(CGxTex* dest, const VkOffset3D* des
     int32_t destMax[2] = { static_cast<int32_t>(std::max(texture->width >> level, 1u)), static_cast<int32_t>(std::max(texture->height >> level, 1u)) };
 
     for (uint32_t i = 0; i < 2; i++) {
-        region.srcOffsets[i] = { std::min(std::max(sourceBounds[i].x, 0), sourceMax[0]), std::min(std::max(sourceBounds[i].y, 0), sourceMax[1]), i };
+        region.srcOffsets[i] = { std::min(std::max(sourceBounds[i].x, 0), sourceMax[0]), std::min(std::max(sourceBounds[i].y, 0), sourceMax[1]), static_cast<int32_t>(i) };
         region.dstOffsets[i] = { std::min(std::max(destBounds[i].x, 0), destMax[0]), std::min(std::max(destBounds[i].y, 0), destMax[1]), static_cast<int32_t>(i) };
     }
 
