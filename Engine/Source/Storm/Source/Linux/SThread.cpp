@@ -301,7 +301,10 @@ int32_t STORMAPI SCreateProcess(const char* appName, char* commandLine, void (*c
         completion->process = process;
 
         uint32_t threadId;
-        SCreateThread(ProcessCompletionCallbackThread, completion, &threadId, nullptr, nullptr, 0);
+        if (!SCreateThread(ProcessCompletionCallbackThread, completion, &threadId, nullptr, nullptr, 0)) {
+            SMemFree(completion, __FILE__, __LINE__, 0);
+            return 0;
+        }
     }
 
     return 1;
