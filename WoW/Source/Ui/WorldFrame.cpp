@@ -1,6 +1,8 @@
 #include "WorldFrame.h"
 #include "Engine/Source/Base/ConvertUTF.h"
+#include "Engine/Source/Base/Job/JobSystem.h"
 #include <cstring>
+#include <vector>
 #include <typeinfo>
 #include "Engine/Source/Base/OsCrt.h"
 #include "Engine/Source/Base/Coordinate.h"
@@ -1480,16 +1482,128 @@ static int32_t UnitUpdateProc(WOWGUID guid, void* param) {
     return 1;
 }
 
-// VERIFY: bee9c240 manual
-// OFFSET: 0x004F6A40
-static int32_t UnitPostAnimateProc(WOWGUID guid, void* param) {
+struct NameplatePrep {
+    CGUnit_C* unit;
+    int32_t defer;
+    int32_t show;
+    C3Vector position;
+};
+
+struct NameplateBatch {
+    CGWorldFrame* frame;
+    NameplatePrep* units;
+};
+
+static std::vector<NameplatePrep> s_visibleUnits;
+
+static int32_t CollectVisibleUnit(WOWGUID guid, void* param) {
+    std::vector<NameplatePrep>* units = static_cast<std::vector<NameplatePrep>*>(param);
     CGObject_C* object = ClntObjMgrObjectPtr(guid, TYPEMASK_OBJECT, __FILE__, __LINE__);
 
-    if (object && (object->m_obj->m_type & TYPEMASK_UNIT)) {
-        static_cast<CGUnit_C*>(object)->PostAnimate(static_cast<CGWorldFrame*>(param));
+    if (!object || !(object->m_obj->m_type & TYPEMASK_UNIT)) {
+        return 1;
     }
 
+    NameplatePrep prep;
+    prep.unit = static_cast<CGUnit_C*>(object);
+    prep.defer = 0;
+    prep.show = 0;
+    prep.position = C3Vector(0.0f, 0.0f, 0.0f);
+    units->push_back(prep);
     return 1;
+}
+
+static int32_t NameplateModelStaysSerial(CM2Model* model) {
+    if (!model) {
+        return 0;
+    }
+
+    if (model->m_attachParent || model->m_attachList || !model->m_scene) {
+        return 1;
+    }
+
+    if (!(model->m_fFlags & 1) && model->IsLoaded(0, 0)) {
+        return 1;
+    }
+
+    return 0;
+}
+
+static void MarkSerialNameplates(std::vector<NameplatePrep>& units) {
+    uint32_t count = static_cast<uint32_t>(units.size());
+
+    for (uint32_t i = 0; i < count; ++i) {
+        if (NameplateModelStaysSerial(units[i].unit->m_worldModel)) {
+            units[i].defer = 1;
+        }
+    }
+
+    for (uint32_t i = 0; i < count; ++i) {
+        CM2Model* model = units[i].unit->m_worldModel;
+
+        if (units[i].defer || !model) {
+            continue;
+        }
+
+        for (uint32_t j = i + 1; j < count; ++j) {
+            if (!units[j].defer && units[j].unit->m_worldModel == model) {
+                units[i].defer = 1;
+                units[j].defer = 1;
+            }
+        }
+    }
+}
+
+static void PrepareNameplateRange(Job::Range range, void* user) {
+    NameplateBatch* batch = static_cast<NameplateBatch*>(user);
+
+    for (uint32_t i = range.begin; i < range.end; ++i) {
+        NameplatePrep& prep = batch->units[i];
+
+        if (prep.defer) {
+            continue;
+        }
+
+        prep.position = C3Vector(0.0f, 0.0f, 0.0f);
+        prep.show = prep.unit->ShouldShowNamePlate(batch->frame, &prep.position);
+    }
+}
+
+// -- ʕ •ᴥ•ʔ✿ Visibility tests for models outside an attachment graph. Plate lists stay on this thread. ✿ ʕ •ᴥ•ʔ
+static void PostAnimateVisibleUnits(CGWorldFrame* frame) {
+    s_visibleUnits.clear();
+    ClntObjMgrEnumVisibleObjects(CollectVisibleUnit, &s_visibleUnits);
+    MarkSerialNameplates(s_visibleUnits);
+
+    uint32_t ready = 0;
+
+    for (uint32_t i = 0; i < s_visibleUnits.size(); ++i) {
+        ready += s_visibleUnits[i].defer ? 0u : 1u;
+    }
+
+    int32_t computed = ready > 1;
+
+    if (computed) {
+        NameplateBatch batch;
+        batch.frame = frame;
+        batch.units = s_visibleUnits.data();
+        Job::ParallelFor(static_cast<uint32_t>(s_visibleUnits.size()), PrepareNameplateRange, &batch);
+    }
+
+    for (uint32_t i = 0; i < s_visibleUnits.size(); ++i) {
+        NameplatePrep& prep = s_visibleUnits[i];
+
+        if (prep.defer || !computed) {
+            prep.unit->PostAnimate(frame);
+            continue;
+        }
+
+        if (prep.show) {
+            prep.unit->NamePlateAddOrUpdate(prep.position, frame);
+        } else {
+            prep.unit->DestroyNamePlate();
+        }
+    }
 }
 
 // VERIFY: f55fe239 manual
@@ -1727,7 +1841,7 @@ void CGWorldFrame::OnWorldRender() {
     CShaderEffect::UpdateProjMatrix();
     CWorld::Render(this->m_camera->m_position, this->m_elapsedSec);
     CMap::RenderFootprints();
-    ClntObjMgrEnumVisibleObjects(UnitPostAnimateProc, this);
+    PostAnimateVisibleUnits(this);
     CGUnit_C::NamePlateSetResortAll(false);
     CGUnit_C::NamePlateUpdateLevels(false);
     CGUnit_C::NamePlateUpdateColor(false);
