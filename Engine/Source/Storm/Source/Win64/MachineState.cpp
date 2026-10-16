@@ -1,5 +1,41 @@
 #if defined(WOWDECOMP_ARCH_64)
 
+#if defined(_M_ARM64)
+
+#include <windows.h>
+#include "Engine/Source/Storm/H/storm.h"
+#include "Engine/Source/Storm/Source/MachineState.h"
+
+int32_t g_memFullError;
+
+void LoadMachineStateSymbols() {
+}
+
+void UnloadMachineStateSymbols() {
+}
+
+void LogComputerInfoHeader(uint32_t logOptions, void (*logLineProc)(void*, const char*, ...), void* logLineProcParam, const char* headerTitleLine, const SYSTEMTIME* time) {
+    if (logLineProc && headerTitleLine) {
+        logLineProc(logLineProcParam, "%s", headerTitleLine);
+    }
+}
+
+void LogMachineState(uint32_t logOptions, void (*logLineProc)(void*, const char*, ...), void* logLineProcParam, uint32_t stackFramesToSkip, CONTEXT* context) {
+    if (logLineProc) {
+        logLineProc(logLineProcParam, "**** Stack/crash dump helpers are not implemented on Windows ARM64 yet.");
+    }
+}
+
+int32_t LogMiniDump(void* logfile, EXCEPTION_POINTERS* exceptionpointers, uint32_t count, const char** strings) {
+    return 0;
+}
+
+int32_t LogMiniDumpIsAvailable() {
+    return 0;
+}
+
+#elif defined(_M_X64)
+
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -1102,5 +1138,7 @@ void LogMachineState(uint32_t logOptions, void (*logLineProc)(void*, const char*
 
     InterlockedDecrement(&sgRecursionLevel);
 }
+
+#endif
 
 #endif
