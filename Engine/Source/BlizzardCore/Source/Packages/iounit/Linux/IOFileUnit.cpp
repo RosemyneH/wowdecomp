@@ -21,6 +21,12 @@ bool IOFileUnit::ReadNative(uint32_t offset, const char* path, void* buffer, uin
     uint32_t size = (head + count + 0xFFF) & ~0xFFFu;
     bool result = false;
     uint8_t* data = static_cast<uint8_t*>(SMemAlloc(size, __FILE__, __LINE__, 0));
+
+    if (!data && size) {
+        close(file);
+        return false;
+    }
+
     ssize_t read = pread(file, data, size, offset - head);
 
     if (read >= 0) {
