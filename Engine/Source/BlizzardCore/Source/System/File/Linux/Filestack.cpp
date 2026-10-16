@@ -243,6 +243,11 @@ bool System_File::MakeAbsolutePath(Blizzard::File::Filesystem* fs, System_File::
         Blizzard::String::Append(buffer, path, sizeof(buffer));
     }
 
+    if (parms->m_cwdbuflen > 0 && strlen(buffer) >= static_cast<size_t>(parms->m_cwdbuflen)) {
+        Blizzard::File::SetLastError(8);
+        return false;
+    }
+
     FromNativeName(parms->m_cwdbuf, parms->m_cwdbuflen, buffer);
     Blizzard::String::MakeUnivPath(parms->m_cwdbuf, parms->m_cwdbuf, parms->m_cwdbuflen);
 
