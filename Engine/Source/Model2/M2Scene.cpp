@@ -4,7 +4,7 @@
 #include <cstring>
 #include <new>
 #include <vector>
-#if defined(__aarch64__) || defined(__arm64__)
+#if defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64)
 #include "ThirdParty/sse2neon/sse2neon.h"
 #else
 #include <xmmintrin.h>

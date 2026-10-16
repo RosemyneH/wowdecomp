@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <cmath>
 #include <cstring>
-#if defined(__aarch64__) || defined(__arm64__)
+#if defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64)
 #include "ThirdParty/sse2neon/sse2neon.h"
 #else
 #include <emmintrin.h>

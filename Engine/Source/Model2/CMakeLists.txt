@@ -13,7 +13,7 @@ target_include_directories(Model2
 # ʕ •ᴥ•ʔ✿ AVX2 skinning is its own TU. Win32 keeps /arch:IA32 for the x87 layout build. ✿ ʕ •ᴥ•ʔ
 set(WOWDECOMP_AVX2_SKIN 0)
 if (NOT MSVC OR CMAKE_SIZEOF_VOID_P EQUAL 8)
-    if (MSVC OR CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86|x86)$")
+    if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86|x86)$")
         set(WOWDECOMP_AVX2_SKIN 1)
     endif ()
 endif ()
