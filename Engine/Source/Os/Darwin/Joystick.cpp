@@ -89,11 +89,11 @@ void OsJoystickMapStick(uint32_t index, int32_t stick, int32_t xAxis, int32_t yA
 
 uint32_t OsJoystickCount() {
     if (!s_initialized) {
-        s_initialized = 1;
-
         if (SDL_InitSubSystem(SDL_INIT_JOYSTICK)) {
             return 0;
         }
+
+        s_initialized = 1;
 
         SDL_JoystickEventState(SDL_IGNORE);
 
