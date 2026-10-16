@@ -40,6 +40,7 @@
 uint32_t s_joystick = 0xFFFFFFFF;
 
 static uint32_t s_joystickList;
+static uint32_t s_joystickReopenList;
 
 // STATIC: 0x00AD1930
 int32_t s_joystickMouseEnabled = 1;
@@ -1334,9 +1335,18 @@ uint32_t GetJoystick() {
     // ʕ ◕ᴥ◕ ʔ✿ Stored index is from the list that was open; a rebuild hands that slot to another device ✿ ʕ ◕ᴥ◕ ʔ
     if (s_joystick != 0xFFFFFFFF) {
         uint32_t count = OsJoystickCount();
+        uint32_t listId = OsJoystickListId();
 
-        if (s_joystick >= count || s_joystickList != OsJoystickListId()) {
+        if (s_joystick >= count || s_joystickList != listId) {
             s_joystick = 0xFFFFFFFF;
+
+            // ʕ ◕ᴥ◕ ʔ✿ Cvar still on: open pad 0 once for this list, same pair JoystickCallback uses ✿ ʕ ◕ᴥ◕ ʔ
+            CVar* joystick = CVar::Lookup("Joystick");
+
+            if (joystick && joystick->m_intValue == 1 && s_joystickReopenList != listId) {
+                s_joystickReopenList = listId;
+                SetJoystick(OsJoystickOpen(0));
+            }
         }
     }
 
