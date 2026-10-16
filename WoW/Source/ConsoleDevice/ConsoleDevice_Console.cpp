@@ -1,11 +1,15 @@
 #include <cstdint>
 #include "ConsoleDevice.h"
+#include "Engine/Source/Base/Coordinate.h"
 #include "Engine/Source/ConsoleBase/IConsole.h"
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
 #include "Engine/Source/Gx/CGxFormat.h"
 #include "Engine/Source/Os/Gui.h"
+#include "Engine/Source/Os/Input.h"
 #include "Engine/Source/Services/Texture.h"
+#include "Engine/Source/Tempest/CRect.h"
 #include "WoW/Source/Ui/GameUI.h"
+#include "WoW/Source/Ui/Screen.h"
 
 // VERIFY: 6674b551 auto
 // OFFSET: 0x00769FF0
@@ -43,6 +47,18 @@ done:
     OsGuiSetGxWindow(g_theGxDevicePtr->DeviceWindow());
     OsGuiSetWindowTitle(g_theGxDevicePtr->DeviceWindow(), s_windowTitle);
     TextureNotifyGxRestart();
+
+    // ʕ •ᴥ•ʔ✿ The drawable stays the monitor size, so the UI has to hear the new aspect itself ✿ ʕ •ᴥ•ʔ
+    CoordinateSetAspectRatio(Screen::GetAspectRatio());
+
+    CRect rect;
+    g_theGxDevicePtr->CapsWindowSize(rect);
+    int32_t width = static_cast<int32_t>(rect.maxX - rect.minX);
+    int32_t height = static_cast<int32_t>(rect.maxY - rect.minY);
+
+    if (width > 0 && height > 0) {
+        OsQueuePut(OS_INPUT_SIZE, width, height, 0, 0);
+    }
 
     return 1;
 }

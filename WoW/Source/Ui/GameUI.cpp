@@ -2189,14 +2189,15 @@ CGPartyPetState* CGPartyMemberStateRepository::FindPetState(const WOWGUID& guid)
 // VERIFY: c132a45d auto
 // OFFSET: 0x0051FB80
 void CGGameUI::ScaleToScreenSize(int32_t width, int32_t height, int32_t force) {
-    if (!force && CGGameUI::m_screenWidth > 0 && CGGameUI::m_screenWidth == width && CGGameUI::m_screenHeight > 0 && CGGameUI::m_screenHeight == height) {
+    float aspect = Screen::GetAspectRatio();
+
+    if (!force && CGGameUI::m_screenWidth > 0 && CGGameUI::m_screenWidth == width && CGGameUI::m_screenHeight > 0 && CGGameUI::m_screenHeight == height && fabs(CGGameUI::m_aspect - aspect) < 0.001f) {
         return;
     }
 
     CGGameUI::m_screenWidth = width;
     CGGameUI::m_screenHeight = height;
 
-    float aspect = Screen::GetAspectRatio();
     float scale = height > 768 ? 768.0f / height : 1.0f;
 
     if (aspect * 3.0f < 4.0f && aspect * 0.75f <= scale) {

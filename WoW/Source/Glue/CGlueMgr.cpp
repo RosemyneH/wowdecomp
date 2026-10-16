@@ -648,19 +648,24 @@ void CGlueMgr::ProcessAgreements(CGlueMgr::Agreements* agreements) {
 // VERIFY: fbc4fd55 auto
 // OFFSET: 0x004D8860
 void CGlueMgr::HandleDisplaySizeChanged(const CSizeEvent& event) {
-    if (CGlueMgr::m_screenWidth > 0 && CGlueMgr::m_screenWidth == event.m_data.m_w && CGlueMgr::m_screenHeight > 0 && CGlueMgr::m_screenHeight == event.m_data.m_h) {
+    float aspect = Screen::GetAspectRatio();
+    int32_t sameSize = CGlueMgr::m_screenWidth > 0 && CGlueMgr::m_screenWidth == event.m_data.m_w && CGlueMgr::m_screenHeight > 0 && CGlueMgr::m_screenHeight == event.m_data.m_h;
+
+    // ʕ •ᴥ•ʔ✿ Fullscreen desktop keeps the same drawable when only gxResolution changes ✿ ʕ •ᴥ•ʔ
+    if (sameSize && fabs(CGlueMgr::m_aspect - aspect) < 0.01f) {
         return;
     }
 
-    CGlueMgr::m_screenWidth = event.m_data.m_w;
-    CGlueMgr::m_screenHeight = event.m_data.m_h;
+    if (!sameSize) {
+        CGlueMgr::m_screenWidth = event.m_data.m_w;
+        CGlueMgr::m_screenHeight = event.m_data.m_h;
 
-    float aspect = Screen::GetAspectRatio();
-    CSimpleFrame* glueParent = static_cast<CSimpleFrame*>(CScriptObject::GetScriptObjectByName("GlueParent", CSimpleFrame::GetObjectType()));
+        CSimpleFrame* glueParent = static_cast<CSimpleFrame*>(CScriptObject::GetScriptObjectByName("GlueParent", CSimpleFrame::GetObjectType()));
 
-    if (glueParent) {
-        glueParent->SetFrameScale(1.0f, true);
-        CLayoutFrame::ResizePending();
+        if (glueParent) {
+            glueParent->SetFrameScale(1.0f, true);
+            CLayoutFrame::ResizePending();
+        }
     }
 
     if (fabs(CGlueMgr::m_aspect - aspect) < 0.01f) {

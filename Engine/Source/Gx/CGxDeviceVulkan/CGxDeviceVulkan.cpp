@@ -66,8 +66,17 @@ static void ColorToFloats(uint32_t value, float* out) {
     out[3] = color.a * (1.0f / 255.0f);
 }
 
+// ʕ •ᴥ•ʔ✿ Borderless fullscreen is already the monitor. Rebuilding the device drops the pipeline cache and stalls every later screen ✿ ʕ •ᴥ•ʔ
 static bool NeedsFullVulkanSurfaceRebuild(const CGxFormat& current, const CGxFormat& next) {
-    return current.m_window != next.m_window || current.m_maximize != next.m_maximize || current.m_aspect != next.m_aspect || current.m_hwTnL != next.m_hwTnL || current.m_hwCursor != next.m_hwCursor || current.m_size.x != next.m_size.x || current.m_size.y != next.m_size.y || current.m_pos.x != next.m_pos.x || current.m_pos.y != next.m_pos.y || current.m_colorFormat != next.m_colorFormat || current.m_depthFormat != next.m_depthFormat || current.m_multisampleCount != next.m_multisampleCount || current.m_multisampleQuality != next.m_multisampleQuality || current.m_refreshRate != next.m_refreshRate || current.m_stereoEnabled != next.m_stereoEnabled || current.m_apiSpecificModeID != next.m_apiSpecificModeID || memcmp(current.m_fixedFunction, next.m_fixedFunction, sizeof(current.m_fixedFunction));
+    if (current.m_window != next.m_window || current.m_maximize != next.m_maximize) {
+        return true;
+    }
+
+    if (next.m_window && (current.m_size.x != next.m_size.x || current.m_size.y != next.m_size.y || current.m_pos.x != next.m_pos.x || current.m_pos.y != next.m_pos.y)) {
+        return true;
+    }
+
+    return current.m_colorFormat != next.m_colorFormat || current.m_depthFormat != next.m_depthFormat || current.m_multisampleCount != next.m_multisampleCount || current.m_multisampleQuality != next.m_multisampleQuality || current.m_stereoEnabled != next.m_stereoEnabled || memcmp(current.m_fixedFunction, next.m_fixedFunction, sizeof(current.m_fixedFunction));
 }
 
 static bool NeedsVulkanSwapchainRebuild(const CGxFormat& current, const CGxFormat& next) {
