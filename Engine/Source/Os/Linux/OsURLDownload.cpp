@@ -97,6 +97,11 @@ static void OsUrlDownloadThread(OsUrlDownload* download, std::string host, std::
                     bodyOffset = header.find("\r\n\r\n");
 
                     if (bodyOffset == std::string::npos) {
+                        if (header.size() > 65536) {
+                            download->m_errorCode = HTTPError::Failed;
+                            break;
+                        }
+
                         continue;
                     }
 
