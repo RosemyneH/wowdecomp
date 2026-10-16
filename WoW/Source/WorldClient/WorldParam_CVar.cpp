@@ -441,7 +441,9 @@ bool CWorldParam::FarClipOverrideCallback(CVar* var, const char* oldValue, const
         return false;
     }
 
-    World::SetFarClip(CWorldParam::cvar_farClip->m_floatValue);
+    if (CWorldParam::cvar_farClip) {
+        World::SetFarClip(CWorldParam::cvar_farClip->m_floatValue);
+    }
 
     return true;
 }
@@ -453,7 +455,9 @@ bool CWorldParam::ExtendedViewCallback(CVar* var, const char* oldValue, const ch
         return false;
     }
 
-    World::SetFarClip(CWorldParam::cvar_farClip->m_floatValue);
+    if (CWorldParam::cvar_farClip) {
+        World::SetFarClip(CWorldParam::cvar_farClip->m_floatValue);
+    }
 
     return true;
 }

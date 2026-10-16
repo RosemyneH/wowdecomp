@@ -155,16 +155,24 @@ local function WowDecomp_InstallEffectsPanelPlaytest(panel)
     horizonSlider:SetScript("OnValueChanged", VideoOptionsEffectsPanelSlider_OnValueChanged);
 end
 
-local origEffectsOnLoad = VideoOptionsEffectsPanel_OnLoad;
-VideoOptionsEffectsPanel_OnLoad = function(self)
-    origEffectsOnLoad(self);
-    WowDecomp_InstallEffectsPanelPlaytest(self);
-end;
+if VideoOptionsEffectsPanel_OnLoad then
+    local origEffectsOnLoad = VideoOptionsEffectsPanel_OnLoad;
+    VideoOptionsEffectsPanel_OnLoad = function(self)
+        origEffectsOnLoad(self);
+        WowDecomp_InstallEffectsPanelPlaytest(self);
+    end;
+end
 
-local origEffectsOnEvent = VideoOptionsEffectsPanel_OnEvent;
-VideoOptionsEffectsPanel_OnEvent = function(self, event, ...)
-    origEffectsOnEvent(self, event, ...);
-    if event == "PLAYER_ENTERING_WORLD" then
-        WowDecomp_OnPlaytestCVarChanged();
-    end
-end;
+if VideoOptionsEffectsPanel_OnEvent then
+    local origEffectsOnEvent = VideoOptionsEffectsPanel_OnEvent;
+    VideoOptionsEffectsPanel_OnEvent = function(self, event, ...)
+        origEffectsOnEvent(self, event, ...);
+        if event == "PLAYER_ENTERING_WORLD" then
+            WowDecomp_OnPlaytestCVarChanged();
+        end
+    end;
+end
+
+if VideoOptionsEffectsPanel then
+    WowDecomp_InstallEffectsPanelPlaytest(VideoOptionsEffectsPanel);
+end
