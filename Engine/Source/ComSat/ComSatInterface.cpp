@@ -45,7 +45,32 @@ void ComSat::Interface::Destroy(ComSat::Interface* comsat, ComSat::Allocator& al
 // VERIFY: 5430b1ec manual
 // OFFSET: 0x00880F30
 ComSat::Interface* ComSat::Interface::Create(const ComSat::Initialization& init, ComSat::Allocator& allocator) {
-    s_soundManager = new (allocator.Alloc(sizeof(ComSat::Sound::Manager))) ComSat::Sound::Manager(init, allocator);
-    s_networkManager = new (allocator.Alloc(sizeof(ComSat::Network::Manager))) ComSat::Network::Manager(init, allocator);
-    return new (allocator.Alloc(sizeof(ComSat::Manager))) ComSat::Manager(*s_soundManager, *s_networkManager, init, allocator);
+    ComSat::Sound::Manager* previousSound = s_soundManager;
+    ComSat::Network::Manager* previousNetwork = s_networkManager;
+
+    void* soundMemory = allocator.Alloc(sizeof(ComSat::Sound::Manager));
+    if (!soundMemory) {
+        return nullptr;
+    }
+    s_soundManager = new (soundMemory) ComSat::Sound::Manager(init, allocator);
+
+    void* networkMemory = allocator.Alloc(sizeof(ComSat::Network::Manager));
+    if (!networkMemory) {
+        s_networkManager = nullptr;
+        Destroy(nullptr, allocator);
+        s_soundManager = previousSound;
+        s_networkManager = previousNetwork;
+        return nullptr;
+    }
+    s_networkManager = new (networkMemory) ComSat::Network::Manager(init, allocator);
+
+    void* managerMemory = allocator.Alloc(sizeof(ComSat::Manager));
+    if (!managerMemory) {
+        Destroy(nullptr, allocator);
+        s_soundManager = previousSound;
+        s_networkManager = previousNetwork;
+        return nullptr;
+    }
+
+    return new (managerMemory) ComSat::Manager(*s_soundManager, *s_networkManager, init, allocator);
 }
