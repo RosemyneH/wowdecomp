@@ -470,6 +470,7 @@ void ObjectSetUpdateCallback(CMapEntity* entity, int32_t (*func)(void*, uint32_t
 void SetDetailDoodadDensity(int32_t density);
 void SetDetailDoodadDist(float dist);
 void SetFarClip(float farClip);
+float EffectiveFarClip();
 void SetHorizonFarClipScale(float scale);
 void SetHorizonNearClipScale(float scale);
 void SetNearClip(float nearClip);

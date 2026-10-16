@@ -1197,13 +1197,14 @@ void World::PrepareAreaOfInterest(const C3Vector& position) {
     GxuXformCalcFrustumCorners(view, projection, corners);
 
     float distance = sqrtf(corners[7].z * corners[7].z + corners[7].y * corners[7].y + corners[7].x * corners[7].x);
-    float farClip = s_farClip;
+    float terrainFar = World::EffectiveFarClip();
+    float farClip = World::s_farClip;
     float streamDistance;
 
-    if (farClip > distance) {
-        streamDistance = farClip * 1.25f;
-    } else if (farClip + farClip < distance) {
-        streamDistance = farClip + farClip;
+    if (terrainFar > distance) {
+        streamDistance = terrainFar * 1.25f;
+    } else if (terrainFar + terrainFar < distance) {
+        streamDistance = terrainFar + terrainFar;
     } else {
         streamDistance = distance;
     }
@@ -1351,6 +1352,17 @@ float World::MaxValidatedFarClip(int32_t mapID) {
     }
 
     return maxFarClip;
+}
+
+float World::EffectiveFarClip() {
+    float farClip = World::s_farClip;
+
+    // ʕ •ᴥ•ʔ✿ 64 tiles on a side. The far corner is the diagonal, about 48km ✿ ʕ •ᴥ•ʔ
+    if (CWorldParamSlider::ExtendedViewEnabled() && farClip < CWorldParamSlider::kFarclipMaxExtended) {
+        farClip = CWorldParamSlider::kFarclipMaxExtended;
+    }
+
+    return farClip;
 }
 
 float World::ValidateFarClip(float farClip, int32_t mapID) {
@@ -2070,7 +2082,7 @@ void CWorldScene::BuildHorizonProjection(C44Matrix* projection) {
     // ʕ •ᴥ•ʔ✿ Horizon starts where the resident terrain ring ends and reaches the far side of the continent ✿ ʕ •ᴥ•ʔ
     float detailFar = static_cast<float>(CMapRenderChunk::DetailChunkRadius()) * 33.333332f;
     float horizonNear = detailFar - 400.0f;
-    float horizonFar = World::s_horizonFarClipScale * World::s_farClip;
+    float horizonFar = World::s_horizonFarClipScale * World::EffectiveFarClip();
 
     if (horizonFar < 48000.0f) {
         horizonFar = 48000.0f;
@@ -5025,8 +5037,16 @@ void CWorldScene::RenderHorizon() {
     g_theGxDevicePtr->RsPush();
     GxRsSet(GxRs_Fog, 1);
     GxRsSet(GxRs_DepthTest, 3);
-    GxRsSet(GxRs_FogStart, 0.0f);
-    GxRsSet(GxRs_FogEnd, 1.0f);
+    // ʕ •ᴥ•ʔ✿ Fog is in yards. 0..1 hid the whole low-detail continent one yard out ✿ ʕ •ᴥ•ʔ
+    float detailFar = static_cast<float>(CMapRenderChunk::DetailChunkRadius()) * 33.333332f;
+    float horizonFar = World::s_horizonFarClipScale * World::EffectiveFarClip();
+
+    if (horizonFar < 48000.0f) {
+        horizonFar = 48000.0f;
+    }
+
+    GxRsSet(GxRs_FogStart, detailFar);
+    GxRsSet(GxRs_FogEnd, horizonFar);
     DayNight::DNInfo* info = DayNight::GetInfo();
     CImVector color = info->m_fog.m_color;
     GxRsSet(GxRs_FogColor, *reinterpret_cast<int32_t*>(&color));

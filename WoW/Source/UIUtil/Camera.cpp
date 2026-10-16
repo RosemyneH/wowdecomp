@@ -2667,7 +2667,7 @@ int32_t CGCamera::UpdateCallback(const void* data, void* param) {
 
     uint32_t time = OsGetAsyncTimeMs();
     camera->m_nearZ = World::s_nearClip;
-    camera->m_farZ = World::s_farClip;
+    camera->m_farZ = World::EffectiveFarClip();
 
     if (camera->m_model) {
         camera->CalcModelCamera(time);

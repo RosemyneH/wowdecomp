@@ -412,7 +412,7 @@ struct TerrainFit {
 };
 
 static TerrainFit FitTerrain() {
-    int32_t radius = 1 - static_cast<int32_t>(World::s_farClip * -0.03f);
+    int32_t radius = 1 - static_cast<int32_t>(World::EffectiveFarClip() * -0.03f);
 
     if (radius < 1) {
         radius = 1;
