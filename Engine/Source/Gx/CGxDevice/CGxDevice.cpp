@@ -1854,6 +1854,11 @@ void CGxDevice::WaitForFPSCap() {
         return;
     }
 
+    // ʕ •ᴥ•ʔ✿ Integer 1000/maxFps is 0 above 1000; OsSleep(0) returns immediately ✿ ʕ •ᴥ•ʔ
+    if (maxFps > 1000) {
+        maxFps = 1000;
+    }
+
     uint32_t frameMs = 1000 / maxFps;
     uint32_t now = OsGetAsyncTimeMs();
 
