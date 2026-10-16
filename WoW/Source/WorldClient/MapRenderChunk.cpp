@@ -27,6 +27,7 @@
 #include "Engine/Source/Base/Job/JobSystem.h"
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <vector>
 #if defined(_MSC_VER)
 #include <malloc.h>
@@ -108,6 +109,10 @@ CGxPool* CMapRenderChunk::s_gxIndexPool;
 
 // STATIC: 0x00D1D068
 CGxPool* CMapRenderChunk::s_gxVertexPool;
+
+static std::vector<CGxPool*> s_vertexSlabs;
+static std::vector<CGxPool*> s_indexSlabs;
+static uint32_t s_slotsPerSlab = 0;
 
 // STATIC: 0x00D1D06C
 EGxVertexBufferFormat CMapRenderChunk::s_gxBufVertexFormat;
@@ -374,6 +379,137 @@ void CMapRenderChunk::Initialize() {
     memset(s_defaultShadowRow, 0, sizeof(s_defaultShadowRow));
 }
 
+struct SlabSlot {
+    CGxPool* vertex;
+    CGxPool* index;
+    uint32_t local;
+};
+
+static uint32_t VertexStride() {
+    return CMapRenderChunk::s_gxBufVertexFormat == GxVBF_PNC ? static_cast<uint32_t>(sizeof(CGxVertexPNC)) : static_cast<uint32_t>(sizeof(CGxVertexPN));
+}
+
+static uint32_t DiskSlots(int32_t radius) {
+    if (radius < 1) {
+        radius = 1;
+    }
+
+    uint64_t span = static_cast<uint64_t>(radius);
+    uint64_t count = (2ull * span * span + 1ull) & ~1ull;
+    const uint64_t continent = 1024ull * 1024ull;
+
+    if (count > continent) {
+        count = continent;
+    }
+
+    return static_cast<uint32_t>(count);
+}
+
+struct TerrainFit {
+    int32_t radius;
+    uint32_t slots;
+    int32_t resident;
+};
+
+static TerrainFit FitTerrain() {
+    int32_t radius = 1 - static_cast<int32_t>(World::s_farClip * -0.03f);
+
+    if (radius < 1) {
+        radius = 1;
+    }
+
+    // ʕ •ᴥ•ʔ✿ Chunk indices run 0..1023. A wider disk is off the continent ✿ ʕ •ᴥ•ʔ
+    if (radius > 1023) {
+        radius = 1023;
+    }
+
+    uint64_t heap = g_theGxDevicePtr ? g_theGxDevicePtr->ResidentHeapBytes() : 0;
+
+    if (!heap) {
+        if (radius > 160) {
+            radius = 160;
+        }
+
+        return { radius, DiskSlots(radius), 0 };
+    }
+
+    uint64_t perSlot = 145ull * VertexStride() + 1536ull;
+    uint64_t budget = heap - heap / 4;
+
+    if (budget < (256ull << 20)) {
+        budget = heap / 2;
+    }
+
+    uint64_t fitSlots = perSlot ? (budget / perSlot) & ~1ull : 0;
+
+    if (fitSlots < 2) {
+        fitSlots = 2;
+    }
+
+    uint32_t slots = DiskSlots(radius);
+
+    if (slots > fitSlots) {
+        slots = static_cast<uint32_t>(fitSlots > 0xffffffffull ? (0xffffffffull & ~1ull) : fitSlots);
+        int32_t clamped = static_cast<int32_t>(std::sqrt(static_cast<double>(slots) * 0.5));
+
+        if (clamped < 1) {
+            clamped = 1;
+        }
+
+        if (clamped < radius) {
+            radius = clamped;
+        }
+
+        uint32_t shrunk = DiskSlots(radius);
+
+        if (shrunk < slots) {
+            slots = shrunk;
+        }
+    }
+
+    return { radius, slots, 1 };
+}
+
+static SlabSlot SlabSlotFor(uint32_t slot) {
+    uint32_t slab = 0;
+    uint32_t local = slot;
+
+    if (s_slotsPerSlab) {
+        slab = slot / s_slotsPerSlab;
+        local = slot - slab * s_slotsPerSlab;
+    }
+
+    SlabSlot out;
+    out.vertex = slab < s_vertexSlabs.size() ? s_vertexSlabs[slab] : CMapRenderChunk::s_gxVertexPool;
+    out.index = slab < s_indexSlabs.size() ? s_indexSlabs[slab] : CMapRenderChunk::s_gxIndexPool;
+    out.local = local;
+    return out;
+}
+
+static int32_t IsVertexSlab(CGxPool* pool) {
+    for (CGxPool* slab : s_vertexSlabs) {
+        if (slab == pool) {
+            return 1;
+        }
+    }
+
+    return pool == CMapRenderChunk::s_gxVertexPool;
+}
+
+static int32_t IsIndexSlab(CGxPool* pool) {
+    for (CGxPool* slab : s_indexSlabs) {
+        if (slab == pool) {
+            return 1;
+        }
+    }
+
+    return pool == CMapRenderChunk::s_gxIndexPool;
+}
+
+int32_t CMapRenderChunk::DetailChunkRadius() {
+    return FitTerrain().radius;
+}
+
 // VERIFY: 73f06b5c manual
 // OFFSET: 0x007BA5A0
 void CMapRenderChunk::Destroy() {
@@ -382,15 +518,21 @@ void CMapRenderChunk::Destroy() {
     CMapRenderChunk::s_pnEstimateIndex = 0;
     CMapRenderChunk::s_bPoolsDirty = 1;
 
-    if (CMapRenderChunk::s_gxVertexPool) {
-        g_theGxDevicePtr->PoolDestroy(CMapRenderChunk::s_gxVertexPool);
-        CMapRenderChunk::s_gxVertexPool = nullptr;
+    if (g_theGxDevicePtr) {
+        for (CGxPool* pool : s_vertexSlabs) {
+            g_theGxDevicePtr->PoolDestroy(pool);
+        }
+
+        for (CGxPool* pool : s_indexSlabs) {
+            g_theGxDevicePtr->PoolDestroy(pool);
+        }
     }
 
-    if (CMapRenderChunk::s_gxIndexPool) {
-        g_theGxDevicePtr->PoolDestroy(CMapRenderChunk::s_gxIndexPool);
-        CMapRenderChunk::s_gxIndexPool = nullptr;
-    }
+    s_vertexSlabs.clear();
+    s_indexSlabs.clear();
+    s_slotsPerSlab = 0;
+    CMapRenderChunk::s_gxVertexPool = nullptr;
+    CMapRenderChunk::s_gxIndexPool = nullptr;
 }
 
 // VERIFY: 61c7e992 manual
@@ -614,9 +756,10 @@ CMapChunkBuf* CMapRenderChunk::AllocBuf(int32_t flags, CMapRenderChunk* renderCh
             return buf;
         }
 
-        uint32_t stride = CMapRenderChunk::s_gxBufVertexFormat == GxVBF_PNC ? sizeof(CGxVertexPNC) : sizeof(CGxVertexPN);
-        buf->m_vertexBuf = g_theGxDevicePtr->BufCreate(CMapRenderChunk::s_gxVertexPool, stride, 290, 145 * stride * block->m_vertexCount);
-        buf->m_indexBuf = g_theGxDevicePtr->BufCreate(CMapRenderChunk::s_gxIndexPool, 2, 1536, 1536 * block->m_vertexCount);
+        uint32_t stride = VertexStride();
+        SlabSlot slot = SlabSlotFor(block->m_vertexCount);
+        buf->m_vertexBuf = g_theGxDevicePtr->BufCreate(slot.vertex, stride, 290, 145 * stride * slot.local);
+        buf->m_indexBuf = g_theGxDevicePtr->BufCreate(slot.index, 2, 1536, 1536 * slot.local);
         return buf;
     }
 
@@ -646,13 +789,14 @@ CMapChunkBuf* CMapRenderChunk::AllocBuf(int32_t flags, CMapRenderChunk* renderCh
         block->m_bufs[0].m_indexBuf = nullptr;
     }
 
-    uint32_t stride = CMapRenderChunk::s_gxBufVertexFormat == GxVBF_PNC ? sizeof(CGxVertexPNC) : sizeof(CGxVertexPN);
+    uint32_t stride = VertexStride();
     CMapChunkBuf* buf;
 
     for (int32_t i = 0; i < 2; i++) {
         buf = &block->m_bufs[i];
-        buf->m_vertexBuf = g_theGxDevicePtr->BufCreate(CMapRenderChunk::s_gxVertexPool, stride, 145, 145 * stride * (block->m_vertexCount + i));
-        buf->m_indexBuf = g_theGxDevicePtr->BufCreate(CMapRenderChunk::s_gxIndexPool, 2, 768, 1536 * (block->m_vertexCount + i));
+        SlabSlot slot = SlabSlotFor(block->m_vertexCount + i);
+        buf->m_vertexBuf = g_theGxDevicePtr->BufCreate(slot.vertex, stride, 145, 145 * stride * slot.local);
+        buf->m_indexBuf = g_theGxDevicePtr->BufCreate(slot.index, 2, 768, 1536 * slot.local);
         buf->m_unkFlags = 0;
         buf->m_renderChunk = nullptr;
 
@@ -819,21 +963,62 @@ void CMapRenderChunk::UpdatePools() {
     CMap::ClearAllRenderChunks();
     CMapRenderChunk::Destroy();
 
-    int32_t radius = 1 - static_cast<int32_t>(World::s_farClip * -0.03f);
+    TerrainFit fit = FitTerrain();
+    uint32_t stride = VertexStride();
+    uint32_t count = fit.slots;
 
-    // ʕ •ᴥ•ʔ✿ 10000 yards is ~300 chunks. That vertex pool is about a gigabyte and the far land never comes up ✿ ʕ •ᴥ•ʔ
-    if (radius > 160) {
-        radius = 160;
+    if (count < 2) {
+        count = 2;
     }
-
-    uint32_t count = (2 * radius * radius + 1) & ~1u;
 
     CMapRenderChunk::s_pnEstimateVertex = 145 * count;
     CMapRenderChunk::s_pnEstimateIndex = 768 * count;
 
-    uint32_t stride = CMapRenderChunk::s_gxBufVertexFormat == GxVBF_PNC ? sizeof(CGxVertexPNC) : sizeof(CGxVertexPN);
-    CMapRenderChunk::s_gxVertexPool = g_theGxDevicePtr->PoolCreate(GxPoolTarget_Vertex, GxPoolUsage_Dynamic, CMapRenderChunk::s_pnEstimateVertex * stride, GxPoolHintBit_Unk3, "CMapRenderChunk_vtx");
-    CMapRenderChunk::s_gxIndexPool = g_theGxDevicePtr->PoolCreate(GxPoolTarget_Index, GxPoolUsage_Dynamic, CMapRenderChunk::s_pnEstimateIndex * 2, GxPoolHintBit_Unk3, "CMapRenderChunk_idx");
+    // ʕ •ᴥ•ʔ✿ One CGxPool size is a signed 32-bit byte count. Slabs stay under that and under a driver-sized alloc ✿ ʕ •ᴥ•ʔ
+    const uint32_t kSlabBytes = 768u * 1024u * 1024u;
+    uint32_t vertexPer = 145u * stride;
+    uint32_t indexPer = 1536u;
+    uint32_t slotsPer = vertexPer ? kSlabBytes / vertexPer : 2u;
+    uint32_t indexSlots = indexPer ? kSlabBytes / indexPer : slotsPer;
+
+    if (indexSlots < slotsPer) {
+        slotsPer = indexSlots;
+    }
+
+    slotsPer &= ~1u;
+
+    if (slotsPer < 2) {
+        slotsPer = 2;
+    }
+
+    s_slotsPerSlab = slotsPer;
+    uint32_t remaining = count;
+
+    while (remaining) {
+        uint32_t n = remaining > slotsPer ? slotsPer : remaining;
+        n &= ~1u;
+
+        if (!n) {
+            break;
+        }
+
+        CGxPool* vertexPool = g_theGxDevicePtr->PoolCreate(GxPoolTarget_Vertex, GxPoolUsage_Dynamic, static_cast<int32_t>(n * vertexPer), GxPoolHintBit_Unk3, "CMapRenderChunk_vtx");
+        CGxPool* indexPool = g_theGxDevicePtr->PoolCreate(GxPoolTarget_Index, GxPoolUsage_Dynamic, static_cast<int32_t>(n * indexPer), GxPoolHintBit_Unk3, "CMapRenderChunk_idx");
+        vertexPool->m_resident = fit.resident;
+        indexPool->m_resident = fit.resident;
+        s_vertexSlabs.push_back(vertexPool);
+        s_indexSlabs.push_back(indexPool);
+        remaining -= n;
+    }
+
+    CMapRenderChunk::s_gxVertexPool = s_vertexSlabs.empty() ? nullptr : s_vertexSlabs[0];
+    CMapRenderChunk::s_gxIndexPool = s_indexSlabs.empty() ? nullptr : s_indexSlabs[0];
+
+    std::fprintf(stderr, "terrain resident: radius=%d slots=%u slabs=%zu heapMiB=%llu\n",
+        fit.radius,
+        count,
+        s_vertexSlabs.size(),
+        static_cast<unsigned long long>((g_theGxDevicePtr ? g_theGxDevicePtr->ResidentHeapBytes() : 0) >> 20));
 
     CMapRenderChunk::s_chunkBlockArray.SetCount(count / 2);
 
@@ -2491,6 +2676,7 @@ TerrainGroupKey MakeTerrainGroupKey(const TerrainCapture& cap, uint32_t layer, i
 std::vector<GxTerrainDraw> s_terrainDraws;
 std::vector<TerrainGroupKey> s_terrainGroupKeys;
 std::vector<std::vector<size_t>> s_terrainGroupMembers;
+std::vector<uint8_t> s_meshTaken;
 
 }
 
@@ -2568,7 +2754,7 @@ void CMapRenderChunk::QueueMultiPass(CMapRenderChunk* chunk) {
         }
     }
 
-    if (special || !vertex || !index || vertex->m_pool != CMapRenderChunk::s_gxVertexPool || index->m_pool != CMapRenderChunk::s_gxIndexPool || !vertex->m_itemSize || vertex->m_index % vertex->m_itemSize || index->m_itemSize != 2) {
+    if (special || !vertex || !index || !IsVertexSlab(vertex->m_pool) || !IsIndexSlab(index->m_pool) || !vertex->m_itemSize || vertex->m_index % vertex->m_itemSize || index->m_itemSize != 2) {
         CMapRenderChunk::RenderMultiPassAlpha(chunk);
         return;
     }
@@ -2652,70 +2838,107 @@ void CMapRenderChunk::FlushMultiPass() {
 
         for (size_t group = 0; group < s_terrainGroupKeys.size(); ++group) {
             const std::vector<size_t>& members = s_terrainGroupMembers[group];
-            const TerrainCapture& first = s_terrainBatch[members[0]];
-            CMapRenderChunkLayer* key = &first.chunk->m_layers[layer];
+            const TerrainCapture& groupFirst = s_terrainBatch[members[0]];
+            CMapRenderChunkLayer* key = &groupFirst.chunk->m_layers[layer];
 
-            s_terrainDraws.clear();
-            std::vector<size_t> queued;
+            if (s_meshTaken.size() < members.size()) {
+                s_meshTaken.resize(members.size());
+            }
 
-            for (size_t index : members) {
-                const TerrainCapture& cap = s_terrainBatch[index];
-                CMapRenderChunkLayer* chunkLayer = &cap.chunk->m_layers[layer];
-                GxTerrainDraw draw = {};
-                FillTerrainDraw(draw, cap);
+            std::fill(s_meshTaken.begin(), s_meshTaken.begin() + static_cast<std::ptrdiff_t>(members.size()), 0);
 
-                if (bindless) {
-                    draw.texIndex0 = g_theGxDevicePtr->TerrainTextureSlot(TextureGetGxTex(chunkLayer->m_texture, 0, nullptr));
-                    CGxTex* alpha = chunkLayer->m_layerTexture ? TextureGetGxTex(chunkLayer->m_layerTexture, 1, nullptr) : nullptr;
-                    draw.texIndex1 = g_theGxDevicePtr->TerrainTextureSlot(alpha);
+            for (size_t start = 0; start < members.size(); ++start) {
+                if (s_meshTaken[start]) {
+                    continue;
+                }
 
-                    if (draw.texIndex0 == ~0u || draw.texIndex1 == ~0u) {
-                        DrawTerrainChunk(cap);
+                const TerrainCapture& first = s_terrainBatch[members[start]];
+                CGxPool* vertexPool = first.chunk->m_chunkBuf->m_vertexBuf->m_pool;
+                CGxPool* indexPool = first.chunk->m_chunkBuf->m_indexBuf->m_pool;
+                s_terrainDraws.clear();
+                std::vector<size_t> queued;
+
+                for (size_t n = start; n < members.size(); ++n) {
+                    if (s_meshTaken[n]) {
                         continue;
                     }
+
+                    const TerrainCapture& cap = s_terrainBatch[members[n]];
+                    CGxBuf* vertexBuf = cap.chunk->m_chunkBuf->m_vertexBuf;
+                    CGxBuf* indexBuf = cap.chunk->m_chunkBuf->m_indexBuf;
+
+                    if (vertexBuf->m_pool != vertexPool || indexBuf->m_pool != indexPool) {
+                        continue;
+                    }
+
+                    s_meshTaken[n] = 1;
+                    CMapRenderChunkLayer* chunkLayer = &cap.chunk->m_layers[layer];
+                    GxTerrainDraw draw = {};
+                    FillTerrainDraw(draw, cap);
+
+                    if (bindless) {
+                        CGxTex* color = TextureGetGxTex(chunkLayer->m_texture, 0, nullptr);
+
+                        if (color) {
+                            GxTexSetWrap(color, GxTex_Wrap, GxTex_Wrap);
+                        }
+
+                        draw.texIndex0 = g_theGxDevicePtr->TerrainTextureSlot(color);
+                        CGxTex* alpha = chunkLayer->m_layerTexture ? TextureGetGxTex(chunkLayer->m_layerTexture, 1, nullptr) : nullptr;
+                        draw.texIndex1 = g_theGxDevicePtr->TerrainTextureSlot(alpha);
+
+                        if (draw.texIndex0 == ~0u || draw.texIndex1 == ~0u) {
+                            DrawTerrainChunk(cap);
+                            continue;
+                        }
+                    }
+
+                    s_terrainDraws.push_back(draw);
+                    queued.push_back(members[n]);
                 }
 
-                s_terrainDraws.push_back(draw);
-                queued.push_back(index);
-            }
-
-            if (!bindless) {
-                CGxTex* gxTex = TextureGetGxTex(key->m_texture, 0, nullptr);
-                g_theGxDevicePtr->RsSet(GxRs_Texture0, gxTex);
-
-                if (gxTex) {
-                    GxTexSetWrap(gxTex, GxTex_Wrap, GxTex_Wrap);
+                if (s_terrainDraws.empty()) {
+                    continue;
                 }
 
-                if (key->m_layerTexture) {
-                    g_theGxDevicePtr->RsSet(GxRs_Texture1, TextureGetGxTex(key->m_layerTexture, 1, nullptr));
-                } else {
-                    GxRsSet(GxRs_Texture1, 0);
-                }
-            }
+                if (!bindless) {
+                    CGxTex* gxTex = TextureGetGxTex(key->m_texture, 0, nullptr);
+                    g_theGxDevicePtr->RsSet(GxRs_Texture0, gxTex);
 
-            GxRsSet(GxRs_BlendingMode, layer == 0 ? GxBlend_Opaque : GxBlend_Alpha);
-            GxUpdateAlphaRef(GxRs_AlphaRef);
-            ApplyChunkFog(first);
-            GxPrimVertexPtr(first.chunk->m_chunkBuf->m_vertexBuf, CMapRenderChunk::s_gxBufVertexFormat);
-            g_theGxDevicePtr->PrimIndexPtr(first.chunk->m_chunkBuf->m_indexBuf);
+                    if (gxTex) {
+                        GxTexSetWrap(gxTex, GxTex_Wrap, GxTex_Wrap);
+                    }
 
-            constexpr uint32_t kSlice = 16384;
-
-            for (uint32_t offset = 0; offset < s_terrainDraws.size();) {
-                uint32_t n = static_cast<uint32_t>(s_terrainDraws.size() - offset);
-
-                if (n > kSlice) {
-                    n = kSlice;
-                }
-
-                if (!g_theGxDevicePtr->DrawTerrainBatch(s_terrainDraws.data() + offset, n)) {
-                    for (uint32_t i = 0; i < n; i++) {
-                        DrawTerrainChunk(s_terrainBatch[queued[offset + i]]);
+                    if (key->m_layerTexture) {
+                        g_theGxDevicePtr->RsSet(GxRs_Texture1, TextureGetGxTex(key->m_layerTexture, 1, nullptr));
+                    } else {
+                        GxRsSet(GxRs_Texture1, 0);
                     }
                 }
 
-                offset += n;
+                GxRsSet(GxRs_BlendingMode, layer == 0 ? GxBlend_Opaque : GxBlend_Alpha);
+                GxUpdateAlphaRef(GxRs_AlphaRef);
+                ApplyChunkFog(first);
+                GxPrimVertexPtr(first.chunk->m_chunkBuf->m_vertexBuf, CMapRenderChunk::s_gxBufVertexFormat);
+                g_theGxDevicePtr->PrimIndexPtr(first.chunk->m_chunkBuf->m_indexBuf);
+
+                constexpr uint32_t kSlice = 16384;
+
+                for (uint32_t offset = 0; offset < s_terrainDraws.size();) {
+                    uint32_t n = static_cast<uint32_t>(s_terrainDraws.size() - offset);
+
+                    if (n > kSlice) {
+                        n = kSlice;
+                    }
+
+                    if (!g_theGxDevicePtr->DrawTerrainBatch(s_terrainDraws.data() + offset, n)) {
+                        for (uint32_t i = 0; i < n; i++) {
+                            DrawTerrainChunk(s_terrainBatch[queued[offset + i]]);
+                        }
+                    }
+
+                    offset += n;
+                }
             }
         }
     }

@@ -76,7 +76,8 @@ void main() {
             lightDiffuse = item.lightDiffuse;
             lightAmbient = item.lightAmbient;
             lightAtten = item.lightAtten;
-            texIndex = ivec2(floatBitsToInt(item.lightAmbient[0].w), floatBitsToInt(item.lightAmbient[1].w));
+            // ʕ •ᴥ•ʔ✿ Slot ids are plain floats. Raw bits below 2^23 are denormals and flush to zero ✿ ʕ •ᴥ•ʔ
+            texIndex = ivec2(int(item.lightAmbient[0].w + 0.5), int(item.lightAmbient[1].w + 0.5));
         }
     }
 

@@ -19,6 +19,8 @@ struct VkTexture {
     uint8_t initialized;
     uint32_t terrainSlot = ~0u;
     uint32_t terrainEpoch = 0;
+    VkImageView terrainView = VK_NULL_HANDLE;
+    VkSampler terrainSampler = VK_NULL_HANDLE;
 };
 
 struct VkDrawUniforms {
@@ -180,6 +182,7 @@ class CGxDeviceVulkan : public CGxDevice {
     virtual int32_t DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t count);
     virtual int32_t TerrainBindless();
     virtual uint32_t TerrainTextureSlot(CGxTex* tex);
+    virtual uint64_t ResidentHeapBytes() const;
     virtual void ResolveTexMatrix(uint32_t tmu, C44Matrix& matrix);
     virtual void PoolSizeSet(CGxPool* pool, uint32_t size);
     virtual void PoolDestroy(CGxPool* pool);

@@ -1268,6 +1268,12 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
         return;
     }
 
+    // ʕ •ᴥ•ʔ✿ Copies are illegal inside a render pass. End it, upload, and the next begin loads color and depth ✿ ʕ •ᴥ•ʔ
+    if (!this->m_vk.m_residentUploads.empty() && this->m_vk.Frame().recording) {
+        this->IEndPass();
+        this->m_vk.FlushResidentUploads(this->m_vk.Frame().cmd);
+    }
+
     this->IRsSync(0);
 
     const CGxAppRenderState* rs = this->m_appRenderStates.m_data;
@@ -1678,6 +1684,14 @@ int32_t CGxDeviceVulkan::EnsureTerrainSet() {
     return 1;
 }
 
+uint64_t CGxDeviceVulkan::ResidentHeapBytes() const {
+    if (this->m_vk.m_rebarHeap) {
+        return this->m_vk.m_rebarHeap;
+    }
+
+    return this->m_vk.m_localHeap;
+}
+
 uint32_t CGxDeviceVulkan::TerrainTextureSlot(CGxTex* tex) {
     if (!this->m_bindless) {
         return ~0u;
@@ -1698,21 +1712,27 @@ uint32_t CGxDeviceVulkan::TerrainTextureSlot(CGxTex* tex) {
         return ~0u;
     }
 
-    if (texture->terrainEpoch == this->m_terrainEpoch) {
-        return texture->terrainSlot;
-    }
-
-    if (this->m_terrainCount >= TerrainSlots || !this->EnsureTerrainSet()) {
-        return ~0u;
-    }
-
     VkSampler sampler = this->ISampler(tex->m_flags);
 
     if (!sampler) {
         return ~0u;
     }
 
-    uint32_t slot = this->m_terrainCount++;
+    int32_t sameSlot = texture->terrainEpoch == this->m_terrainEpoch && texture->terrainSlot != ~0u;
+
+    if (sameSlot && texture->terrainView == texture->image.view && texture->terrainSampler == sampler) {
+        return texture->terrainSlot;
+    }
+
+    if (!sameSlot && (this->m_terrainCount >= TerrainSlots || !this->EnsureTerrainSet())) {
+        return ~0u;
+    }
+
+    if (sameSlot && !this->EnsureTerrainSet()) {
+        return ~0u;
+    }
+
+    uint32_t slot = sameSlot ? texture->terrainSlot : this->m_terrainCount++;
     uint32_t frame = this->m_vk.m_frameIndex;
     VkDescriptorImageInfo image = { sampler, texture->image.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
     VkWriteDescriptorSet write = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
@@ -1725,6 +1745,8 @@ uint32_t CGxDeviceVulkan::TerrainTextureSlot(CGxTex* tex) {
     vkUpdateDescriptorSets(this->m_vk.m_device, 1, &write, 0, nullptr);
     texture->terrainEpoch = this->m_terrainEpoch;
     texture->terrainSlot = slot;
+    texture->terrainView = texture->image.view;
+    texture->terrainSampler = sampler;
     return slot;
 }
 
@@ -1751,8 +1773,8 @@ int32_t CGxDeviceVulkan::DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t c
         memcpy(items[i].lightDiffuse, draws[i].lightDiffuse, sizeof(items[i].lightDiffuse));
         memcpy(items[i].lightAmbient, draws[i].lightAmbient, sizeof(items[i].lightAmbient));
         memcpy(items[i].lightAtten, draws[i].lightAtten, sizeof(items[i].lightAtten));
-        memcpy(&items[i].lightAmbient[0][3], &draws[i].texIndex0, sizeof(uint32_t));
-        memcpy(&items[i].lightAmbient[1][3], &draws[i].texIndex1, sizeof(uint32_t));
+        items[i].lightAmbient[0][3] = static_cast<float>(draws[i].texIndex0);
+        items[i].lightAmbient[1][3] = static_cast<float>(draws[i].texIndex1);
         commands[i].indexCount = draws[i].indexCount;
         commands[i].instanceCount = 1;
         commands[i].firstIndex = draws[i].firstIndex;
@@ -1774,7 +1796,11 @@ VkBufferAlloc* CGxDeviceVulkan::IPoolBuffer(CGxPool* pool) {
     if (!pool->m_apiSpecific && pool->m_size > 0) {
         VkBufferAlloc* alloc = new VkBufferAlloc();
 
-        if (this->m_vk.AcquireBuffer(pool->m_size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, *alloc)) {
+        int32_t created = pool->m_resident
+            ? this->m_vk.CreateResidentBuffer(pool->m_size, *alloc)
+            : this->m_vk.AcquireBuffer(pool->m_size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, *alloc);
+
+        if (created) {
             pool->m_apiSpecific = alloc;
         } else {
             delete alloc;
@@ -1896,10 +1922,15 @@ void CGxDeviceVulkan::IBufUnlock(CGxBuf* buf) {
         }
 
         emergencyMem.Unlock();
-        return;
+    } else {
+        buf->m_valid = 1;
     }
 
-    buf->m_valid = 1;
+    VkBufferAlloc* resident = buf->m_pool ? static_cast<VkBufferAlloc*>(buf->m_pool->m_apiSpecific) : nullptr;
+
+    if (buf->m_valid && resident && resident->shadow && resident->mapped && buf->m_size) {
+        this->m_vk.QueueResidentUpload(resident->buffer, resident->mapped + buf->m_index, buf->m_index, buf->m_size);
+    }
 }
 
 char* CGxDeviceVulkan::BufLock(CGxBuf* buf) {
