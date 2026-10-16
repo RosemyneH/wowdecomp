@@ -295,7 +295,11 @@ bool ComSat::Sound::CODECIPMR6000::InitLocalPlayer(uint8_t player, float thresho
     if (this->m_players.Find(ComSat::MapKey<uint8_t>(player), index)) {
         return false;
     }
-    LocalPlayer* localPlayer = new (this->m_allocator->Alloc(sizeof(LocalPlayer))) LocalPlayer(*this->m_allocator, this->m_maxChannels, this->m_tables);
+    void* memory = this->m_allocator->Alloc(sizeof(LocalPlayer));
+    if (!memory) {
+        return false;
+    }
+    LocalPlayer* localPlayer = new (memory) LocalPlayer(*this->m_allocator, this->m_maxChannels, this->m_tables);
     localPlayer->m_threshold = ComSat::Sound::LevelCalculator16Bit::GetMaxDecibelLevel() * threshold;
     this->m_players.Insert(ComSat::MapKey<uint8_t>(player), localPlayer);
     return true;
