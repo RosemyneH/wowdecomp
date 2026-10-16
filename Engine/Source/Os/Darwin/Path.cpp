@@ -66,6 +66,11 @@ CommandLineUTF8::CommandLineUTF8() {
     }
 
     this->m_commandLine = static_cast<char*>(SMemAlloc(length + 1, __FILE__, __LINE__, 0));
+
+    if (!this->m_commandLine) {
+        return;
+    }
+
     this->m_commandLine[0] = '\0';
 
     for (int i = 0; i < argc; i++) {

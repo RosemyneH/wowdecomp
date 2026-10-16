@@ -64,6 +64,11 @@ CommandLineUTF8::CommandLineUTF8() {
     raw[length] = '\0';
 
     this->m_commandLine = static_cast<char*>(SMemAlloc(length + 1, __FILE__, __LINE__, 0));
+
+    if (!this->m_commandLine) {
+        return;
+    }
+
     SStrCopy(this->m_commandLine, raw, length + 1);
 }
 
