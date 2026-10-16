@@ -691,7 +691,11 @@ void VkContext::PrepareFrame() {
         return;
     }
 
-    vkWaitForFences(this->m_device, 1, &frame.fence, VK_TRUE, UINT64_MAX);
+    // ʕ •ᴥ•ʔ✿ Known-signaled and in-flight fences can wait; a stuck reset fence must not ✿ ʕ •ᴥ•ʔ
+    uint64_t timeout = frame.fenceUnsignaled ? 100 * 1000000ull : UINT64_MAX;
+    if (vkWaitForFences(this->m_device, 1, &frame.fence, VK_TRUE, timeout) == VK_SUCCESS) {
+        frame.fenceUnsignaled = 0;
+    }
     this->Collect(frame);
     for (VkDescriptorPool pool : frame.descriptorPools) vkResetDescriptorPool(this->m_device, pool, 0);
     frame.descriptorPoolCursor = 0;
@@ -844,6 +848,7 @@ int32_t VkContext::Submit(int32_t present) {
 
     vkResetFences(this->m_device, 1, &frame.fence);
     if (vkQueueSubmit(this->m_queue, 1, &submit, frame.fence) == VK_SUCCESS) {
+        frame.fenceUnsignaled = 0;
         return 1;
     }
 
@@ -854,6 +859,9 @@ int32_t VkContext::Submit(int32_t present) {
     if (vkCreateFence(this->m_device, &fenceInfo, nullptr, &signaled) == VK_SUCCESS) {
         vkDestroyFence(this->m_device, frame.fence, nullptr);
         frame.fence = signaled;
+        frame.fenceUnsignaled = 0;
+    } else {
+        frame.fenceUnsignaled = 1;
     }
     return 0;
 }

@@ -101,6 +101,7 @@ struct VkFrame {
     int32_t uploadRecording;
     int32_t acquired;
     int32_t imageWaited;
+    int32_t fenceUnsignaled;
 };
 
 class VkContext {
