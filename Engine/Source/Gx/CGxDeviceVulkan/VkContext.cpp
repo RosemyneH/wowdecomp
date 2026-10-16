@@ -810,7 +810,11 @@ VkCommandBuffer VkContext::UploadCmd() {
     if (!frame.uploadRecording) {
         VkCommandBufferBeginInfo beginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
         beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        vkBeginCommandBuffer(frame.uploadCmd, &beginInfo);
+        // ʕ •ᴥ•ʔ✿ A failed begin is not a live upload buffer ✿ ʕ •ᴥ•ʔ
+        if (vkBeginCommandBuffer(frame.uploadCmd, &beginInfo) != VK_SUCCESS) {
+            frame.uploadRecording = 0;
+            return VK_NULL_HANDLE;
+        }
         frame.uploadRecording = 1;
     }
 

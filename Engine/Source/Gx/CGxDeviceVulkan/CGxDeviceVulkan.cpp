@@ -1570,12 +1570,19 @@ void CGxDeviceVulkan::ITexCreate(CGxTex* texId) {
     texture->levels = info.mipLevels;
     texture->renderTarget = renderTarget;
 
+    VkCommandBuffer upload = this->m_vk.UploadCmd();
+    if (!upload) {
+        this->m_vk.RetireImage(texture->image);
+        delete texture;
+        return;
+    }
+
     if (renderTarget) {
         texture->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        VkContext::Barrier(this->m_vk.UploadCmd(), texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        VkContext::Barrier(upload, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     } else {
         texture->layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        VkContext::Barrier(this->m_vk.UploadCmd(), texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        VkContext::Barrier(upload, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     }
 
     texId->m_apiSpecificData = texture;
@@ -1595,6 +1602,11 @@ void CGxDeviceVulkan::ITexUpload(CGxTex* texId) {
 
     VkTexture* texture = static_cast<VkTexture*>(texId->m_apiSpecificData);
     VkCommandBuffer cmd = this->m_vk.UploadCmd();
+    if (!cmd) {
+        texels = nullptr;
+        texId->m_userFunc(GxTex_Unlock, texId->m_width, texId->m_height, 0, 0, texId->m_userArg, texelStrideInBytes, texels);
+        return;
+    }
     int32_t compressed = texId->m_dataFormat >= GxTex_Dxt1 && texId->m_dataFormat <= GxTex_Dxt5;
     int32_t destCompressed = texId->m_format >= GxTex_Dxt1 && texId->m_format <= GxTex_Dxt5;
 
@@ -1682,6 +1694,9 @@ void CGxDeviceVulkan::ITexMarkAsUpdated(CGxTex* texId) {
 
     if (!texId->m_needsCreation && texId->m_apiSpecificData) {
         if (texId->m_userFunc) {
+            if (!this->m_vk.UploadCmd()) {
+                return;
+            }
             this->ITexUpload(texId);
         }
 
@@ -1761,7 +1776,14 @@ VkFramebuffer CGxDeviceVulkan::ITexFramebuffer(VkTexture* texture) {
             return VK_NULL_HANDLE;
         }
 
-        VkContext::Barrier(this->m_vk.UploadCmd(), this->m_offscreenDepth.image, VK_IMAGE_ASPECT_DEPTH_BIT, 1, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        VkCommandBuffer upload = this->m_vk.UploadCmd();
+        if (!upload) {
+            this->m_vk.RetireImage(this->m_offscreenDepth);
+            this->m_offscreenDepthExtent = {};
+            return VK_NULL_HANDLE;
+        }
+
+        VkContext::Barrier(upload, this->m_offscreenDepth.image, VK_IMAGE_ASPECT_DEPTH_BIT, 1, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 
         this->m_offscreenDepthExtent = extent;
         this->m_offscreenDepthGeneration++;
