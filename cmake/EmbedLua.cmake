@@ -3,6 +3,6 @@ if(NOT INPUT OR NOT OUTPUT)
 endif()
 
 file(READ "${INPUT}" _lua)
-file(WRITE "${OUTPUT}" "const char kWowDecompVideoOptionsLua[] = R\"WOWDECOMP(\n")
+file(WRITE "${OUTPUT}" "extern \"C\" const char kWowDecompVideoOptionsLua[] = R\"WOWDECOMP(\n")
 file(APPEND "${OUTPUT}" "${_lua}")
 file(APPEND "${OUTPUT}" ")WOWDECOMP\";\n")
