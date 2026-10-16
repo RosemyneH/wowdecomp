@@ -112,7 +112,7 @@ OsTimeManager::OsTimeManager(OsTimeManager::TimingMethod method) {
             break;
 
         case SystemMethod2:
-            clocksPerSecond = this->m_performanceFrequency;
+            clocksPerSecond = this->m_performanceFrequency ? this->m_performanceFrequency : 1000;
             break;
 
         default:
