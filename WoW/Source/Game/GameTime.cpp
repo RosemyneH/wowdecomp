@@ -255,7 +255,16 @@ TIMESTAMPCALLBACK* CGameTime::GameTimeRegisterCallback(const WowTime* time, void
         stamp = this->m_timeStamps.New(minutes, key, 0, 0);
     }
 
+    if (!stamp) {
+        return nullptr;
+    }
+
     TIMESTAMPCALLBACK* node = stamp->m_callbacks.NewNode(2, 0, 0);
+
+    if (!node) {
+        return nullptr;
+    }
+
     node->m_param = param;
     node->m_callback = callback;
     return node;
