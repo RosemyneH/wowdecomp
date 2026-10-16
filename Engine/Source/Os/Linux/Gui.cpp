@@ -4,6 +4,7 @@
 #include <SDL_vulkan.h>
 #include "Engine/Source/Os/Gui.h"
 #include "Engine/Source/Os/Input.h"
+#include "Engine/Source/Os/Linux/SdlDisplay.h"
 #include "Engine/Source/Storm/H/storm.h"
 
 static SDL_Window* s_GxDevWindow;
@@ -263,7 +264,8 @@ void* OsGuiCreateGxWindow(const char* title, int32_t width, int32_t height, int3
         flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
     }
 
-    return SDL_CreateWindow(title ? title : "", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, flags);
+    int32_t display = SdlPrimaryDisplay();
+    return SDL_CreateWindow(title ? title : "", SDL_WINDOWPOS_CENTERED_DISPLAY(display), SDL_WINDOWPOS_CENTERED_DISPLAY(display), width, height, flags);
 }
 
 void OsGuiDestroyGxWindow(void* window) {

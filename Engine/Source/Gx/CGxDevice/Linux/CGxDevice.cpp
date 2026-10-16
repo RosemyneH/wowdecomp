@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <SDL.h>
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
+#include "Engine/Source/Os/Linux/SdlDisplay.h"
 
 static int32_t InitVideo() {
     return SDL_WasInit(SDL_INIT_VIDEO) || SDL_InitSubSystem(SDL_INIT_VIDEO) == 0;
@@ -68,14 +69,14 @@ int32_t CGxDevice::DeviceAdapterInfer(uint16_t& deviceID) {
 int32_t CGxDevice::AdapterDesktopMode(CGxMonitorMode& mode) {
     SDL_DisplayMode displayMode;
 
-    if (!InitVideo() || SDL_GetDesktopDisplayMode(0, &displayMode) != 0) {
+    if (!InitVideo() || SDL_GetDesktopDisplayMode(SdlPrimaryDisplay(), &displayMode) != 0) {
         return 0;
     }
 
     mode.m_size.x = displayMode.w;
     mode.m_size.y = displayMode.h;
     mode.m_refreshRate = displayMode.refresh_rate;
-    mode.m_bpp = SDL_BITSPERPIXEL(displayMode.format);
+    mode.m_bpp = SdlModeBpp(displayMode.format);
 
     return 1;
 }
@@ -87,14 +88,15 @@ int32_t CGxDevice::AdapterMonitorModes(TSGrowableArray<CGxMonitorMode>& modes) {
         return 0;
     }
 
-    int32_t count = SDL_GetNumDisplayModes(0);
+    int32_t display = SdlPrimaryDisplay();
+    int32_t count = SDL_GetNumDisplayModes(display);
     for (int32_t i = 0; i < count; i++) {
         SDL_DisplayMode displayMode;
-        if (SDL_GetDisplayMode(0, i, &displayMode) != 0) {
+        if (SDL_GetDisplayMode(display, i, &displayMode) != 0) {
             continue;
         }
 
-        uint32_t bpp = SDL_BITSPERPIXEL(displayMode.format);
+        uint32_t bpp = SdlModeBpp(displayMode.format);
         if (displayMode.w >= 640 && displayMode.h >= 480 && bpp >= 16) {
             CGxMonitorMode* mode = modes.New();
             mode->m_size.x = displayMode.w;
