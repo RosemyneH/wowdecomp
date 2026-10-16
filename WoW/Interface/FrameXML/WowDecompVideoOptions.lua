@@ -1,3 +1,87 @@
+local function WowDecomp_ApplyUIFont(fontString, preferHighlight)
+    if not fontString then
+        return;
+    end
+
+    local fontGlobal;
+    if preferHighlight and GameFontHighlightSmall then
+        fontGlobal = GameFontHighlightSmall;
+    elseif GameFontNormalSmall then
+        fontGlobal = GameFontNormalSmall;
+    elseif GameFontHighlightSmall then
+        fontGlobal = GameFontHighlightSmall;
+    end
+
+    if fontGlobal then
+        fontString:SetFontObject(fontGlobal);
+        return;
+    end
+
+    local samples = {
+        VideoOptionsEffectsPanelSubText,
+        VideoOptionsEffectsPanelTitle,
+    };
+    local viewText = VideoOptionsEffectsPanelViewDistance and _G[VideoOptionsEffectsPanelViewDistance:GetName() .. "Text"];
+    if viewText then
+        tinsert(samples, viewText);
+    end
+
+    for _, sample in ipairs(samples) do
+        if sample and sample.GetFont then
+            local path, height, flags = sample:GetFont();
+            if path and height and fontString:SetFont(path, height, flags) then
+                return;
+            end
+        end
+    end
+
+    fontString:SetFont("Fonts\\FRIZQT__.TTF", 10);
+end
+
+local function WowDecomp_PlaytestCheckboxValue(checkButton)
+    if not checkButton then
+        return false;
+    end
+    if checkButton.newValue ~= nil then
+        return checkButton.newValue == "1";
+    end
+    return checkButton:GetChecked();
+end
+
+local function WowDecomp_ApplyPlaytestCVar(checkButton)
+    if not checkButton or not checkButton.cvar then
+        return;
+    end
+    local setting = checkButton:GetChecked() and "1" or "0";
+    SetCVar(checkButton.cvar, setting);
+    checkButton.value = setting;
+    checkButton.newValue = nil;
+end
+
+local function WowDecomp_SetupRegisteredControl(control, panel, entry)
+    if not control or not panel or not entry then
+        return;
+    end
+
+    local name = control:GetName();
+    if name and entry.text then
+        local text = _G[name .. "Text"];
+        if text then
+            text:SetText(_G[entry.text] or entry.text);
+        end
+    end
+
+    if control.type == CONTROLTYPE_SLIDER and entry.minValue and entry.maxValue then
+        control:SetMinMaxValues(entry.minValue, entry.maxValue);
+        if entry.valueStep then
+            control:SetValueStep(entry.valueStep);
+        end
+    end
+
+    BlizzardOptionsPanel_SetupControl(control);
+    BlizzardOptionsPanel_RefreshControl(control);
+end
+
 local function WowDecomp_UpdateFarclipSlider()
     local slider = VideoOptionsEffectsPanelViewDistance;
     if not slider then
@@ -51,7 +135,7 @@ local function WowDecomp_UpdateHorizonSlider()
     EffectsPanelOptions.horizonFarclipScale.maxValue = maxValue;
     EffectsPanelOptions.horizonFarclipScale.valueStep = step;
 
-    if VideoOptionsEffectsPanelExtendedHorizonZClip and VideoOptionsEffectsPanelExtendedHorizonZClip:GetChecked() then
+    if WowDecomp_PlaytestCheckboxValue(VideoOptionsEffectsPanelExtendedHorizonZClip) then
         BlizzardOptionsPanel_Slider_Enable(slider);
     else
         BlizzardOptionsPanel_Slider_Disable(slider);
@@ -69,15 +153,16 @@ local function WowDecomp_RegisterCheckbox(parent, name, label, cvar, anchor, x, 
     button:SetPoint("TOPLEFT", anchor, "TOPLEFT", x, y);
     button.type = CONTROLTYPE_CHECKBOX;
     button.cvar = cvar;
-    button.setFunc = refresh;
 
     local text = _G[button:GetName() .. "Text"];
     if text then
         text:SetText(label);
     end
 
-    EffectsPanelOptions[cvar] = EffectsPanelOptions[cvar] or { text = label };
+    local entry = { text = label };
+    EffectsPanelOptions[cvar] = entry;
     BlizzardOptionsPanel_RegisterControl(button, parent);
+    WowDecomp_SetupRegisteredControl(button, parent, entry);
 
     button:SetScript("OnClick", function(self)
         if self:GetChecked() then
@@ -86,19 +171,34 @@ local function WowDecomp_RegisterCheckbox(parent, name, label, cvar, anchor, x, 
             PlaySound("igMainMenuOptionCheckBoxOff");
         end
         BlizzardOptionsPanel_CheckButton_OnClick(self);
+        WowDecomp_ApplyPlaytestCVar(self);
         if refresh then
             refresh();
         end
-        VideoOptionsFrameApply:Enable();
     end);
 
     return button;
+end
+
+local function WowDecomp_ReanchorShadersBelow(anchor)
+    local shaders = VideoOptionsEffectsPanelShaders;
+    if shaders and anchor then
+        shaders:ClearAllPoints();
+        shaders:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 14, -10);
+    end
 end
 
 local function WowDecomp_InstallEffectsPanelPlaytest(panel)
     if panel.wowDecompPlaytestInstalled then
         return;
     end
+
+    local shadowSlider = VideoOptionsEffectsPanelShadowQuality;
+    local viewDist = VideoOptionsEffectsPanelViewDistance;
+    if not shadowSlider or not viewDist then
+        return;
+    end
+
     panel.wowDecompPlaytestInstalled = true;
 
     EffectsPanelOptions.extendedView = { text = "Extended view (up to 10k)" };
@@ -111,39 +211,40 @@ local function WowDecomp_InstallEffectsPanelPlaytest(panel)
         valueStep = 0.33,
     };
 
-    local viewDist = VideoOptionsEffectsPanelViewDistance;
-    if not viewDist then
-        return;
-    end
-
     local section = CreateFrame("Frame", "VideoOptionsEffectsPanelWowDecompSection", panel);
-    section:SetSize(380, 96);
-    section:SetPoint("TOPLEFT", viewDist, "BOTTOMLEFT", -2, -18);
+    section:SetSize(380, 92);
+    section:SetPoint("TOPLEFT", shadowSlider, "BOTTOMLEFT", -2, -18);
 
-    local header = section:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall");
+    local header = section:CreateFontString(nil, "OVERLAY");
+    WowDecomp_ApplyUIFont(header, true);
     header:SetPoint("TOPLEFT", section, "TOPLEFT", 4, -2);
     header:SetText("Map exploration (playtest)");
-    if GameFontHighlightSmall then
-        header:SetFontObject(GameFontHighlightSmall);
-    end
 
-    local anchor = section;
-    WowDecomp_RegisterCheckbox(panel, "VideoOptionsEffectsPanelExtendedView", "Extended view distance", "extendedView", anchor, 8, -22, WowDecomp_OnPlaytestCVarChanged);
+    WowDecomp_RegisterCheckbox(
+        panel,
+        "VideoOptionsEffectsPanelExtendedView",
+        "Extended view distance",
+        "extendedView",
+        section,
+        8,
+        -22,
+        WowDecomp_OnPlaytestCVarChanged
+    );
     WowDecomp_RegisterCheckbox(
         panel,
         "VideoOptionsEffectsPanelExtendedHorizonZClip",
         "Extended horizon Z clip",
         "extendedHorizonZClip",
-        anchor,
+        section,
         8,
         -46,
         WowDecomp_OnPlaytestCVarChanged
     );
-    WowDecomp_RegisterCheckbox(panel, "VideoOptionsEffectsPanelDistanceFog", "Distance fog", "distanceFog", anchor, 220, -22, nil);
+    WowDecomp_RegisterCheckbox(panel, "VideoOptionsEffectsPanelDistanceFog", "Distance fog", "distanceFog", section, 220, -22, nil);
 
     local horizonSlider = CreateFrame("Slider", "VideoOptionsEffectsPanelHorizonZScale", panel, "OptionsSliderTemplate");
     horizonSlider:SetSize(112, 17);
-    horizonSlider:SetPoint("TOPLEFT", anchor, "TOPLEFT", 220, -50);
+    horizonSlider:SetPoint("TOPLEFT", section, "TOPLEFT", 220, -50);
     horizonSlider.type = CONTROLTYPE_SLIDER;
     horizonSlider.cvar = "horizonFarclipScale";
     horizonSlider.SetDisplayValue = horizonSlider.SetValue;
@@ -151,11 +252,20 @@ local function WowDecomp_InstallEffectsPanelPlaytest(panel)
         self:SetDisplayValue(value);
         BlizzardOptionsPanel_SetCVarSafe(self.cvar, value);
     end;
-    _G[horizonSlider:GetName() .. "Text"]:SetFontObject("GameFontNormalSmall");
-    _G[horizonSlider:GetName() .. "Text"]:SetText("Horizon Z");
+
+    local horizonText = _G[horizonSlider:GetName() .. "Text"];
+    if horizonText then
+        WowDecomp_ApplyUIFont(horizonText, false);
+        horizonText:SetText("Horizon Z");
+    end
+
     BlizzardOptionsPanel_RegisterControl(horizonSlider, panel);
     BlizzardOptionsPanel_SetupDependentControl(VideoOptionsEffectsPanelExtendedHorizonZClip, horizonSlider);
     horizonSlider:SetScript("OnValueChanged", VideoOptionsEffectsPanelSlider_OnValueChanged);
+    WowDecomp_SetupRegisteredControl(horizonSlider, panel, EffectsPanelOptions.horizonFarclipScale);
+
+    WowDecomp_ReanchorShadersBelow(section);
+    WowDecomp_OnPlaytestCVarChanged();
 end
 
 if VideoOptionsEffectsPanel_OnLoad then
@@ -163,16 +273,6 @@ if VideoOptionsEffectsPanel_OnLoad then
     VideoOptionsEffectsPanel_OnLoad = function(self)
         origEffectsOnLoad(self);
         WowDecomp_InstallEffectsPanelPlaytest(self);
-    end;
-end
-
-if VideoOptionsEffectsPanel_OnEvent then
-    local origEffectsOnEvent = VideoOptionsEffectsPanel_OnEvent;
-    VideoOptionsEffectsPanel_OnEvent = function(self, event, ...)
-        origEffectsOnEvent(self, event, ...);
-        if event == "PLAYER_ENTERING_WORLD" then
-            WowDecomp_OnPlaytestCVarChanged();
-        end
     end;
 end
 
