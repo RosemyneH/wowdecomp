@@ -1,6 +1,8 @@
 #if defined(__linux__) || defined(__APPLE__)
 
 #include "Engine/Source/Base/OsPosix.h"
+#include <cerrno>
+#include <csignal>
 #include <cstdint>
 #include <cstring>
 #include <limits.h>
@@ -104,6 +106,12 @@ int32_t CInitCritSect::Enter() {
 void CInitCritSect::Leave() {
     CCritSect* critsect = __atomic_load_n(&this->m_critsect, __ATOMIC_ACQUIRE);
     critsect->Leave();
+}
+
+static void ReapSpawnedChild(pid_t process) {
+    kill(process, SIGKILL);
+    while (waitpid(process, nullptr, 0) < 0 && errno == EINTR) {
+    }
 }
 
 static uint32_t STORMAPI ProcessCompletionCallbackThread(void* vdata) {
@@ -296,6 +304,11 @@ int32_t STORMAPI SCreateProcess(const char* appName, char* commandLine, void (*c
 
     if (callbackWhenProcessCompletes) {
         PROCESSCOMPLETION* completion = static_cast<PROCESSCOMPLETION*>(SMemAlloc(sizeof(PROCESSCOMPLETION), __FILE__, __LINE__, 0));
+        if (!completion) {
+            ReapSpawnedChild(process);
+            return 0;
+        }
+
         completion->data = callbackData;
         completion->callback = callbackWhenProcessCompletes;
         completion->process = process;
@@ -303,6 +316,7 @@ int32_t STORMAPI SCreateProcess(const char* appName, char* commandLine, void (*c
         uint32_t threadId;
         if (!SCreateThread(ProcessCompletionCallbackThread, completion, &threadId, nullptr, nullptr, 0)) {
             SMemFree(completion, __FILE__, __LINE__, 0);
+            ReapSpawnedChild(process);
             return 0;
         }
     }
