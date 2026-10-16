@@ -9,25 +9,21 @@ BUILD_DIR="${WOWDECOMP_BUILD_DIR:-$ROOT/build/linux-dev}"
 REALM_HOST="${WOWDECOMP_REALM_HOST:-127.0.0.1}"
 
 # ʕ ◕ᴥ◕ ʔ✿ Live client scope. loop/memory-bomb trap or exhaust the host on load ✿ ʕ ◕ᴥ◕ ʔ
+# ʕ •ᴥ•ʔ✿ ElvUI and Details load as the original Interface/AddOns trees, not these crates ✿ ʕ •ᴥ•ʔ
 LIVE_ADDONS=(
-    hello-world
-    inventory-watcher
-    ui-demo
-    unit-frames
-    whisper-window
     c-hello
     ping
-    ui-creator
     storage-test
     payload-test
     unit-auction-test
     confirm-test
     host-edge
-    elvui
-    details
     wim
     lua-parity
 )
+
+ELVUI_SRC="${WOWDECOMP_ELVUI:-/run/media/emma/WOW/Repos/ElvUI_Outlawcraft}"
+DETAILS_SRC="${WOWDECOMP_DETAILS:-$HOME/Repos/Details-WotLK}"
 
 usage() {
     cat <<EOF
@@ -118,8 +114,39 @@ link_scope() {
     cp -f "$ROOT/Addons/Lua/WasmInspector/WasmInspector.toc" \
         "$ROOT/Addons/Lua/WasmInspector/WasmInspector.lua" \
         "$PLAY_DIR/Interface/AddOns/WasmInspector/"
+    link_game_addons
     echo "Dev scope: $PLAY_DIR"
     echo "WasmAddOns -> $wasm_root ($(find "$wasm_root" -mindepth 1 -maxdepth 1 -type l | wc -l) links)"
+}
+
+# ʕ •ᴥ•ʔ✿ The play scope runs the original addons. Folder names match their texture paths ✿ ʕ •ᴥ•ʔ
+link_game_addons() {
+    local addons="$PLAY_DIR/Interface/AddOns"
+    mkdir -p "$addons"
+    local name
+    if [[ -d "$ELVUI_SRC/ElvUI" ]]; then
+        for name in ElvUI ElvUI_OptionsUI ElvUI_AddOnSkins ElvUI_DTBars2 ElvUI_Enhanced ElvUI_EnhancedFriendsList ElvUI_ExtraActionBars ElvUI_PartyDamage; do
+            if [[ -d "$ELVUI_SRC/$name" ]]; then
+                ln -sfn "$ELVUI_SRC/$name" "$addons/$name"
+            fi
+        done
+        echo "ElvUI -> $ELVUI_SRC"
+    else
+        echo "No ElvUI tree at $ELVUI_SRC" >&2
+    fi
+    if [[ ! -d "$DETAILS_SRC/Details" && -d /tmp/Details-WotLK/Details ]]; then
+        DETAILS_SRC=/tmp/Details-WotLK
+    fi
+    if [[ -d "$DETAILS_SRC/Details" ]]; then
+        for name in Details Details_3DModelsPaths Details_ChartViewer Details_DataStorage Details_DeathGraphs Details_EncounterDetails Details_SunderCount Details_TimeLine Details_TinyThreat; do
+            if [[ -d "$DETAILS_SRC/$name" ]]; then
+                ln -sfn "$DETAILS_SRC/$name" "$addons/$name"
+            fi
+        done
+        echo "Details -> $DETAILS_SRC"
+    else
+        echo "No Details tree at $DETAILS_SRC" >&2
+    fi
 }
 
 configure_build() {

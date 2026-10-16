@@ -221,26 +221,24 @@ pub extern "C" fn wow_on_update() -> i32 { refresh() }
 
 A whisper reply, once `chat.send` is granted, is `confirm::chat_send(7, who, text)`. The player still has to accept the dialog (about 750 ms before Y or Enter works; N or Escape denies). History that must survive a reload goes through `storage::set_str(storage::Scope::Character, key, text)`.
 
-## Showing ElvUI and WIM
+## Showing ElvUI, Details, and WIM
 
-This tree ships clean-room ports. They are not the upstream Lua addons and they do not contain that source.
+ElvUI and Details in the play client are the original addons. WIM is the Rust whisper port.
 
 | Port | Path | Id | What it draws |
 |---|---|---|---|
-| ElvUI | `Addons/Wasm/ports/elvui` | `port.elvui` | Player, target, target-of-target, focus, party, and a top data bar |
-| Details | `Addons/Wasm/ports/details` | `port.details` | Damage, healing, taken, and healed. Current, overall, and previous fights |
 | WIM | `Addons/Wasm/ports/wim` | `port.wim` | Per-person whisper windows, saved history, enter to send, escape to hide |
 
+ElvUI and Details are linked into `Interface/AddOns`. ElvUI’s settings window is `ElvUI_OptionsUI` (`/ec`). Details is Bunny67’s WotLK tree, plugins included.
+
 ```text
-wasmgrant port.elvui units.read
-wasmgrant port.details combat.read
 wasmgrant port.wim chat.read
 wasmgrant port.wim chat.send
 wasmgrant port.wim storage.read
 wasmgrant port.wim storage.write
 ```
 
-Without `units.read`, the ElvUI frames still show and the numbers stay empty. Without `chat.read`, WIM still loads and whisper text stays redacted. `chat.send` only queues the confirm dialog. Storage grants are what let WIM keep history on the character.
+Without `chat.read`, WIM still loads and whisper text stays redacted. `chat.send` only queues the confirm dialog. Storage grants are what let WIM keep history on the character.
 
 ## Full Lua from Rust
 
@@ -263,7 +261,7 @@ let _ = lua::call("SendChatMessage", &[
 
 `lua::call(name, args)` invokes any global (`CreateFrame`, `UnitName`, `GetSpellInfo`, `CastSpellByName`, …). `lua::method(handle, name, args)` invokes a method on a frame or other object the client returned. `Val` is `Nil`, `Bool`, `Num`, `Str`, `Obj`, or `Map` for the tables those APIs take (`SetBackdrop`). `lua::bind(frame, "OnEnterPressed")` delivers `WASM_UI` back into `on_event` with the script name and the object handle.
 
-`port.elvui`, `port.details`, and `port.wim` are Rust addons on this path. They call the client’s real widget and unit functions. They do not ship or execute Lua source. `port.details` keeps the combat-log parse in the guest and paints the window about five times a second.
+`port.wim` is a Rust addon on this path. It calls the client’s real widget and unit functions. It does not ship or execute Lua source. ElvUI and Details are the original Lua addons in `Interface/AddOns`.
 
 ## Intentionally not Lua
 

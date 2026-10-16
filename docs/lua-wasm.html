@@ -185,21 +185,19 @@ fn on_event(name: &amp;str, args: &amp;[EventArg]) -> i32 {
 pub extern "C" fn wow_on_update() -> i32 { refresh() }</pre>
 <p><code>build_chrome</code> is ordinary <code>ui::spawn</code> / <code>set_size</code> / <code>set_point</code> / <code>set_backdrop</code>. A whisper reply, once <code>chat.send</code> is granted, is <code>confirm::chat_send(7, who, text)</code>. The player still has to accept the dialog (about 750 ms before Y or Enter works; N or Escape denies). History that must survive a reload goes through <code>storage::set(storage::Scope::Character, key, bytes)</code>.</p>
 
-<h2>Showing ElvUI and WIM</h2>
-<p>This tree ships clean-room ports. They are not the upstream Lua addons and they do not contain that source.</p>
+<h2>Showing ElvUI, Details, and WIM</h2>
+<p>The play client loads the original ElvUI and Details addons from <code>Interface/AddOns</code>. <code>/ec</code> is ElvUI’s options. <code>/details</code> is the meter. WIM is the Rust whisper port.</p>
 <table>
-<tr><th>Port</th><th>Path</th><th>Id</th><th>What it draws</th></tr>
-<tr><td>ElvUI</td><td><code>Addons/Wasm/ports/elvui</code></td><td><code>port.elvui</code></td><td>Unit frames for player, target, target-of-target, focus, and party.</td></tr>
-<tr><td>Details</td><td><code>Addons/Wasm/ports/details</code></td><td><code>port.details</code></td><td>Damage, healing, taken, and healed. The combat log stays in wasm.</td></tr>
+<tr><th>Addon</th><th>Where</th><th>Id</th><th>What it is</th></tr>
+<tr><td>ElvUI</td><td><code>Interface/AddOns/ElvUI</code></td><td>ElvUI</td><td>The original addon, with <code>ElvUI_OptionsUI</code>.</td></tr>
+<tr><td>Details</td><td><code>Interface/AddOns/Details</code></td><td>Details</td><td>Bunny67’s WotLK Details, plugins included.</td></tr>
 <tr><td>WIM</td><td><code>Addons/Wasm/ports/wim</code></td><td><code>port.wim</code></td><td>Whisper windows: history plus an edit box that sends on enter.</td></tr>
 </table>
-<pre>wasmgrant port.elvui units.read
-wasmgrant port.details combat.read
-wasmgrant port.wim chat.read
+<pre>wasmgrant port.wim chat.read
 wasmgrant port.wim chat.send
 wasmgrant port.wim storage.read
 wasmgrant port.wim storage.write</pre>
-<p>Without <code>units.read</code>, the ElvUI frames still show and the numbers stay empty. Without <code>chat.read</code>, WIM still shows and whisper text stays redacted. <code>chat.send</code> only queues the confirm dialog; it does not skip it. Storage grants are what let WIM keep history on the character and the account.</p>
+<p>Without <code>chat.read</code>, WIM still shows and whisper text stays redacted. <code>chat.send</code> only queues the confirm dialog; it does not skip it. Storage grants are what let WIM keep history on the character and the account.</p>
 
 <h2>Intentionally not Lua</h2>
 <ul>

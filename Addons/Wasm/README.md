@@ -74,12 +74,11 @@ Clean-room layouts, not the upstream Lua addons:
 |---|---|---|---|
 | Unit frames | `examples/unit-frames` | `example.unit-frames` | Player, target, and party bars |
 | Whisper list | `examples/whisper-window` | `example.whisper-window` | One whisper log |
-| ElvUI | `ports/elvui` | `port.elvui` | Rust unit frames built with `CreateFrame`, `UnitHealth`, and `UnitName` |
-| Details | `ports/details` | `port.details` | Combat meter. The log is parsed in wasm; the window paints on the update tick |
 | WIM | `ports/wim` | `port.wim` | Rust whisper windows. Enter calls `SendChatMessage` |
 
+The play client loads **ElvUI** and **Details** from their original trees (`Interface/AddOns/ElvUI`, `ElvUI_OptionsUI`, `Details`, and the Details plugins). `/ec` is ElvUI’s options. `/details` is the meter. `Tools/dev-station.sh` links those folders on `scope`.
+
 ```text
-wasmgrant port.details combat.read
 wasmgrant port.wim chat.read
 ```
 

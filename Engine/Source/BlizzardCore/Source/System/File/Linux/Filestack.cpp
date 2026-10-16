@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <dirent.h>
+#include <strings.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
@@ -87,7 +88,57 @@ static int OpenNative(const char* path, uint32_t mode) {
             break;
     }
 
-    return open(path, flags | O_CLOEXEC, 0644);
+    flags |= O_CLOEXEC;
+    int fd = open(path, flags, 0644);
+    // ʕ •ᴥ•ʔ✿ Addon trees keep Windows casing. A misspelled loose file is the same file ✿ ʕ •ᴥ•ʔ
+    if (fd < 0 && !(flags & (O_CREAT | O_WRONLY | O_RDWR)) && (strstr(path, "Interface/AddOns/") || strstr(path, "Interface\\AddOns\\"))) {
+        char resolved[1024];
+        size_t used = 0;
+        const char* cursor = path;
+        if (path[0] == '/') {
+            resolved[0] = '/';
+            used = 1;
+        }
+        resolved[used] = '\0';
+        while (*cursor) {
+            while (*cursor == '/' || *cursor == '\\') cursor++;
+            if (!*cursor) break;
+            char name[256];
+            size_t length = 0;
+            while (*cursor && *cursor != '/' && *cursor != '\\' && length + 1 < sizeof(name)) name[length++] = *cursor++;
+            name[length] = '\0';
+            if (!length || !strcmp(name, ".")) continue;
+            const char* matched = name;
+            char actual[256];
+            if (strcmp(name, "..")) {
+                DIR* dir = opendir(used ? resolved : ".");
+                if (!dir) return -1;
+                matched = nullptr;
+                while (dirent* entry = readdir(dir)) {
+                    if (!strcasecmp(entry->d_name, name)) {
+                        size_t n = strlen(entry->d_name);
+                        if (n + 1 < sizeof(actual)) {
+                            memcpy(actual, entry->d_name, n + 1);
+                            matched = actual;
+                        }
+                        break;
+                    }
+                }
+                closedir(dir);
+                if (!matched) return -1;
+            }
+            size_t piece = strlen(matched);
+            if (used && resolved[used - 1] != '/') {
+                if (used + 1 >= sizeof(resolved)) return -1;
+                resolved[used++] = '/';
+            }
+            if (used + piece >= sizeof(resolved)) return -1;
+            memcpy(resolved + used, matched, piece + 1);
+            used += piece;
+        }
+        if (used) fd = open(resolved, flags, 0644);
+    }
+    return fd;
 }
 
 static void FillFileInfo(Blizzard::File::FileInfo* info, const struct stat& st, const char* path) {
