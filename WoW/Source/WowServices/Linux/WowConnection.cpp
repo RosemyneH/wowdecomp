@@ -761,7 +761,20 @@ void WowConnection::StartConnect() {
     }
 
     this->SetState(WOWC_ERROR);
+    this->AddRef();
+    this->AcquireResponseRef();
+
+    WowConnectionResponse* response = this->m_response;
     this->m_lock.Leave();
+
+    if (response) {
+        response->WCCantConnect(this, OsGetAsyncTimeMs(), &this->m_peer);
+    }
+
+    this->m_lock.Enter();
+    this->ReleaseResponseRef();
+    this->m_lock.Leave();
+    this->Release();
 }
 
 // OFFSET: 0x00468D20
