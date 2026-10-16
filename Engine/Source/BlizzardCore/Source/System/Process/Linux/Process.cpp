@@ -3,8 +3,13 @@
 #include <algorithm>
 #include <cerrno>
 #include <cstdint>
+#include <cstdlib>
 #include <ctime>
 #include <cstring>
+#include <climits>
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
 #include <pthread.h>
 #include <spawn.h>
 #include <string>
@@ -43,12 +48,27 @@ bool Blizzard::Process::GetProcessPath(char* buffer, int32_t buffersize) {
         return false;
     }
 
+#if defined(__APPLE__)
+    char executable[PATH_MAX];
+    char resolved[PATH_MAX];
+    uint32_t length = sizeof(executable);
+
+    if (_NSGetExecutablePath(executable, &length)) {
+        *buffer = '\0';
+        return false;
+    }
+
+    const char* path = realpath(executable, resolved);
+    System_File::FromNativeName(buffer, buffersize, path ? path : executable);
+    return true;
+#else
     char filename[MAX_PATH];
     ssize_t length = readlink("/proc/self/exe", filename, sizeof(filename) - 1);
     filename[length > 0 ? length : 0] = '\0';
     System_File::FromNativeName(buffer, buffersize, filename);
 
     return true;
+#endif
 }
 
 bool Blizzard::Process::GetProcessDirectory(char* buffer, int32_t buffersize) {
