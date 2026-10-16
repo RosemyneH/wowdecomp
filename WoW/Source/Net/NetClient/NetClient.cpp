@@ -893,6 +893,11 @@ void NetClient::HandleRedirectClient(WowConnection* connection, CDataStore* msg)
 
     void* connectionMem = SMemAlloc(sizeof(WowConnection), __FILE__, __LINE__, 0);
     if (!connectionMem) {
+        CDataStore response;
+        response.Put(static_cast<uint32_t>(CMSG_CONNECT_TO_FAILED));
+        response.Put(this->m_redirectKey);
+        response.Finalize();
+        this->Send(&response);
         return;
     }
 
