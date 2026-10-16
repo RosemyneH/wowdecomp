@@ -17,6 +17,7 @@ class CGxShader;
 class CDetailDoodadData;
 class CDetailDoodadInst;
 class CTexture;
+class CGxVertexPNCT;
 
 class CDetailDoodad {
     public:
@@ -101,8 +102,8 @@ class CDetailDoodadInstBatch {
     CDetailDoodadInstBatch();
     ~CDetailDoodadInstBatch();
     void Draw();
-    void FillIndices();
-    void FillVertices();
+    void FillIndices(uint16_t* indices);
+    void FillVertices(CGxVertexPNCT* vertices);
     void Free();
     void FreeBuffers();
 };
