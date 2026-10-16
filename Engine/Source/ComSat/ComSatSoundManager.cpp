@@ -978,13 +978,18 @@ void ComSat::Sound::Manager::PlayVoiceDataForLocalPlayer(uint8_t player, int32_t
             if (sequence < remote->m_lastResetSequence) {
                 sequence += 0x10000;
             }
+            if (!this->m_codec) {
+                return;
+            }
             if ((sequence - remote->m_lastResetSequence >= static_cast<uint32_t>(ComSat::Sound::CODEC::MinimumSafeFramesBetweenResets()) && ComSat::Sound::CODEC::MinimumSafeFramesBetweenResets() && !(packet->m_sequence % ComSat::Sound::CODEC::MinimumSafeFramesBetweenResets())) || reset) {
                 this->m_codec->ResetPlayerChannelDecoder(player, c);
                 remote->m_lastResetSequence = packet->m_sequence;
                 reset = false;
             }
             uint32_t size;
-            this->DecodeVoicePacket(player, c, packet, &size);
+            if (!this->DecodeVoicePacket(player, c, packet, &size)) {
+                continue;
+            }
             LocalPlayer* target;
             if (this->m_localPlayers.Get(ComSat::MapKey<uint8_t>(player), target)) {
                 this->m_codec->ApplyVoiceEffects(player, target->m_buffer, &size);
