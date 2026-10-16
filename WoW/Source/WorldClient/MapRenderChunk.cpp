@@ -2884,10 +2884,15 @@ void CMapRenderChunk::FlushMultiPass() {
                         }
 
                         draw.texIndex0 = g_theGxDevicePtr->TerrainTextureSlot(color);
-                        CGxTex* alpha = chunkLayer->m_layerTexture ? TextureGetGxTex(chunkLayer->m_layerTexture, 1, nullptr) : nullptr;
-                        draw.texIndex1 = g_theGxDevicePtr->TerrainTextureSlot(alpha);
 
-                        if (draw.texIndex0 == ~0u || draw.texIndex1 == ~0u) {
+                        if (chunkLayer->m_layerTexture) {
+                            CGxTex* alpha = TextureGetGxTex(chunkLayer->m_layerTexture, 1, nullptr);
+                            draw.texIndex1 = g_theGxDevicePtr->TerrainTextureSlot(alpha);
+                        } else {
+                            draw.texIndex1 = ~0u;
+                        }
+
+                        if (draw.texIndex0 == ~0u || (chunkLayer->m_layerTexture && draw.texIndex1 == ~0u)) {
                             DrawTerrainChunk(cap);
                             continue;
                         }
@@ -2901,7 +2906,13 @@ void CMapRenderChunk::FlushMultiPass() {
                     continue;
                 }
 
-                if (!bindless) {
+                if (bindless) {
+                    CMapRenderChunkLayer* bound = &first.chunk->m_layers[layer];
+                    CGxTex* color = TextureGetGxTex(bound->m_texture, 0, nullptr);
+                    CGxTex* alpha = bound->m_layerTexture ? TextureGetGxTex(bound->m_layerTexture, 1, nullptr) : color;
+                    g_theGxDevicePtr->RsSet(GxRs_Texture0, color);
+                    g_theGxDevicePtr->RsSet(GxRs_Texture1, alpha ? alpha : color);
+                } else {
                     CGxTex* gxTex = TextureGetGxTex(key->m_texture, 0, nullptr);
                     g_theGxDevicePtr->RsSet(GxRs_Texture0, gxTex);
 

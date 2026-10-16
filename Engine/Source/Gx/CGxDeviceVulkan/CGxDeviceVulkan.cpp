@@ -1774,7 +1774,7 @@ int32_t CGxDeviceVulkan::DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t c
         memcpy(items[i].lightAmbient, draws[i].lightAmbient, sizeof(items[i].lightAmbient));
         memcpy(items[i].lightAtten, draws[i].lightAtten, sizeof(items[i].lightAtten));
         items[i].lightAmbient[0][3] = static_cast<float>(draws[i].texIndex0);
-        items[i].lightAmbient[1][3] = static_cast<float>(draws[i].texIndex1);
+        items[i].lightAmbient[1][3] = draws[i].texIndex1 == ~0u ? -1.0f : static_cast<float>(draws[i].texIndex1);
         commands[i].indexCount = draws[i].indexCount;
         commands[i].instanceCount = 1;
         commands[i].firstIndex = draws[i].firstIndex;

@@ -37,7 +37,8 @@ void main() {
     if (u.stageColorOp.x >= 0) {
         color = Stage(0, texture(terrainTextures[nonuniformEXT(inTexIndex.x)], inTexCoord0.xy / inTexCoord0.z), color);
 
-        if (u.stageColorOp.y >= 0) {
+        // ʕ •ᴥ•ʔ✿ A base layer has no blend map. Sampling the default image here punches a second texture through the ground ✿ ʕ •ᴥ•ʔ
+        if (u.stageColorOp.y >= 0 && inTexIndex.y >= 0) {
             color = Stage(1, texture(terrainTextures[nonuniformEXT(inTexIndex.y)], inTexCoord1.xy / inTexCoord1.z), color);
         }
     }
