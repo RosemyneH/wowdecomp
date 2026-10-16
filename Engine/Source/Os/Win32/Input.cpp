@@ -882,6 +882,9 @@ void OsInputDestroy() {
     }
 }
 
+void OsInputQuitDeferredEvents() {
+}
+
 // VERIFY: 1f154fc9 auto
 // OFFSET: 0x008697E0
 static int32_t ProcessMouseEvent(uint32_t message, HWND hwnd, MOUSEBUTTON button, OSINPUT id) {

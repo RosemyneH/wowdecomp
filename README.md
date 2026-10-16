@@ -129,9 +129,9 @@ cmake --build <build-dir> --target GxVulkanShadersRegenerate
 
 ### CI and releases
 
-GitHub Actions build **WowClient** on push/PR: `macos-arm64`, `linux-x64`, and `windows-x64` (plus an experimental `windows-arm64` job). Shader drift is checked by `generated-drift` when GLSL under `Engine/Source/Gx/CGxDeviceVulkan/Shaders/` changes.
+GitHub Actions on push/PR: **`linux-x64`** and **`windows-x64`** build **WowClient**; **`macos-arm64`** compiles **Os + Gx** (Vulkan path) until the full macOS client port is ready; **`windows-arm64`** is experimental. Shader drift is checked by `generated-drift` when GLSL under `Engine/Source/Gx/CGxDeviceVulkan/Shaders/` changes.
 
-**Prebuilt binaries:** push a version tag (`v0.1.0`, etc.) to run the **Release** workflow and attach platform packages to a GitHub Release. You can also run **Release** manually from the Actions tab (publish step runs only for tag pushes). Game `Data` is never included—use your own 3.3.5a install.
+**Prebuilt binaries:** push a version tag (`v0.1.0`, etc.) to run the **Release** workflow (Linux + Windows x64 packages; Windows ARM64 when that job succeeds). macOS releases are not published yet. Game `Data` is never included—use your own 3.3.5a install.
 
 ---
 
