@@ -5164,6 +5164,10 @@ void CGObject_C::PrepareToFadeInt(CMapEntity* entity, float alpha, uint64_t tran
         fadeout = s_fadeoutDataPool.NewNode(0, 0, 0);
     }
 
+    if (!fadeout) {
+        return;
+    }
+
     fadeout->m_entity = entity;
     fadeout->m_startTime = OsGetAsyncTimeMs();
     fadeout->m_alpha = alpha;
