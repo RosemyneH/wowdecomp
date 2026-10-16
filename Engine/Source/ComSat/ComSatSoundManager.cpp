@@ -744,7 +744,11 @@ bool ComSat::Sound::Manager::InitLocalPlayer(uint8_t player, float threshold, in
     if (this->m_localPlayers.Find(ComSat::MapKey<uint8_t>(player), index)) {
         return false;
     }
-    LocalPlayer* localPlayer = new (this->m_allocator->Alloc(sizeof(LocalPlayer))) LocalPlayer(*this->m_allocator);
+    void* memory = this->m_allocator->Alloc(sizeof(LocalPlayer));
+    if (!memory) {
+        return false;
+    }
+    LocalPlayer* localPlayer = new (memory) LocalPlayer(*this->m_allocator);
     localPlayer->m_sequence = 0;
     localPlayer->m_enabled = false;
     localPlayer->m_talking = false;
@@ -761,8 +765,9 @@ bool ComSat::Sound::Manager::InitLocalPlayer(uint8_t player, float threshold, in
     if (this->m_io) {
         this->m_io->InitLocalPlayer(player, outputDevice, captureDevice, ComSat::Sound::CODECIPMR6000::s_sampleRate, ComSat::Sound::CODECIPMR6000::s_bitsPerSample, ComSat::Sound::CODECIPMR6000::s_samplesPerFrame);
     }
-    if (this->m_codec) {
-        this->m_codec->InitLocalPlayer(player, threshold);
+    if (this->m_codec && !this->m_codec->InitLocalPlayer(player, threshold)) {
+        this->DestroyLocalPlayer(player);
+        return false;
     }
     return true;
 }
