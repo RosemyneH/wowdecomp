@@ -24,6 +24,7 @@ public:
     bool HasSubscriber(const std::string& eventName) const;
     bool CallExportInt(const std::string& addonId, const char* exportName, int64_t& out);
     void TickConfirm();
+    void TickUi(uint64_t nowMs);
     bool ResolveConfirm(uint32_t requestId, bool accept);
     void RearmConfirm();
     void SetClockForTests(std::function<uint64_t()> nowFn) { m_nowFn = std::move(nowFn); }
@@ -40,7 +41,7 @@ public:
     std::vector<ActivityEntry> GetActivity() const { return {m_activity.begin(), m_activity.end()}; }
 
 private:
-    struct UiHandle { uint32_t addonIndex = 0; uint32_t generation = 0; uint64_t hostHandle = 0; };
+    struct UiHandle { uint32_t addonIndex = 0; uint32_t generation = 0; uint64_t hostHandle = 0; UiKind kind = UiKind::None; };
     struct Addon {
         InspectorInfo info;
         Limits limits;
@@ -67,6 +68,7 @@ private:
     bool InvokeExport(Addon& addon, const char* name, const std::vector<int64_t>& args, int64_t& result);
     uint64_t Now() const;
     size_t IndexOf(const Addon& addon) const;
+    UiHandle* FindUi(Addon& addon, int64_t guest);
     void CancelConfirmFor(size_t addonIndex);
     void ShowNextConfirm();
     void DeliverConfirmResult(const ConfirmQueue::Completed& completed, int32_t detail);
@@ -92,6 +94,7 @@ private:
     bool m_dispatching = false;
     uint32_t m_callbackDepth = 0;
     uint32_t m_nextUiGeneration = 0;
+    uint64_t m_nextUiTick = 0;
     uint32_t m_dispatchBudget = 0;
     void FlushQueuedEvents();
     std::vector<QueuedEvent> m_queuedEvents;

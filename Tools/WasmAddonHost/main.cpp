@@ -22,6 +22,17 @@ struct ConsoleHost final : IWasmHostServices {
         std::cout << "[ui] create " << kind << " -> " << handle << "\n";
         return handle;
     }
+    uint64_t UiSpawn(const std::string&, uint64_t parent, const std::string& kind) override {
+        uint64_t handle = nextUi++;
+        ui[handle] = kind;
+        std::cout << "[ui] spawn " << kind << " parent=" << parent << " -> " << handle << "\n";
+        return handle;
+    }
+    bool UiStyle(uint64_t handle, int32_t op, const uint8_t*, uint32_t len) override {
+        if (!ui.count(handle)) return false;
+        std::cout << "[ui] style " << handle << " op=" << op << " bytes=" << len << "\n";
+        return true;
+    }
     bool UiSetText(uint64_t handle, const std::string& text) override {
         if (!ui.count(handle)) return false;
         std::cout << "[ui] set_text " << handle << " = " << text << "\n";

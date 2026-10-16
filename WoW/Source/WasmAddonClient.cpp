@@ -81,13 +81,42 @@ public:
         return lua_cpcall(L, &TrampUiSetText, &ctx) == 0 && ctx.ok;
     }
 
+    uint64_t UiSpawn(const std::string& addonId, uint64_t parentHost, const std::string& kind) override {
+        lua_State* L = FrameScript_GetContext();
+        if (!L) return 0;
+        HostCallCtx ctx{this, &addonId, &kind, 0, nullptr};
+        ctx.parent = parentHost;
+        return lua_cpcall(L, &TrampUiSpawn, &ctx) == 0 ? ctx.result : 0;
+    }
+
+    bool UiStyle(uint64_t handle, int32_t op, const uint8_t* data, uint32_t len) override {
+        lua_State* L = FrameScript_GetContext();
+        if (!L) return false;
+        HostCallCtx ctx{this, nullptr, nullptr, handle, nullptr};
+        ctx.op = op;
+        ctx.bytes = data;
+        ctx.byteLen = len;
+        return lua_cpcall(L, &TrampUiStyle, &ctx) == 0 && ctx.ok;
+    }
+
     void UiDestroy(uint64_t handle) override {
         auto it = m_ui.find(handle);
         lua_State* L = FrameScript_GetContext();
         if (it == m_ui.end() || !L) return;
         if (L != m_seenState) { m_ui.erase(it); return; }
+        int top = lua_gettop(L);
+        lua_rawgeti(L, LUA_REGISTRYINDEX, it->second.mainRef);
+        if (lua_isuserdata(L, -1) || lua_istable(L, -1)) {
+            lua_getfield(L, -1, "Hide");
+            if (lua_isfunction(L, -1)) {
+                lua_pushvalue(L, -2);
+                lua_pcall(L, 1, 0, 0);
+            }
+        }
+        lua_settop(L, top);
         luaL_unref(L, LUA_REGISTRYINDEX, it->second.mainRef);
-        if (it->second.textRef != it->second.mainRef) luaL_unref(L, LUA_REGISTRYINDEX, it->second.textRef);
+        if (it->second.textRef != it->second.mainRef && it->second.textRef != LUA_NOREF)
+            luaL_unref(L, LUA_REGISTRYINDEX, it->second.textRef);
         m_ui.erase(it);
     }
 
@@ -142,10 +171,16 @@ private:
         WasmAddon::AuctionSnapshot* auction = nullptr;
         bool ok = false;
         uint64_t result = 0;
+        uint64_t parent = 0;
+        int32_t op = 0;
+        const uint8_t* bytes = nullptr;
+        uint32_t byteLen = 0;
     };
     static int TrampChat(lua_State* L) { auto* c = (HostCallCtx*)lua_touserdata(L, 1); c->ok = c->self->DoChatPrint(L, *c->s1, *c->s2); return 0; }
     static int TrampInventory(lua_State* L) { auto* c = (HostCallCtx*)lua_touserdata(L, 1); c->ok = c->self->DoInventory(L, *c->items); return 0; }
     static int TrampUiCreate(lua_State* L) { auto* c = (HostCallCtx*)lua_touserdata(L, 1); c->result = c->self->DoUiCreate(L, *c->s1, *c->s2); return 0; }
+    static int TrampUiSpawn(lua_State* L) { auto* c = (HostCallCtx*)lua_touserdata(L, 1); c->result = c->self->DoUiSpawn(L, *c->s1, c->parent, *c->s2); return 0; }
+    static int TrampUiStyle(lua_State* L) { auto* c = (HostCallCtx*)lua_touserdata(L, 1); c->ok = c->self->DoUiStyle(L, c->handle, c->op, c->bytes, c->byteLen); return 0; }
     static int TrampUiSetText(lua_State* L) { auto* c = (HostCallCtx*)lua_touserdata(L, 1); c->ok = c->self->DoUiSetText(L, c->handle, *c->s2); return 0; }
     static int TrampUnits(lua_State* L) { auto* c = (HostCallCtx*)lua_touserdata(L, 1); c->ok = c->self->DoUnits(L, *c->tokens, *c->units); return 0; }
     static int TrampAuction(lua_State* L) { auto* c = (HostCallCtx*)lua_touserdata(L, 1); c->ok = c->self->DoAuction(L, (int32_t)c->handle, *c->auction); return 0; }
@@ -283,7 +318,7 @@ private:
         if (kind == "frame") {
             lua_getfield(L, LUA_GLOBALSINDEX, "CreateFrame");
             lua_pushstring(L, "Frame");
-            lua_pushstring(L, ("WasmAddon_" + addonId).c_str());
+            lua_pushnil(L);
             lua_pushvalue(L, top + 1);
             if (lua_pcall(L, 4, 1, 0) != 0) { lua_settop(L, top); return 0; }
             lua_getfield(L, -1, "SetSize");
@@ -296,7 +331,7 @@ private:
             if (textRef == LUA_NOREF) { lua_settop(L, top); return 0; }
             int32_t frameRef = luaL_ref(L, LUA_REGISTRYINDEX);
             uint64_t handle = m_nextHandle++;
-            m_ui[handle] = {frameRef, textRef};
+            m_ui[handle] = {frameRef, textRef, WidgetKind::Frame};
             lua_settop(L, top);
             return handle;
         }
@@ -304,8 +339,270 @@ private:
         lua_settop(L, top);
         if (textRef == LUA_NOREF) return 0;
         uint64_t handle = m_nextHandle++;
-        m_ui[handle] = {textRef, textRef};
+        m_ui[handle] = {textRef, textRef, WidgetKind::FontString};
         return handle;
+    }
+
+    bool PushParent(lua_State* L, uint64_t parentHost) {
+        if (parentHost == 0) {
+            lua_getfield(L, LUA_GLOBALSINDEX, "UIParent");
+            return !lua_isnil(L, -1);
+        }
+        auto it = m_ui.find(parentHost);
+        if (it == m_ui.end() || it->second.mainRef == LUA_NOREF) return false;
+        lua_rawgeti(L, LUA_REGISTRYINDEX, it->second.mainRef);
+        return lua_istable(L, -1) || lua_isuserdata(L, -1);
+    }
+
+    template <class Push>
+    bool CallOn(lua_State* L, int32_t ref, const char* method, int extra, Push push) {
+        int top = lua_gettop(L);
+        lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+        if (!lua_istable(L, -1) && !lua_isuserdata(L, -1)) { lua_settop(L, top); return false; }
+        lua_getfield(L, -1, method);
+        if (!lua_isfunction(L, -1)) { lua_settop(L, top); return false; }
+        lua_pushvalue(L, -2);
+        push(L);
+        bool ok = lua_pcall(L, 1 + extra, 0, 0) == 0;
+        lua_settop(L, top);
+        return ok;
+    }
+
+    static int32_t ReadI32(const uint8_t* p) {
+        return (int32_t)((uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24));
+    }
+
+    static int32_t MakeChildFont(lua_State* L) {
+        int parent = lua_gettop(L);
+        lua_getfield(L, parent, "CreateFontString");
+        if (!lua_isfunction(L, -1)) return LUA_NOREF;
+        lua_pushvalue(L, parent);
+        lua_pushnil(L);
+        lua_pushstring(L, "OVERLAY");
+        lua_pushstring(L, "GameFontHighlightSmall");
+        if (lua_pcall(L, 4, 1, 0) != 0) return LUA_NOREF;
+        return luaL_ref(L, LUA_REGISTRYINDEX);
+    }
+
+    static int32_t MakeChildTexture(lua_State* L) {
+        int parent = lua_gettop(L);
+        lua_getfield(L, parent, "CreateTexture");
+        if (!lua_isfunction(L, -1)) return LUA_NOREF;
+        lua_pushvalue(L, parent);
+        lua_pushnil(L);
+        lua_pushstring(L, "ARTWORK");
+        if (lua_pcall(L, 3, 1, 0) != 0) return LUA_NOREF;
+        return luaL_ref(L, LUA_REGISTRYINDEX);
+    }
+
+    static bool MakeChildFrame(lua_State* L, const char* type, bool statusBar, int32_t& ref) {
+        int parent = lua_gettop(L);
+        lua_getfield(L, LUA_GLOBALSINDEX, "CreateFrame");
+        lua_pushstring(L, type);
+        lua_pushnil(L);
+        lua_pushvalue(L, parent);
+        if (lua_pcall(L, 3, 1, 0) != 0) return false;
+        if (statusBar) {
+            lua_getfield(L, -1, "SetStatusBarTexture");
+            lua_pushvalue(L, -2);
+            lua_pushstring(L, "Interface\\TargetingFrame\\UI-StatusBar");
+            lua_pcall(L, 2, 0, 0);
+            lua_getfield(L, -1, "SetMinMaxValues");
+            lua_pushvalue(L, -2);
+            lua_pushnumber(L, 0);
+            lua_pushnumber(L, 1);
+            lua_pcall(L, 3, 0, 0);
+        }
+        ref = luaL_ref(L, LUA_REGISTRYINDEX);
+        return ref != LUA_NOREF;
+    }
+
+    uint64_t DoUiSpawn(lua_State* L, const std::string& addonId, uint64_t parentHost, const std::string& kind) {
+        TaintScope taint(addonId);
+        TrackState(L);
+        int top = lua_gettop(L);
+        if (!PushParent(L, parentHost)) { lua_settop(L, top); return 0; }
+        int32_t ref = LUA_NOREF;
+        WidgetKind wk = WidgetKind::Frame;
+        bool ok = false;
+        if (kind == "fontstring") {
+            ref = MakeChildFont(L);
+            ok = ref != LUA_NOREF;
+            wk = WidgetKind::FontString;
+        } else if (kind == "texture") {
+            ref = MakeChildTexture(L);
+            ok = ref != LUA_NOREF;
+            wk = WidgetKind::Texture;
+        } else if (kind == "frame" || kind == "statusbar" || kind == "button") {
+            const char* type = kind == "statusbar" ? "StatusBar" : kind == "button" ? "Button" : "Frame";
+            ok = MakeChildFrame(L, type, kind == "statusbar", ref);
+            wk = kind == "statusbar" ? WidgetKind::StatusBar : kind == "button" ? WidgetKind::Button : WidgetKind::Frame;
+        }
+        lua_settop(L, top);
+        if (!ok || ref == LUA_NOREF) {
+            if (ref != LUA_NOREF) luaL_unref(L, LUA_REGISTRYINDEX, ref);
+            return 0;
+        }
+        uint64_t handle = m_nextHandle++;
+        m_ui[handle] = {ref, wk == WidgetKind::FontString ? ref : LUA_NOREF, wk};
+        return handle;
+    }
+
+    bool ApplyBackdrop(lua_State* L, int32_t ref, const uint8_t* rgba) {
+        int top = lua_gettop(L);
+        lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+        if (!lua_istable(L, -1) && !lua_isuserdata(L, -1)) { lua_settop(L, top); return false; }
+        lua_getfield(L, -1, "SetBackdrop");
+        if (!lua_isfunction(L, -1)) { lua_settop(L, top); return false; }
+        lua_pushvalue(L, -2);
+        lua_newtable(L);
+        auto putStr = [&](const char* key, const char* value) {
+            lua_pushstring(L, key);
+            lua_pushstring(L, value);
+            lua_settable(L, -3);
+        };
+        auto putNum = [&](const char* key, double value) {
+            lua_pushstring(L, key);
+            lua_pushnumber(L, value);
+            lua_settable(L, -3);
+        };
+        putStr("bgFile", "Interface\\ChatFrame\\ChatFrameBackground");
+        putStr("edgeFile", "Interface\\Tooltips\\UI-Tooltip-Border");
+        lua_pushstring(L, "tile");
+        lua_pushboolean(L, 1);
+        lua_settable(L, -3);
+        putNum("tileSize", 16);
+        putNum("edgeSize", 12);
+        lua_pushstring(L, "insets");
+        lua_newtable(L);
+        putNum("left", 3);
+        putNum("right", 3);
+        putNum("top", 3);
+        putNum("bottom", 3);
+        lua_settable(L, -3);
+        if (lua_pcall(L, 2, 0, 0) != 0) { lua_settop(L, top); return false; }
+        lua_settop(L, top);
+        auto pushBg = [&](lua_State* S) {
+            lua_pushnumber(S, rgba[0] / 255.0);
+            lua_pushnumber(S, rgba[1] / 255.0);
+            lua_pushnumber(S, rgba[2] / 255.0);
+            lua_pushnumber(S, rgba[3] / 255.0);
+        };
+        if (!CallOn(L, ref, "SetBackdropColor", 4, pushBg)) return false;
+        CallOn(L, ref, "SetBackdropBorderColor", 4, [](lua_State* S) {
+            lua_pushnumber(S, 0);
+            lua_pushnumber(S, 0);
+            lua_pushnumber(S, 0);
+            lua_pushnumber(S, 1);
+        });
+        return true;
+    }
+
+    bool DoUiStyle(lua_State* L, uint64_t handle, int32_t op, const uint8_t* data, uint32_t len) {
+        auto it = m_ui.find(handle);
+        if (it == m_ui.end() || !data) return false;
+        TaintScope taint("ui");
+        TrackState(L);
+        it = m_ui.find(handle);
+        if (it == m_ui.end()) return false;
+        const UiRefs& widget = it->second;
+        auto pushColor = [&](lua_State* S) {
+            lua_pushnumber(S, data[0] / 255.0);
+            lua_pushnumber(S, data[1] / 255.0);
+            lua_pushnumber(S, data[2] / 255.0);
+            lua_pushnumber(S, data[3] / 255.0);
+        };
+        switch ((WasmAddon::UiOp)op) {
+            case WasmAddon::UiOp::SetSize:
+                if (len < 8) return false;
+                return CallOn(L, widget.mainRef, "SetWidth", 1, [&](lua_State* S) { lua_pushnumber(S, ReadI32(data)); })
+                    && CallOn(L, widget.mainRef, "SetHeight", 1, [&](lua_State* S) { lua_pushnumber(S, ReadI32(data + 4)); });
+            case WasmAddon::UiOp::SetPoint: {
+                if (len < 16) return false;
+                static const char* kPoints[] = {"TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "CENTER", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT"};
+                if (data[0] > 8 || data[1] > 8) return false;
+                int32_t relHost = ReadI32(data + 4);
+                int top = lua_gettop(L);
+                lua_rawgeti(L, LUA_REGISTRYINDEX, widget.mainRef);
+                if (!lua_istable(L, -1) && !lua_isuserdata(L, -1)) { lua_settop(L, top); return false; }
+                int self = lua_gettop(L);
+                if (relHost == 0) {
+                    lua_getfield(L, self, "GetParent");
+                    lua_pushvalue(L, self);
+                    if (lua_pcall(L, 1, 1, 0) != 0 || lua_isnil(L, -1)) {
+                        lua_settop(L, self);
+                        lua_getfield(L, LUA_GLOBALSINDEX, "UIParent");
+                    }
+                } else {
+                    auto rel = m_ui.find((uint64_t)relHost);
+                    if (rel == m_ui.end()) { lua_settop(L, top); return false; }
+                    lua_rawgeti(L, LUA_REGISTRYINDEX, rel->second.mainRef);
+                }
+                int relative = lua_gettop(L);
+                lua_getfield(L, self, "ClearAllPoints");
+                if (lua_isfunction(L, -1)) {
+                    lua_pushvalue(L, self);
+                    lua_pcall(L, 1, 0, 0);
+                } else {
+                    lua_pop(L, 1);
+                }
+                lua_getfield(L, self, "SetPoint");
+                if (!lua_isfunction(L, -1)) { lua_settop(L, top); return false; }
+                lua_pushvalue(L, self);
+                lua_pushstring(L, kPoints[data[0]]);
+                lua_pushvalue(L, relative);
+                lua_pushstring(L, kPoints[data[1]]);
+                lua_pushnumber(L, ReadI32(data + 8));
+                lua_pushnumber(L, ReadI32(data + 12));
+                bool ok = lua_pcall(L, 6, 0, 0) == 0;
+                lua_settop(L, top);
+                return ok;
+            }
+            case WasmAddon::UiOp::SetColor:
+                if (len < 4) return false;
+                if (widget.kind == WidgetKind::StatusBar) return CallOn(L, widget.mainRef, "SetStatusBarColor", 4, pushColor);
+                if (widget.kind == WidgetKind::FontString) return CallOn(L, widget.mainRef, "SetTextColor", 4, pushColor);
+                if (widget.kind == WidgetKind::Texture) return CallOn(L, widget.mainRef, "SetVertexColor", 4, pushColor);
+                return CallOn(L, widget.mainRef, "SetBackdropColor", 4, pushColor);
+            case WasmAddon::UiOp::SetShown:
+                if (len < 1) return false;
+                return CallOn(L, widget.mainRef, data[0] ? "Show" : "Hide", 0, [](lua_State*) {});
+            case WasmAddon::UiOp::SetValue:
+                if (len < 12 || widget.kind != WidgetKind::StatusBar) return false;
+                return CallOn(L, widget.mainRef, "SetMinMaxValues", 2, [&](lua_State* S) {
+                           lua_pushnumber(S, ReadI32(data + 4));
+                           lua_pushnumber(S, ReadI32(data + 8));
+                       })
+                    && CallOn(L, widget.mainRef, "SetValue", 1, [&](lua_State* S) { lua_pushnumber(S, ReadI32(data)); });
+            case WasmAddon::UiOp::SetJustify: {
+                if (len < 2 || widget.kind != WidgetKind::FontString || data[0] > 2 || data[1] > 2) return false;
+                static const char* kH[] = {"LEFT", "CENTER", "RIGHT"};
+                static const char* kV[] = {"TOP", "MIDDLE", "BOTTOM"};
+                return CallOn(L, widget.mainRef, "SetJustifyH", 1, [&](lua_State* S) { lua_pushstring(S, kH[data[0]]); })
+                    && CallOn(L, widget.mainRef, "SetJustifyV", 1, [&](lua_State* S) { lua_pushstring(S, kV[data[1]]); });
+            }
+            case WasmAddon::UiOp::SetFontSize:
+                if (len < 4 || widget.kind != WidgetKind::FontString) return false;
+                return CallOn(L, widget.mainRef, "SetFont", 2, [&](lua_State* S) {
+                    lua_pushstring(S, "Fonts\\FRIZQT__.TTF");
+                    lua_pushnumber(S, ReadI32(data));
+                });
+            case WasmAddon::UiOp::SetBackdrop:
+                if (len < 4 || (widget.kind != WidgetKind::Frame && widget.kind != WidgetKind::Button && widget.kind != WidgetKind::StatusBar)) return false;
+                return ApplyBackdrop(L, widget.mainRef, data);
+            case WasmAddon::UiOp::SetTextColor:
+                if (len < 4 || widget.kind != WidgetKind::FontString) return false;
+                return CallOn(L, widget.mainRef, "SetTextColor", 4, pushColor);
+            case WasmAddon::UiOp::SetLevel:
+                if (len < 4 || widget.kind == WidgetKind::FontString || widget.kind == WidgetKind::Texture) return false;
+                return CallOn(L, widget.mainRef, "SetFrameLevel", 1, [&](lua_State* S) { lua_pushnumber(S, ReadI32(data)); });
+            case WasmAddon::UiOp::SetStrata: {
+                if (len < 1 || data[0] > 7 || widget.kind == WidgetKind::FontString || widget.kind == WidgetKind::Texture) return false;
+                static const char* kStrata[] = {"BACKGROUND", "LOW", "MEDIUM", "HIGH", "DIALOG", "FULLSCREEN", "FULLSCREEN_DIALOG", "TOOLTIP"};
+                return CallOn(L, widget.mainRef, "SetFrameStrata", 1, [&](lua_State* S) { lua_pushstring(S, kStrata[data[0]]); });
+            }
+        }
+        return false;
     }
 
     bool DoUiSetText(lua_State* L, uint64_t handle, const std::string& text) {
@@ -314,7 +611,7 @@ private:
         TaintScope taint("ui");
         TrackState(L);
         it = m_ui.find(handle);
-        if (it == m_ui.end()) return false;
+        if (it == m_ui.end() || it->second.textRef == LUA_NOREF) return false;
         int top = lua_gettop(L);
         lua_rawgeti(L, LUA_REGISTRYINDEX, it->second.textRef);
         if (!lua_istable(L, -1) && !lua_isuserdata(L, -1)) { lua_settop(L, top); return false; }
@@ -331,7 +628,8 @@ private:
         if (m_seenState && L != m_seenState) m_ui.clear();
         m_seenState = L;
     }
-    struct UiRefs { int32_t mainRef; int32_t textRef; };
+    enum class WidgetKind : uint8_t { Frame, FontString, Texture, StatusBar, Button };
+    struct UiRefs { int32_t mainRef = LUA_NOREF; int32_t textRef = LUA_NOREF; WidgetKind kind = WidgetKind::Frame; };
     lua_State* m_seenState = nullptr;
     std::map<uint64_t, UiRefs> m_ui;
     uint64_t m_nextHandle = 1;
@@ -573,8 +871,10 @@ int32_t CCommand_WasmAddons(const char*, const char*) {
 
 void WasmAddonClient_ServiceConfirms() {
     if (!s_initialized) return;
-    WasmConfirmUi_Tick(OsGetAsyncTimeMs());
+    uint64_t now = OsGetAsyncTimeMs();
+    WasmConfirmUi_Tick(now);
     s_manager.TickConfirm();
+    s_manager.TickUi(now);
     WasmConfirmUiResult result;
     if (WasmConfirmUi_Poll(result)) s_manager.ResolveConfirm(result.id, result.accepted);
 }

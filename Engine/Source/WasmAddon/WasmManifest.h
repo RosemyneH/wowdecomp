@@ -8,5 +8,6 @@ bool IsValidAddonId(const std::string& id);
 bool IsPlainFileName(const std::string& name);
 std::string Sha256Hex(const uint8_t* data, size_t len);
 std::string SanitizeDisplayText(const std::string& text);
+std::string SanitizeUiText(const std::string& text);
 
 } // namespace WasmAddon

@@ -1,0 +1,14 @@
+[addon]
+id = "example.unit-frames"
+name = "Unit Frames"
+version = "0.1.0"
+author = "wowdecomp"
+api_version = "2"
+
+[permissions]
+ui.create = true
+units.read = true
+chat.print = true
+
+[limits]
+memory_mb = 32

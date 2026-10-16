@@ -135,12 +135,24 @@ static bool IsValidUnitToken(const std::string& token) {
     return ranged("party", 4) || ranged("partypet", 4) || ranged("raid", 40) || ranged("raidpet", 40) || ranged("boss", 5) || ranged("arena", 5);
 }
 
+static bool IsEventToken(const std::string& name) {
+    if (name.empty() || name.size() > 64) return false;
+    for (char c : name)
+        if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_')) return false;
+    return true;
+}
+
 bool WasmAddonManager::IsKnownEvent(const std::string& name) {
+    if (!IsEventToken(name)) return false;
     static const char* kEvents[] = {"BAG_UPDATE","BAG_UPDATE_DELAYED","PLAYER_LOGIN","PLAYER_LOGOUT",
         "PLAYER_ENTERING_WORLD","ADDON_LOADED","CHAT_MSG_SYSTEM","UNIT_HEALTH","AUCTION_HOUSE_SHOW","WOW_ON_LOAD_TEST",
         "COMBAT_LOG_EVENT","COMBAT_LOG_EVENT_UNFILTERED","AUCTION_ITEM_LIST_UPDATE","AUCTION_HOUSE_CLOSED","WASM_CONFIRM_RESULT"};
     for (auto e : kEvents) if (name == e) return true;
-    return false;
+    auto starts = [&](const char* prefix) {
+        size_t n = std::strlen(prefix);
+        return name.size() > n && name.compare(0, n, prefix) == 0;
+    };
+    return starts("UNIT_") || starts("CHAT_MSG_") || starts("PLAYER_");
 }
 
 std::vector<uint8_t> WasmAddonManager::SerializeInventory(const std::vector<InventoryItem>& items) {
@@ -231,6 +243,17 @@ void WasmAddonManager::DeliverConfirmResult(const ConfirmQueue::Completed& compl
     DispatchEventTo(completed.addonIndex, "WASM_CONFIRM_RESULT", writer.Finish());
     std::string addonId = completed.addonIndex < m_addons.size() ? m_addons[completed.addonIndex]->info.manifest.id : "";
     RecordActivity(addonId, "confirm.result", std::to_string(completed.id) + " status=" + std::to_string((uint32_t)completed.status));
+}
+
+void WasmAddonManager::TickUi(uint64_t nowMs) {
+    if (m_dispatching || m_callbackDepth > 0 || nowMs < m_nextUiTick) return;
+    m_nextUiTick = nowMs + 200;
+    for (auto& addonPtr : m_addons) {
+        Addon& addon = *addonPtr;
+        if (addon.info.state != AddonState::Running || !addon.instance || !addon.instance->HasExport("wow_on_update")) continue;
+        int64_t ignored = 0;
+        InvokeExport(addon, "wow_on_update", {}, ignored);
+    }
 }
 
 void WasmAddonManager::TickConfirm() {
@@ -333,6 +356,22 @@ bool WasmAddonManager::GrantSensitive(const std::string& addonId, Permission per
     return false;
 }
 
+WasmAddonManager::UiHandle* WasmAddonManager::FindUi(Addon& addon, int64_t guest) {
+    if (guest <= 0 || guest > 0x7fffffff) return nullptr;
+    uint32_t handle = (uint32_t)guest;
+    auto it = addon.uiHandles.find(handle & 0xffff);
+    if (it == addon.uiHandles.end() || it->second.generation != (handle >> 16)) return nullptr;
+    return &it->second;
+}
+
+static bool CanParent(UiKind kind) {
+    return kind == UiKind::Frame || kind == UiKind::StatusBar || kind == UiKind::Button;
+}
+
+static int32_t ReadI32(const uint8_t* p) { return (int32_t)GetU32(p); }
+
+static bool InRange(int32_t v, int32_t lo, int32_t hi) { return v >= lo && v <= hi; }
+
 bool WasmAddonManager::HasPermission(Addon& addon, Permission perm, HostFn) {
     if (addon.info.grantedPermissions & perm) return true;
     addon.info.stats.denials++;
@@ -421,22 +460,114 @@ int64_t WasmAddonManager::HandleHostCall(Addon& addon, IWasmInstance& instance, 
             if (!hostHandle) return ErrUnavailable;
             uint32_t slot = addon.nextUiSlot++;
             uint32_t generation = addon.uiGeneration & 0x7fff;
-            addon.uiHandles[slot] = {0, generation, hostHandle};
+            addon.uiHandles[slot] = {0, generation, hostHandle, kind == "frame" ? UiKind::Frame : UiKind::FontString};
             RecordActivity(addon.info.manifest.id, "ui.create", kind);
             return (int32_t)((generation << 16) | slot);
+        }
+        case HostFn::UiSpawn: {
+            if (!HasPermission(addon, PermUiCreate, fn)) return ErrPermissionDenied;
+            if (args.size() < 3) return ErrInvalidArgument;
+            std::string kind;
+            if (!readString(1, 2, kind)) return ErrInvalidMemory;
+            UiKind kindId = UiKind::None;
+            if (kind == "frame") kindId = UiKind::Frame;
+            else if (kind == "fontstring") kindId = UiKind::FontString;
+            else if (kind == "texture") kindId = UiKind::Texture;
+            else if (kind == "statusbar") kindId = UiKind::StatusBar;
+            else if (kind == "button") kindId = UiKind::Button;
+            else return ErrInvalidArgument;
+            uint64_t parentHost = 0;
+            if (args[0] != 0) {
+                UiHandle* parent = FindUi(addon, args[0]);
+                if (!parent) return ErrInvalidHandle;
+                if (!CanParent(parent->kind)) return ErrInvalidArgument;
+                parentHost = parent->hostHandle;
+            }
+            if (addon.uiHandles.size() >= addon.limits.maxUiHandles) return ErrLimitExceeded;
+            if (addon.nextUiSlot > 0xffff) return ErrLimitExceeded;
+            uint64_t hostHandle = m_host ? m_host->UiSpawn(addon.info.manifest.id, parentHost, kind) : 0;
+            if (!hostHandle) return ErrUnavailable;
+            uint32_t slot = addon.nextUiSlot++;
+            uint32_t generation = addon.uiGeneration & 0x7fff;
+            addon.uiHandles[slot] = {0, generation, hostHandle, kindId};
+            RecordActivity(addon.info.manifest.id, "ui.spawn", kind);
+            return (int32_t)((generation << 16) | slot);
+        }
+        case HostFn::UiStyle: {
+            if (!HasPermission(addon, PermUiCreate, fn)) return ErrPermissionDenied;
+            if (args.size() < 4 || args[1] < 0 || args[2] < 0 || args[3] < 0 || args[3] > 64) return ErrInvalidArgument;
+            UiHandle* widget = FindUi(addon, args[0]);
+            if (!widget) return ErrInvalidHandle;
+            std::string raw;
+            if (args[3] > 0 && !instance.ReadMemory((uint32_t)args[2], (uint32_t)args[3], raw)) return ErrInvalidMemory;
+            std::vector<uint8_t> blob(raw.begin(), raw.end());
+            int32_t op = (int32_t)args[1];
+            auto need = [&](size_t n) { return blob.size() == n; };
+            switch ((UiOp)op) {
+                case UiOp::SetSize:
+                    if (!need(8) || !InRange(ReadI32(blob.data()), 1, 2000) || !InRange(ReadI32(blob.data() + 4), 1, 2000)) return ErrInvalidArgument;
+                    break;
+                case UiOp::SetPoint: {
+                    if (!need(16) || blob[0] > 8 || blob[1] > 8 || blob[2] || blob[3]) return ErrInvalidArgument;
+                    int32_t rel = ReadI32(blob.data() + 4);
+                    int32_t x = ReadI32(blob.data() + 8);
+                    int32_t y = ReadI32(blob.data() + 12);
+                    if (!InRange(x, -4000, 4000) || !InRange(y, -4000, 4000)) return ErrInvalidArgument;
+                    uint64_t relHost = 0;
+                    if (rel != 0) {
+                        UiHandle* other = FindUi(addon, rel);
+                        if (!other || other == widget) return other ? ErrInvalidArgument : ErrInvalidHandle;
+                        relHost = other->hostHandle;
+                    }
+                    if (relHost > 0x7fffffff) return ErrLimitExceeded;
+                    uint32_t packed = (uint32_t)relHost;
+                    for (int i = 0; i < 4; i++) blob[4 + i] = (uint8_t)(packed >> (8 * i));
+                    break;
+                }
+                case UiOp::SetColor:
+                case UiOp::SetTextColor:
+                case UiOp::SetBackdrop:
+                    if (!need(4)) return ErrInvalidArgument;
+                    break;
+                case UiOp::SetShown:
+                    if (!need(1) || blob[0] > 1) return ErrInvalidArgument;
+                    break;
+                case UiOp::SetValue: {
+                    if (!need(12)) return ErrInvalidArgument;
+                    int32_t value = ReadI32(blob.data());
+                    int32_t minV = ReadI32(blob.data() + 4);
+                    int32_t maxV = ReadI32(blob.data() + 8);
+                    if (!InRange(value, -1000000000, 1000000000) || !InRange(minV, -1000000000, 1000000000) ||
+                        !InRange(maxV, -1000000000, 1000000000) || minV > maxV) return ErrInvalidArgument;
+                    break;
+                }
+                case UiOp::SetJustify:
+                    if (!need(2) || blob[0] > 2 || blob[1] > 2) return ErrInvalidArgument;
+                    break;
+                case UiOp::SetFontSize:
+                    if (!need(4) || !InRange(ReadI32(blob.data()), 6, 64)) return ErrInvalidArgument;
+                    break;
+                case UiOp::SetLevel:
+                    if (!need(4) || !InRange(ReadI32(blob.data()), 0, 128)) return ErrInvalidArgument;
+                    break;
+                case UiOp::SetStrata:
+                    if (!need(1) || blob[0] > 7) return ErrInvalidArgument;
+                    break;
+                default:
+                    return ErrInvalidArgument;
+            }
+            return m_host && m_host->UiStyle(widget->hostHandle, op, blob.data(), (uint32_t)blob.size()) ? Ok : ErrUnavailable;
         }
         case HostFn::UiSetText: {
             if (!HasPermission(addon, PermUiCreate, fn)) return ErrPermissionDenied;
             if (args.size() < 3) return ErrInvalidArgument;
-            if (args[0] < 0) return ErrInvalidHandle;
-            uint32_t handle = (uint32_t)args[0];
-            auto it = addon.uiHandles.find(handle & 0xffff);
-            if (it == addon.uiHandles.end() || it->second.generation != (handle >> 16)) return ErrInvalidHandle;
+            UiHandle* widget = FindUi(addon, args[0]);
+            if (!widget) return ErrInvalidHandle;
             if (args[2] < 0 || args[2] > 4096) return ErrLimitExceeded;
             std::string text;
             if (!instance.ReadMemory((uint32_t)args[1], (uint32_t)args[2], text)) return ErrInvalidMemory;
-            text = SanitizeDisplayText(text);
-            return m_host && m_host->UiSetText(it->second.hostHandle, text) ? Ok : ErrUnavailable;
+            text = SanitizeUiText(text);
+            return m_host && m_host->UiSetText(widget->hostHandle, text) ? Ok : ErrUnavailable;
         }
         case HostFn::PerfQuery: {
             if (!HasPermission(addon, PermProfilingRead, fn)) return ErrPermissionDenied;
@@ -840,9 +971,11 @@ void WasmAddonManager::DispatchEvent(const std::string& eventName, const std::ve
             m_dispatchBudget--;
             addon.info.stats.eventsReceived++;
             // ʕ •ᴥ•ʔ✿ Chat and combat payloads are withheld without the matching sensitive permission ✿ ʕ •ᴥ•ʔ
-            bool gated = (current.name == "CHAT_MSG_SYSTEM" && !(addon.info.grantedPermissions & PermChatRead)) ||
+            bool chat = current.name.size() >= 9 && current.name.compare(0, 9, "CHAT_MSG_") == 0;
+            bool unit = current.name.size() >= 5 && current.name.compare(0, 5, "UNIT_") == 0;
+            bool gated = (chat && !(addon.info.grantedPermissions & PermChatRead)) ||
                          (combat && !(addon.info.grantedPermissions & PermCombatRead)) ||
-                         (current.name.compare(0, 5, "UNIT_") == 0 && !(addon.info.grantedPermissions & PermUnitsRead));
+                         (unit && !(addon.info.grantedPermissions & PermUnitsRead));
             std::vector<uint8_t> bytes = gated ? RedactPayload(effective) : effective;
             bool v2 = addon.info.manifest.apiVersion >= 2;
             if (!v2 && !addon.instance->HasExport("wow_on_event")) continue;

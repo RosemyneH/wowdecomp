@@ -1,0 +1,8 @@
+[addon]
+id = "test.ui-layout"
+name = "UI Layout Fixture"
+version = "0.1.0"
+api_version = "1"
+
+[permissions]
+ui.create = true

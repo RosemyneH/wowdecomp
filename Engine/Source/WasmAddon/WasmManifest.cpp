@@ -58,6 +58,16 @@ std::string SanitizeDisplayText(const std::string& text) {
     return out;
 }
 
+std::string SanitizeUiText(const std::string& text) {
+    std::string out;
+    for (char c : text) {
+        if (c == '|') out += '/';
+        else if (c == '\n' || (unsigned char)c >= 0x20) out += c;
+        else out += ' ';
+    }
+    return out;
+}
+
 bool IsValidAddonId(const std::string& id) {
     if (id.empty() || id.size() > 128) return false;
     for (char c : id)

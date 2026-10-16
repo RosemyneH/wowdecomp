@@ -14,8 +14,8 @@ inline constexpr uint32_t kMaxPackageBytes = 32 * 1024 * 1024;
 inline constexpr uint64_t kHostMaxMemoryBytes = 256ull * 1024 * 1024;
 inline constexpr uint64_t kDefaultFuelPerCallback = 20'000'000;
 inline constexpr uint64_t kHostMaxFuelPerCallback = 50'000'000;
-inline constexpr uint32_t kMaxEventsPerAddon = 32;
-inline constexpr uint32_t kMaxUiHandlesPerAddon = 64;
+inline constexpr uint32_t kMaxEventsPerAddon = 128;
+inline constexpr uint32_t kMaxUiHandlesPerAddon = 256;
 inline constexpr uint32_t kMaxHostCallsPerCallback = 10000;
 
 enum class AddonState { Discovered, Validated, Loaded, Running, Suspended, Failed, Unloaded };
@@ -250,6 +250,14 @@ struct ConfirmExecResult {
     int32_t detail = 0;
 };
 
+// ʕ •ᴥ•ʔ✿ ui_style blobs are little-endian. Sizes are UI pixels. Points: 0 TL, 1 T, 2 TR, 3 L, 4 C, 5 R, 6 BL, 7 B, 8 BR ✿ ʕ •ᴥ•ʔ
+enum class UiOp : int32_t {
+    SetSize = 1, SetPoint = 2, SetColor = 3, SetShown = 4, SetValue = 5, SetJustify = 6,
+    SetFontSize = 7, SetBackdrop = 8, SetTextColor = 9, SetLevel = 10, SetStrata = 11,
+};
+
+enum class UiKind : uint8_t { None = 0, Frame = 1, FontString = 2, Texture = 3, StatusBar = 4, Button = 5 };
+
 class IWasmHostServices {
 public:
     virtual ~IWasmHostServices() = default;
@@ -258,6 +266,8 @@ public:
     virtual bool GetUnitSnapshot(const std::vector<std::string>& tokens, std::vector<UnitRecord>& out) { (void)tokens; (void)out; return false; }
     virtual bool GetAuctionSnapshot(int32_t kind, AuctionSnapshot& out) { (void)kind; (void)out; return false; }
     virtual uint64_t UiCreate(const std::string& addonId, const std::string& kind) { (void)addonId; (void)kind; return 0; }
+    virtual uint64_t UiSpawn(const std::string& addonId, uint64_t parentHost, const std::string& kind) { (void)addonId; (void)parentHost; (void)kind; return 0; }
+    virtual bool UiStyle(uint64_t hostHandle, int32_t op, const uint8_t* data, uint32_t len) { (void)hostHandle; (void)op; (void)data; (void)len; return false; }
     virtual bool UiSetText(uint64_t hostHandle, const std::string& text) { (void)hostHandle; (void)text; return false; }
     virtual void UiDestroy(uint64_t hostHandle) { (void)hostHandle; }
     virtual void Log(const std::string& message) { (void)message; }
@@ -270,7 +280,7 @@ public:
 
 enum class HostFn : uint32_t {
     ApiVersion = 0, Ping, ChatPrint, EventSubscribe, InventorySnapshot, UiCreate, UiSetText, PerfQuery,
-    StorageGet, StorageLen, StorageKeys, StorageUsage, StorageSet, StorageDelete, UnitSnapshot, AuctionSnapshot, ChatSendRequest, AuctionBidRequest, Count
+    StorageGet, StorageLen, StorageKeys, StorageUsage, StorageSet, StorageDelete, UnitSnapshot, AuctionSnapshot, ChatSendRequest, AuctionBidRequest, UiSpawn, UiStyle, Count
 };
 static_assert((uint32_t)HostFn::Count <= 32, "hostCallsByFn array too small");
 

@@ -1,0 +1,14 @@
+[addon]
+id = "example.whisper-window"
+name = "Whisper Window"
+version = "0.1.0"
+author = "wowdecomp"
+api_version = "2"
+
+[permissions]
+ui.create = true
+chat.read = true
+chat.print = true
+
+[limits]
+memory_mb = 32

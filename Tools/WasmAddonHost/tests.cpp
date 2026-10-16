@@ -59,7 +59,19 @@ struct MockHost final : IWasmHostServices {
         out.records = {{1, 6948, 20, 100, 5, 5000, 0, 2, 2, 0}};
         return true;
     }
+    struct StyleCall { uint64_t handle; int32_t op; std::vector<uint8_t> blob; };
+    std::vector<StyleCall> styles;
     uint64_t UiCreate(const std::string&, const std::string&) override { return nextUi++; }
+    uint64_t UiSpawn(const std::string&, uint64_t, const std::string& kind) override {
+        uint64_t handle = nextUi++;
+        ui[handle] = kind;
+        return handle;
+    }
+    bool UiStyle(uint64_t handle, int32_t op, const uint8_t* data, uint32_t len) override {
+        if (!ui.count(handle)) return false;
+        styles.push_back({handle, op, std::vector<uint8_t>(data, data + len)});
+        return true;
+    }
     bool UiSetText(uint64_t h, const std::string& t) override { if (!ui.count(h) && h >= nextUi) return false; ui[h] = t; return true; }
     void UiDestroy(uint64_t h) override { ui.erase(h); }
 };
@@ -575,6 +587,67 @@ int main(int argc, char** argv) {
         lines = ComposeConfirmText(bid, "Example");
         CHECK(lines[1] == "Buyout 50s on item 6948 x20");
         CHECK(IsAllowedChatType(1) && IsAllowedChatType(40) && !IsAllowedChatType(0) && !IsAllowedChatType(9));
+    }
+
+    {   // ʕ •ᴥ•ʔ✿ Layout calls reject bad kinds, parents and opcodes, and unload drops the widgets ✿ ʕ •ᴥ•ʔ
+        MockHost host; WasmAddonManager m; m.Initialize(tmp.string(), &host);
+        CHECK(m.LoadAddon((dist / "ui-layout").string()));
+        CHECK(Find(m, "test.ui-layout").state == AddonState::Running);
+        int64_t frame = 0, label = 0, badKind = 0, badParent = 0, badOp = 0;
+        CHECK(m.CallExportInt("test.ui-layout", "wow_frame", frame) && frame > 0);
+        CHECK(m.CallExportInt("test.ui-layout", "wow_label", label) && label > 0 && label != frame);
+        CHECK(m.CallExportInt("test.ui-layout", "wow_bad_kind", badKind) && badKind == ErrInvalidArgument);
+        CHECK(m.CallExportInt("test.ui-layout", "wow_bad_parent", badParent) && badParent == ErrInvalidArgument);
+        CHECK(m.CallExportInt("test.ui-layout", "wow_bad_op", badOp) && badOp == ErrInvalidArgument);
+        bool laid = false, sized = false;
+        for (auto& [h, text] : host.ui) if (text == "laid out") laid = true;
+        for (auto& style : host.styles) if (style.op == (int32_t)UiOp::SetSize) sized = true;
+        CHECK(laid && sized);
+        CHECK(Find(m, "test.ui-layout").activeUiHandles == 2);
+        CHECK(m.UnloadAddon("test.ui-layout"));
+        CHECK(host.ui.empty());
+        m.Shutdown();
+    }
+    {   // ʕ ◕ᴥ◕ ʔ✿ Unit panels draw immediately; numbers arrive once units.read is granted ✿ ʕ ◕ᴥ◕ ʔ
+        MockHost host; WasmAddonManager m; m.Initialize(tmp.string(), &host);
+        CHECK(m.LoadAddon((dist / "unit-frames").string()));
+        auto info = Find(m, "example.unit-frames");
+        CHECK(info.state == AddonState::Running);
+        if (info.state != AddonState::Running) std::cerr << info.lastError << "\n";
+        CHECK(info.activeUiHandles == 30);
+        bool sawPlayer = false, sawLevel = false;
+        for (auto& [h, text] : host.ui) {
+            if (text.find("Player") != std::string::npos) sawPlayer = true;
+            if (text.find("80") != std::string::npos) sawLevel = true;
+        }
+        CHECK(sawPlayer && !sawLevel);
+        CHECK(m.GrantSensitive("example.unit-frames", PermUnitsRead));
+        int64_t updated = -1;
+        CHECK(m.CallExportInt("example.unit-frames", "wow_on_update", updated) && updated == 0);
+        sawLevel = false;
+        for (auto& [h, text] : host.ui) if (text.find("Player 80") != std::string::npos) sawLevel = true;
+        CHECK(sawLevel);
+        m.Shutdown();
+    }
+    {   // ʕ •ᴥ•ʔ✿ Whisper text stays redacted until chat.read, then the sender line is shown ✿ ʕ •ᴥ•ʔ
+        MockHost host; WasmAddonManager m; m.Initialize(tmp.string(), &host);
+        CHECK(m.LoadAddon((dist / "whisper-window").string()));
+        CHECK(Find(m, "example.whisper-window").state == AddonState::Running);
+        CHECK(Find(m, "example.whisper-window").activeUiHandles == 3);
+        EventPayloadWriter writer("CHAT_MSG_WHISPER", 0);
+        writer.String("hey there", 9);
+        writer.String("Thrall", 6);
+        auto payload = writer.Finish();
+        m.DispatchEvent("CHAT_MSG_WHISPER", payload);
+        bool hidden = false;
+        for (auto& [h, text] : host.ui) if (text.find("hidden") != std::string::npos) hidden = true;
+        CHECK(hidden);
+        CHECK(m.GrantSensitive("example.whisper-window", PermChatRead));
+        m.DispatchEvent("CHAT_MSG_WHISPER", payload);
+        bool saw = false;
+        for (auto& [h, text] : host.ui) if (text.find("Thrall: hey there") != std::string::npos) saw = true;
+        CHECK(saw);
+        m.Shutdown();
     }
 
     std::cout << (g_failures ? "TESTS FAILED " : "ALL TESTS PASSED ") << g_failures << "\n";

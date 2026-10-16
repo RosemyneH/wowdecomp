@@ -7,7 +7,7 @@
 <pre>rustup target add wasm32-unknown-unknown
 cargo build --target wasm32-unknown-unknown --release</pre>
 <p>Use the SDK in <code>sdk/wow-addon-sdk</code> (see <code>examples/hello-world</code>,
-<code>inventory-watcher</code>, <code>ui-demo</code>), or any language that can emit
+<code>inventory-watcher</code>, <code>ui-demo</code>, <code>unit-frames</code>, <code>whisper-window</code>), or any language that can emit
 <code>wasm32-unknown-unknown</code> — a C example using raw imports is in <code>examples/c-hello</code>.
 Your module must export <code>memory</code> and <code>wow_on_load() -&gt; i32</code>; export
 <code>wow_on_event(ptr, len)</code>, <code>wow_alloc</code>/<code>wow_free</code> (provided by the SDK)
@@ -21,6 +21,17 @@ to receive events. Importing anything outside module <code>wow</code> (including
 Manifest limits are requests, clamped to host maximums. Sensitive permissions
 (<code>chat.send</code>, <code>auction.*</code>, <code>storage.*</code>, …) stay denied until the user
 grants them — grants persist per addon id + module hash in <code>wasm-permissions.cfg</code>.</p>
+<h2>Frames</h2>
+<p><code>ui_spawn(parent, kind)</code> creates a <code>frame</code>, <code>fontstring</code>, <code>texture</code>,
+<code>statusbar</code>, or <code>button</code>. Parent <code>0</code> is <code>UIParent</code>; other parents must be a frame, button, or status bar you own.
+<code>ui_style(handle, op, blob)</code> places and colors it. The SDK's <code>ui</code> module builds the blobs:
+size, point, color, backdrop, show, status-bar value, justify, font size, frame level, strata.
+<code>ui_set_text</code> still sets font-string text and keeps newline characters.
+<code>ui_create</code> remains the older one-shot label. An addon that exports <code>wow_on_update</code> is called about five times a second.</p>
+<p><code>examples/unit-frames</code> draws player, target, and party panels. <code>examples/whisper-window</code> lists whispers.
+Both are original layouts. Health numbers need <code>units.read</code> and whisper text needs <code>chat.read</code>;
+until granted, the panels still show and the payloads stay redacted. From the developer console:
+<code>wasmgrant example.unit-frames units.read</code> and <code>wasmgrant example.whisper-window chat.read</code>.</p>
 <h2>Inspect &amp; debug</h2>
 <p>In game: <code>/script DEFAULT_CHAT_FRAME:AddMessage(WasmAddonInspectorText())</code> shows state,
 hash, granted/denied permissions, imports, memory/fuel/host-call counters and the activity log.

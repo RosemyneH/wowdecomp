@@ -13,6 +13,8 @@ LIVE_ADDONS=(
     hello-world
     inventory-watcher
     ui-demo
+    unit-frames
+    whisper-window
     c-hello
     ping
     ui-creator

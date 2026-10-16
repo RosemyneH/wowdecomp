@@ -27,6 +27,8 @@ mod raw {
         pub fn auction_bid_request(list: i32, index: i32, bid: i32) -> i32;
         pub fn unit_snapshot(tptr: *const u8, tlen: u32, out: *mut u8, cap: u32) -> i32;
         pub fn auction_snapshot(kind: i32, out: *mut u8, cap: u32) -> i32;
+        pub fn ui_spawn(parent: i32, ptr: *const u8, len: u32) -> i32;
+        pub fn ui_style(handle: i32, op: i32, ptr: *const u8, len: u32) -> i32;
     }
 }
 
@@ -36,6 +38,97 @@ pub fn print(text: &str) -> i32 { unsafe { raw::chat_print(text.as_ptr(), text.l
 pub fn subscribe(event: &str) -> i32 { unsafe { raw::event_subscribe(event.as_ptr(), event.len() as u32) } }
 pub fn ui_create(kind: &str) -> i32 { unsafe { raw::ui_create(kind.as_ptr(), kind.len() as u32) } }
 pub fn ui_set_text(handle: i32, text: &str) -> i32 { unsafe { raw::ui_set_text(handle, text.as_ptr(), text.len() as u32) } }
+
+/// ʕ •ᴥ•ʔ✿ Frames, bars and text. Parent 0 is UIParent. Pixels are the 3.3.5 UI coordinate space ✿ ʕ •ᴥ•ʔ
+pub mod ui {
+    pub const SET_SIZE: i32 = 1;
+    pub const SET_POINT: i32 = 2;
+    pub const SET_COLOR: i32 = 3;
+    pub const SET_SHOWN: i32 = 4;
+    pub const SET_VALUE: i32 = 5;
+    pub const SET_JUSTIFY: i32 = 6;
+    pub const SET_FONT_SIZE: i32 = 7;
+    pub const SET_BACKDROP: i32 = 8;
+    pub const SET_TEXT_COLOR: i32 = 9;
+    pub const SET_LEVEL: i32 = 10;
+    pub const SET_STRATA: i32 = 11;
+
+    pub const TOPLEFT: u8 = 0;
+    pub const TOP: u8 = 1;
+    pub const TOPRIGHT: u8 = 2;
+    pub const LEFT: u8 = 3;
+    pub const CENTER: u8 = 4;
+    pub const RIGHT: u8 = 5;
+    pub const BOTTOMLEFT: u8 = 6;
+    pub const BOTTOM: u8 = 7;
+    pub const BOTTOMRIGHT: u8 = 8;
+
+    pub const JUSTIFY_LEFT: u8 = 0;
+    pub const JUSTIFY_CENTER: u8 = 1;
+    pub const JUSTIFY_RIGHT: u8 = 2;
+    pub const JUSTIFY_TOP: u8 = 0;
+    pub const JUSTIFY_MIDDLE: u8 = 1;
+    pub const JUSTIFY_BOTTOM: u8 = 2;
+
+    pub const STRATA_BACKGROUND: u8 = 0;
+    pub const STRATA_LOW: u8 = 1;
+    pub const STRATA_MEDIUM: u8 = 2;
+    pub const STRATA_HIGH: u8 = 3;
+    pub const STRATA_DIALOG: u8 = 4;
+
+    pub fn spawn(parent: i32, kind: &str) -> i32 {
+        unsafe { crate::raw::ui_spawn(parent, kind.as_ptr(), kind.len() as u32) }
+    }
+    pub fn style(handle: i32, op: i32, blob: &[u8]) -> i32 {
+        unsafe { crate::raw::ui_style(handle, op, blob.as_ptr(), blob.len() as u32) }
+    }
+    pub fn set_size(handle: i32, width: i32, height: i32) -> i32 {
+        let mut blob = [0u8; 8];
+        blob[..4].copy_from_slice(&width.to_le_bytes());
+        blob[4..].copy_from_slice(&height.to_le_bytes());
+        style(handle, SET_SIZE, &blob)
+    }
+    pub fn set_point(handle: i32, point: u8, relative: i32, rel_point: u8, x: i32, y: i32) -> i32 {
+        let mut blob = [0u8; 16];
+        blob[0] = point;
+        blob[1] = rel_point;
+        blob[4..8].copy_from_slice(&relative.to_le_bytes());
+        blob[8..12].copy_from_slice(&x.to_le_bytes());
+        blob[12..].copy_from_slice(&y.to_le_bytes());
+        style(handle, SET_POINT, &blob)
+    }
+    pub fn set_color(handle: i32, r: u8, g: u8, b: u8, a: u8) -> i32 {
+        style(handle, SET_COLOR, &[r, g, b, a])
+    }
+    pub fn set_text_color(handle: i32, r: u8, g: u8, b: u8, a: u8) -> i32 {
+        style(handle, SET_TEXT_COLOR, &[r, g, b, a])
+    }
+    pub fn set_backdrop(handle: i32, r: u8, g: u8, b: u8, a: u8) -> i32 {
+        style(handle, SET_BACKDROP, &[r, g, b, a])
+    }
+    pub fn set_shown(handle: i32, shown: bool) -> i32 {
+        style(handle, SET_SHOWN, &[u8::from(shown)])
+    }
+    pub fn set_value(handle: i32, value: i32, min: i32, max: i32) -> i32 {
+        let mut blob = [0u8; 12];
+        blob[..4].copy_from_slice(&value.to_le_bytes());
+        blob[4..8].copy_from_slice(&min.to_le_bytes());
+        blob[8..].copy_from_slice(&max.to_le_bytes());
+        style(handle, SET_VALUE, &blob)
+    }
+    pub fn set_justify(handle: i32, horizontal: u8, vertical: u8) -> i32 {
+        style(handle, SET_JUSTIFY, &[horizontal, vertical])
+    }
+    pub fn set_font_size(handle: i32, pixels: i32) -> i32 {
+        style(handle, SET_FONT_SIZE, &pixels.to_le_bytes())
+    }
+    pub fn set_level(handle: i32, level: i32) -> i32 {
+        style(handle, SET_LEVEL, &level.to_le_bytes())
+    }
+    pub fn set_strata(handle: i32, strata: u8) -> i32 {
+        style(handle, SET_STRATA, &[strata])
+    }
+}
 pub fn perf(kind: i32) -> i64 { unsafe { raw::perf_query(kind) } }
 
 /// ʕ •ᴥ•ʔ✿ Write actions are requests: the user confirms in an engine-owned dialog, the result arrives as a WASM_CONFIRM_RESULT event ✿ ʕ •ᴥ•ʔ

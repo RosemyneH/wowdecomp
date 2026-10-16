@@ -13,7 +13,7 @@
 <tr><td>Event dispatch</td><td><code>FrameScript_SignalEvent</code> in <code>FrameScript.cpp</code></td><td>New observer hook fires after all Lua listeners; WASM-only events bypass the old no-listener early return.</td></tr>
 <tr><td>Chat</td><td><code>DEFAULT_CHAT_FRAME:AddMessage</code> (Lua), <code>CSimpleMessageFrame::AddMessage</code></td><td>Host service calls the Lua method with <code>lua_pcall</code>; no interpolated code.</td></tr>
 <tr><td>Inventory</td><td><code>WoW/Source/Ui/ContainerFrame_Scripts.cpp</code> (<code>GetContainerNumSlots/ItemID/ItemInfo</code>)</td><td>Host service snapshots bags 0–4 into a binary blob in one host call.</td></tr>
-<tr><td>UI ownership</td><td><code>CSimpleFrame</code> hierarchy under <code>UIParent</code></td><td>Guests hold generation-tagged opaque handles; the client maps them to Lua registry refs and destroys them on unload.</td></tr>
+<tr><td>UI ownership</td><td><code>CSimpleFrame</code> hierarchy under <code>UIParent</code></td><td>Guests hold generation-tagged opaque handles. <code>ui_spawn</code> / <code>ui_style</code> build frames, bars, and text; the client maps them to Lua registry refs and hides them on unload.</td></tr>
 <tr><td>Logging / config</td><td><code>ConsoleWrite</code> (<code>ConsoleBase</code>), CVar system in <code>Client_CVar.cpp</code></td><td>Manager logs via host <code>Log</code>; approvals persist in <code>wasm-permissions.cfg</code> next to the addons.</td></tr>
 <tr><td>Build</td><td>Root <code>CMakeLists.txt</code>, <code>cmake/Platform.cmake</code> (Win/Linux/macOS-arm64)</td><td><code>Engine/Source/WasmAddon</code> static lib; Wasmtime via <code>cmake/Wasmtime.cmake</code>.</td></tr>
 </table>
@@ -41,7 +41,7 @@ A trap (including fuel exhaustion) faults or suspends only that addon.</p>
 <h2>Risks</h2>
 <ul>
 <li>Wasmtime is fetched prebuilt (pinned 36.0.0) when no system install exists — hash pinning is a follow-up.</li>
-<li>Event payloads are currently the event name only; rich payloads need a versioned ABI extension.</li>
+<li>API v2 addons receive WEV1 event payloads. Chat and unit arguments are redacted unless <code>chat.read</code> or <code>units.read</code> is granted. <code>UNIT_*</code>, <code>CHAT_MSG_*</code>, and <code>PLAYER_*</code> names can be subscribed.</li>
 <li>Client host services depend on Lua globals (<code>DEFAULT_CHAT_FRAME</code>, <code>UIParent</code>) that appear during FrameXML load; early calls return <code>ErrUnavailable</code> rather than failing.</li>
 <li>Windows/ARM64/macOS builds are configured from the same CMake but unverified locally.</li>
 </ul>

@@ -16,6 +16,8 @@ build() {
 build examples/hello-world hello-world examples/hello-world/addon.toml
 build examples/inventory-watcher inventory-watcher examples/inventory-watcher/addon.toml
 build examples/ui-demo ui-demo examples/ui-demo/addon.toml
+build examples/unit-frames unit-frames examples/unit-frames/addon.toml
+build examples/whisper-window whisper-window examples/whisper-window/addon.toml
 build fixtures/ping ping fixtures/ping/addon.toml
 build fixtures/loop loop fixtures/loop/addon.toml
 build fixtures/memory-bomb memory-bomb fixtures/memory-bomb/addon.toml
@@ -23,6 +25,7 @@ build fixtures/bad-pointer bad-pointer fixtures/bad-pointer/addon.toml
 build fixtures/unauthorized unauthorized fixtures/unauthorized/addon.toml
 build fixtures/unknown-import unknown-import fixtures/unknown-import/addon.toml
 build fixtures/ui-creator ui-creator fixtures/ui-creator/addon.toml
+build fixtures/ui-layout ui-layout fixtures/ui-layout/addon.toml
 build fixtures/storage-test storage-test fixtures/storage-test/addon.toml
 build fixtures/payload-test payload-test fixtures/payload-test/addon.toml
 build fixtures/unit-auction-test unit-auction-test fixtures/unit-auction-test/addon.toml
