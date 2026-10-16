@@ -748,6 +748,14 @@ int32_t SI2::AddAdvancedSound(SoundEntriesAdvancedRec* rec, int32_t soundKitId, 
 
     uint32_t id = sound->m_id;
     VSOUND_LOOKUP* node = s_vsoundLookup->InternalNewNode(id, 0, 0);
+
+    if (!node) {
+        s_nextAdvancedId--;
+        sound->~SI2AdvancedSound();
+        SMemFree(sound, "delete", -1, 0);
+        return 22;
+    }
+
     node->m_hashval = id;
     node->m_sound = sound;
 
