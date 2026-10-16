@@ -170,7 +170,7 @@ class VkContext {
     // ʕ ◕ᴥ◕ ʔ✿ 1 acquired, 0 recreate needed, 2 skip this frame (timeout) ✿ ʕ ◕ᴥ◕ ʔ
     int32_t BeginFrame();
     VkCommandBuffer UploadCmd();
-    void Submit(int32_t present);
+    int32_t Submit(int32_t present);
     int32_t EndFrame();
     void AbandonFrame();
     void FlushFrame();

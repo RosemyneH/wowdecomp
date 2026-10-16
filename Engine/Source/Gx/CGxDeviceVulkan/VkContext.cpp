@@ -807,7 +807,7 @@ VkCommandBuffer VkContext::UploadCmd() {
     return frame.uploadCmd;
 }
 
-void VkContext::Submit(int32_t present) {
+int32_t VkContext::Submit(int32_t present) {
     VkFrame& frame = this->Frame();
     VkCommandBuffer cmds[2];
     uint32_t cmdCount = 0;
@@ -843,17 +843,29 @@ void VkContext::Submit(int32_t present) {
     }
 
     vkResetFences(this->m_device, 1, &frame.fence);
-    vkQueueSubmit(this->m_queue, 1, &submit, frame.fence);
+    if (vkQueueSubmit(this->m_queue, 1, &submit, frame.fence) == VK_SUCCESS) {
+        return 1;
+    }
+
+    // ʕ •ᴥ•ʔ✿ A failed submit leaves the reset fence unsignaled; swap in a signaled fence so the next wait cannot hang ✿ ʕ •ᴥ•ʔ
+    VkFenceCreateInfo fenceInfo = { VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
+    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    VkFence signaled = VK_NULL_HANDLE;
+    if (vkCreateFence(this->m_device, &fenceInfo, nullptr, &signaled) == VK_SUCCESS) {
+        vkDestroyFence(this->m_device, frame.fence, nullptr);
+        frame.fence = signaled;
+    }
+    return 0;
 }
 
 int32_t VkContext::EndFrame() {
     VkFrame& frame = this->Frame();
     int32_t present = frame.acquired;
-    this->Submit(present);
+    int32_t submitted = this->Submit(present);
 
     VkResult result = VK_SUCCESS;
 
-    if (present) {
+    if (submitted && present) {
         VkPresentInfoKHR info = { VK_STRUCTURE_TYPE_PRESENT_INFO_KHR };
         info.waitSemaphoreCount = 1;
         info.pWaitSemaphores = &this->m_renderFinished[this->m_imageIndex];
@@ -866,7 +878,7 @@ int32_t VkContext::EndFrame() {
     frame.prepared = 0;
     this->m_frameIndex = (this->m_frameIndex + 1) % FramesInFlight;
 
-    return result == VK_SUCCESS && !this->m_suboptimal;
+    return submitted && result == VK_SUCCESS && !this->m_suboptimal;
 }
 
 void VkContext::AbandonFrame() {
