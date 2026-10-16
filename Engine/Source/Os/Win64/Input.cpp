@@ -866,6 +866,9 @@ void OsInputDestroy() {
     }
 }
 
+void OsInputQuitDeferredEvents() {
+}
+
 // OFFSET: 0x008697E0
 static int32_t ProcessMouseEvent(uint32_t message, HWND hwnd, MOUSEBUTTON button, OSINPUT id) {
     POINT point;

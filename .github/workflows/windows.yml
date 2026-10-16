@@ -12,6 +12,8 @@ concurrency:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      BUILD_DIR: build/x64
     steps:
       - uses: actions/checkout@v4
 
@@ -20,10 +22,10 @@ jobs:
           arch: x64
 
       - name: Configure
-        run: cmake -S . -B build/x64 -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B $env:BUILD_DIR -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build WowClient
-        run: cmake --build build/x64 --target WowClient --parallel
+        run: cmake --build $env:BUILD_DIR --target WowClient --parallel
 
       - uses: actions/upload-artifact@v4
         if: success()
@@ -35,6 +37,8 @@ jobs:
   build-arm64:
     runs-on: windows-11-arm
     continue-on-error: true
+    env:
+      BUILD_DIR: build/arm64
     steps:
       - uses: actions/checkout@v4
 
@@ -43,10 +47,10 @@ jobs:
           arch: arm64
 
       - name: Configure
-        run: cmake -S . -B build/arm64 -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B $env:BUILD_DIR -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build WowClient
-        run: cmake --build build/arm64 --target WowClient --parallel
+        run: cmake --build $env:BUILD_DIR --target WowClient --parallel
 
       - uses: actions/upload-artifact@v4
         if: success()
