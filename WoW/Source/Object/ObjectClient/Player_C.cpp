@@ -2245,6 +2245,11 @@ int32_t CGPlayer_C::IsCommentatorUberOrInArena() const {
 // OFFSET: 0x006E61B0
 void CGPlayer_C::QueueItemEnchantTime(WOWGUID item, int32_t slot, int32_t duration) {
     PlayerPendingItemExpiration* expiration = this->m_pendingItemExpirations.NewNode(2, 0, 0);
+
+    if (!expiration) {
+        return;
+    }
+
     expiration->m_itemGuid = item;
     expiration->m_slot = slot;
     expiration->m_duration = duration;
