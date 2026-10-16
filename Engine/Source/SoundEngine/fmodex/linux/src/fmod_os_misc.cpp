@@ -297,14 +297,18 @@ FMOD_RESULT FMOD_OS_CriticalSection_Free(FMOD_OS_CRITICALSECTION *crit)
         return FMOD_ERR_INVALID_PARAM;
     }
 
-    pthread_mutex_destroy((pthread_mutex_t *)crit);
+    FMOD_RESULT result = FMOD_OK;
+    if (pthread_mutex_destroy((pthread_mutex_t *)crit))
+    {
+        result = FMOD_ERR_INVALID_PARAM;
+    }
 
     if (crit != (FMOD_OS_CRITICALSECTION *)&gMemoryCrit)
     {
         FMOD_Memory_Free(crit);
     }
 
-    return FMOD_OK;
+    return result;
 }
 
 // OFFSET: 0x008D1F80
