@@ -1310,6 +1310,11 @@ void World::SetDetailDoodadDensity(int32_t density) {
 // VERIFY: 542dd26b auto
 // OFFSET: 0x00780730
 void World::SetDetailDoodadDist(float dist) {
+    // ʕ •ᴥ•ʔ✿ Past this, every chunk in the far clip rebuilds grass on the CPU and the view falls over ✿ ʕ •ᴥ•ʔ
+    if (dist > 220.0f) {
+        dist = 220.0f;
+    }
+
     if (dist != CWorld::detailDoodadDist) {
         CWorld::detailDoodadDist = dist;
         CDetailDoodad::s_bPoolsDirty = 1;

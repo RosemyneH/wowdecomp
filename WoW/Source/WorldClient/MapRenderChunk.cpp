@@ -591,6 +591,12 @@ void CMapRenderChunk::UpdatePools() {
     CMapRenderChunk::Destroy();
 
     int32_t radius = 1 - static_cast<int32_t>(World::s_farClip * -0.03f);
+
+    // ʕ •ᴥ•ʔ✿ 10000 yards is ~300 chunks. That vertex pool is about a gigabyte and the far land never comes up ✿ ʕ •ᴥ•ʔ
+    if (radius > 160) {
+        radius = 160;
+    }
+
     uint32_t count = (2 * radius * radius + 1) & ~1u;
 
     CMapRenderChunk::s_pnEstimateVertex = 145 * count;

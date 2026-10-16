@@ -12,7 +12,7 @@ class CWorldParamSlider {
     static constexpr float kHorizonFarclipScaleMaxRetail = 6.0f;
     static constexpr float kHorizonFarclipScaleMaxExtended = 48.0f;
     static constexpr float kGroundEffectDistMaxRetail = 140.0f;
-    static constexpr float kGroundEffectDistMaxExtended = 10000.0f;
+    static constexpr float kGroundEffectDistMaxExtended = 220.0f;
 
     static bool ExtendedViewEnabled();
     static bool ExtendedHorizonZClipEnabled();

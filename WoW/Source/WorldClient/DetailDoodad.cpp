@@ -112,16 +112,20 @@ static void __stdcall BuildInstanceMatrix(C33Matrix& result, C33Matrix& rotation
 static void AcquireBuffers(uint32_t vertexCount, CGxBuf** vertexBuf, uint32_t indexCount, CGxBuf** indexBuf) {
     uint32_t count = CDetailDoodad::s_freeGxBufs.Count();
 
-    if (count) {
+    if (count >= 2) {
         *vertexBuf = CDetailDoodad::s_freeGxBufs[count - 2];
         *indexBuf = CDetailDoodad::s_freeGxBufs[count - 1];
         CDetailDoodad::s_freeGxBufs.SetCount(count - 2);
         (*vertexBuf)->m_hasData = 0;
         (*indexBuf)->m_hasData = 0;
-    } else {
-        *vertexBuf = g_theGxDevicePtr->BufStream(GxPoolTarget_Vertex, sizeof(CGxVertexPNCT), vertexCount);
-        *indexBuf = g_theGxDevicePtr->BufStream(GxPoolTarget_Index, sizeof(uint16_t), indexCount);
+        return;
     }
+
+    // ʕ •ᴥ•ʔ✿ The shared stream buffer is wiped by the next lock, so a fallback here refills every frame ✿ ʕ •ᴥ•ʔ
+    *vertexBuf = nullptr;
+    *indexBuf = nullptr;
+    (void)vertexCount;
+    (void)indexCount;
 }
 
 // VERIFY: c83ff776 auto
@@ -573,18 +577,19 @@ void CDetailDoodad::UpdatePools() {
     s_vertexBufferSize = sizeof(CGxVertexPNCT) * vertexItems;
     s_indexBufferSize = sizeof(uint16_t) * indexItems;
 
-    CDetailDoodad::s_gxVertexPool = g_theGxDevicePtr->PoolCreate(GxPoolTarget_Vertex, GxPoolUsage_Dynamic, 128 * sizeof(CGxVertexPNCT) * vertexItems, GxPoolHintBit_Unk3, "CDetailDoodad_vtx");
-    CDetailDoodad::s_gxIndexPool = g_theGxDevicePtr->PoolCreate(GxPoolTarget_Index, GxPoolUsage_Dynamic, 128 * sizeof(uint16_t) * indexItems, GxPoolHintBit_Unk0, "CDetailDoodad_idx");
+    // ʕ •ᴥ•ʔ✿ 512 slots covers the grass radius. The old 128 spilled into the stream buffer and refilled every frame ✿ ʕ •ᴥ•ʔ
+    CDetailDoodad::s_gxVertexPool = g_theGxDevicePtr->PoolCreate(GxPoolTarget_Vertex, GxPoolUsage_Dynamic, 512 * sizeof(CGxVertexPNCT) * vertexItems, GxPoolHintBit_Unk3, "CDetailDoodad_vtx");
+    CDetailDoodad::s_gxIndexPool = g_theGxDevicePtr->PoolCreate(GxPoolTarget_Index, GxPoolUsage_Dynamic, 512 * sizeof(uint16_t) * indexItems, GxPoolHintBit_Unk0, "CDetailDoodad_idx");
 
-    CDetailDoodad::s_freeGxBufs.Reserve(256, 0);
+    CDetailDoodad::s_freeGxBufs.Reserve(1024, 0);
 
-    for (uint32_t i = 0; i < 256; i += 2) {
+    for (uint32_t i = 0; i < 1024; i += 2) {
         *CDetailDoodad::s_freeGxBufs.New() = g_theGxDevicePtr->BufCreate(CDetailDoodad::s_gxVertexPool, sizeof(CGxVertexPNCT), CDetailDoodad::s_vtxBufItems, sizeof(CGxVertexPNCT) * CDetailDoodad::s_vtxBufItems * (i >> 1));
         *CDetailDoodad::s_freeGxBufs.New() = g_theGxDevicePtr->BufCreate(CDetailDoodad::s_gxIndexPool, sizeof(uint16_t), CDetailDoodad::s_idxBufItems, sizeof(uint16_t) * CDetailDoodad::s_idxBufItems * (i >> 1));
         unk_D1C4E8 += 2;
     }
 
-    unk_D1C4DC = 256;
+    unk_D1C4DC = 1024;
     CDetailDoodad::s_bPoolsDirty = 0;
 }
 
@@ -722,6 +727,10 @@ void CDetailDoodadInstBatch::Draw() {
 
     if (!this->m_vertexBuf || this->m_vertexBuf->m_pool->m_usage == GxPoolUsage_Stream) {
         AcquireBuffers(this->m_vertexCount, &this->m_vertexBuf, this->m_indexCount, &this->m_indexBuf);
+    }
+
+    if (!this->m_vertexBuf || !this->m_indexBuf) {
+        return;
     }
 
     if (!this->m_vertexBuf->m_hasData || !this->m_vertexBuf->m_valid) {
