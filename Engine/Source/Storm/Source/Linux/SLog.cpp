@@ -7,6 +7,10 @@
 #include <cstring>
 #include <ctime>
 #include <fcntl.h>
+#if defined(__APPLE__)
+#include <climits>
+#include <mach-o/dyld.h>
+#endif
 #include <pthread.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -169,8 +173,22 @@ static const char* PrependDefaultDir(char* newfilename, uint32_t newfilenamesize
         size_t chars = SStrCopy(newfilename, s_defaultdir, newfilenamesize);
         SStrCopy(&newfilename[chars], filename, newfilenamesize - chars);
     } else {
+#if defined(__APPLE__)
+        char executable[PATH_MAX];
+        char resolved[PATH_MAX];
+        uint32_t length = sizeof(executable);
+
+        if (_NSGetExecutablePath(executable, &length)) {
+            pthread_mutex_unlock(&s_defaultdir_critsect);
+            return filename;
+        }
+
+        const char* path = realpath(executable, resolved);
+        SStrCopy(newfilename, path ? path : executable, newfilenamesize);
+#else
         ssize_t length = readlink("/proc/self/exe", newfilename, newfilenamesize - 1);
         newfilename[length > 0 ? length : 0] = 0;
+#endif
 
         char* slash = SStrChrR(newfilename, '/');
 
