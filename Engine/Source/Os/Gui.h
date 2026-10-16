@@ -157,4 +157,32 @@ void OsGuiSetGxWindow(void* window);
 int32_t OsGuiMessageBox(void* parentWindow, int32_t style, const char* message, const char* title);
 void OsGuiSetWindowTitle(void* window, const char* title);
 
+#if !defined(_WIN32)
+enum OSGUIWINDOWMSG {
+    OS_GUI_WM_SIZE = 0,
+    OS_GUI_WM_MINIMIZE = 1,
+    OS_GUI_WM_DISPLAYCHANGE = 2,
+    OS_GUI_WM_SETFOCUS = 3,
+    OS_GUI_WM_KILLFOCUS = 4,
+};
+
+// ʕ •ᴥ•ʔ✿ Width and height are drawable pixels, delivered on the thread pumping SDL events ✿ ʕ •ᴥ•ʔ
+typedef void (*OsGuiWindowProc)(void* param, OSGUIWINDOWMSG message, int32_t width, int32_t height);
+
+// ʕ •ᴥ•ʔ✿ SDL2 window contract for Gx: window is an SDL_Window*, instance a VkInstance, surface a VkSurfaceKHR* ✿ ʕ •ᴥ•ʔ
+void OsGuiSetGxWindowProc(void* window, OsGuiWindowProc proc, void* param);
+void* OsGuiCreateGxWindow(const char* title, int32_t width, int32_t height, int32_t fullscreen);
+void OsGuiDestroyGxWindow(void* window);
+void OsGuiGetDrawableSize(void* window, int32_t* width, int32_t* height);
+void* OsGuiGetVulkanProcAddr();
+void OsGuiPollGxWindowState();
+int32_t OsGuiGetVulkanInstanceExtensions(void* window, uint32_t* count, const char** names);
+int32_t OsGuiCreateVulkanSurface(void* window, void* instance, void* surface);
+#endif
+
+#if defined(WOWDECOMP_APPLE)
+uint32_t OsGuiGetWindowFlags();
+float OsGuiGetPixelScale(void* window);
+#endif
+
 #endif

@@ -4,7 +4,11 @@
 #include <cstdint>
 #include "Engine/Source/Event/Types.h"
 
+#if defined(_WIN32)
 struct tagRECT;
+#else
+#include "Engine/Source/Base/PlatformTypes.h"
+#endif
 
 enum OSINPUT {
     OS_INPUT_CAPTURE_CHANGED = 0,
