@@ -401,30 +401,35 @@ int32_t VkContext::CreateSwapchain(uint32_t width, uint32_t height, int32_t vsyn
     std::vector<VkPresentModeKHR> modes(modeCount);
     vkGetPhysicalDeviceSurfacePresentModesKHR(this->m_physicalDevice, this->m_surface, &modeCount, modes.data());
 
-    VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
-
-    if (!vsync) {
-        for (VkPresentModeKHR mode : modes) {
-            if (mode == VK_PRESENT_MODE_MAILBOX_KHR) {
-                presentMode = mode;
-                break;
-            }
-
-            if (mode == VK_PRESENT_MODE_IMMEDIATE_KHR) {
-                presentMode = mode;
+    auto modeSupported = [&](VkPresentModeKHR mode) {
+        for (VkPresentModeKHR supported : modes) {
+            if (supported == mode) {
+                return true;
             }
         }
-    }
 
-    uint32_t imageCount = caps.minImageCount + 1;
+        return false;
+    };
 
-    if (caps.maxImageCount && imageCount > caps.maxImageCount) {
-        imageCount = caps.maxImageCount;
+    VkPresentModeKHR candidates[3];
+    uint32_t candidateCount = 0;
+
+    if (vsync) {
+        candidates[candidateCount++] = VK_PRESENT_MODE_FIFO_KHR;
+    } else {
+        if (modeSupported(VK_PRESENT_MODE_MAILBOX_KHR)) {
+            candidates[candidateCount++] = VK_PRESENT_MODE_MAILBOX_KHR;
+        }
+
+        if (modeSupported(VK_PRESENT_MODE_IMMEDIATE_KHR)) {
+            candidates[candidateCount++] = VK_PRESENT_MODE_IMMEDIATE_KHR;
+        }
+
+        candidates[candidateCount++] = VK_PRESENT_MODE_FIFO_KHR;
     }
 
     VkSwapchainCreateInfoKHR info = { VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR };
     info.surface = this->m_surface;
-    info.minImageCount = imageCount;
     info.imageFormat = surfaceFormat.format;
     info.imageColorSpace = surfaceFormat.colorSpace;
     info.imageExtent = extent;
@@ -433,13 +438,42 @@ int32_t VkContext::CreateSwapchain(uint32_t width, uint32_t height, int32_t vsyn
     info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     info.preTransform = caps.currentTransform;
     info.compositeAlpha = (caps.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) ? VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR : static_cast<VkCompositeAlphaFlagBitsKHR>(caps.supportedCompositeAlpha & -caps.supportedCompositeAlpha);
-    info.presentMode = presentMode;
     info.clipped = VK_TRUE;
     info.oldSwapchain = this->m_swapchain;
 
-    VkSwapchainKHR swapchain;
+    VkSwapchainKHR swapchain = VK_NULL_HANDLE;
 
-    if (vkCreateSwapchainKHR(this->m_device, &info, nullptr, &swapchain) != VK_SUCCESS) {
+    for (uint32_t candidateIndex = 0; candidateIndex < candidateCount; candidateIndex++) {
+        VkPresentModeKHR presentMode = candidates[candidateIndex];
+        uint32_t imageCount = caps.minImageCount + 1;
+
+        if (presentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
+            imageCount = caps.minImageCount + 2;
+
+            if (imageCount < 3) {
+                imageCount = 3;
+            }
+        }
+
+        if (caps.maxImageCount && imageCount > caps.maxImageCount) {
+            imageCount = caps.maxImageCount;
+        }
+
+        if (presentMode == VK_PRESENT_MODE_MAILBOX_KHR && imageCount < 3) {
+            continue;
+        }
+
+        info.presentMode = presentMode;
+        info.minImageCount = imageCount;
+
+        if (vkCreateSwapchainKHR(this->m_device, &info, nullptr, &swapchain) == VK_SUCCESS) {
+            break;
+        }
+
+        swapchain = VK_NULL_HANDLE;
+    }
+
+    if (!swapchain) {
         return 0;
     }
 
