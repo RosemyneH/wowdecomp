@@ -92,6 +92,8 @@ The total leaves out 658 functions that IDA identifies as compiler library code 
 
 In-source builds are refused—use a separate `build/` directory.
 
+`--target WowClient` is the game binary alone. It does not build wasm addon packages, the addon test host, or copy anything into `Interface/WasmAddOns`. `Tools/dev-station.sh` is an optional local play setup that does those extra steps.
+
 ### Windows (x64, main target)
 
 ```powershell
@@ -120,11 +122,28 @@ cmake --build build/win32 --config Release --target WowClient --parallel
 
 ### Linux (experimental)
 
-Matches CI (`linux-x64` workflow):
+Matches CI (`linux-x64` workflow). This builds **only the game client**. It does not compile the wasm addon packages, the addon test host, or stage anything under `Interface/WasmAddOns`.
+
+Packages: `ninja-build`, `g++`, `libsdl2-dev`, `libx11-dev`, `libcurl4-openssl-dev`, `libasound2-dev`, `libvulkan-dev`, `libxvidcore-dev`.
 
 ```bash
-cmake -S . -B build/linux -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake -S . -B build/linux -G Ninja \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DWOWDECOMP_DISABLE_SIGNATURE_CHECKS=ON
 cmake --build build/linux --target WowClient -j"$(nproc)"
+```
+
+The binary is `bin/Linux/WowClient64`. Copy it next to your own 3.3.5a `Data` folder and start it from that directory. Leave `Interface/WasmAddOns` absent. The client still links the addon host so it can load a package later. Nothing is loaded if that folder is missing.
+
+`Tools/dev-station.sh` is a separate play setup. `build` and `all` also compile the wasm host and link addon trees into `test/dev-335`. Skip that script if you only want the client.
+
+Release (`-O3 -DNDEBUG`) uses another build directory so it does not replace the RelWithDebInfo binary:
+
+```bash
+cmake -S . -B build/linux-release -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DWOWDECOMP_DISABLE_SIGNATURE_CHECKS=ON
+cmake --build build/linux-release --target WowClient -j"$(nproc)"
 ```
 
 For **aarch64** Linux cross-builds (no CI), see `cmake/Toolchain-Clang-aarch64-linux.cmake`.
