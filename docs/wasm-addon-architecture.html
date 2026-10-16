@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>WASM Addon Architecture — wowdecomp 3.3.5a</title>
+<style>body{font-family:system-ui,sans-serif;max-width:60rem;margin:2rem auto;padding:0 1rem;line-height:1.5}code{background:#eee;padding:.1em .3em}table{border-collapse:collapse}td,th{border:1px solid #999;padding:.3em .6em;text-align:left}pre{background:#111;color:#eee;padding:1rem;overflow:auto}</style>
+</head><body>
+<h1>WASM Addon Architecture</h1>
+<h2>Discovery map (Phase 1)</h2>
+<table>
+<tr><th>Concern</th><th>Location</th><th>Boundary</th></tr>
+<tr><td>Client init / shutdown</td><td><code>WoW/Source/Client.cpp</code>: <code>InitializeClient()</code>, <code>WowClientDestroy()</code></td><td>WASM init after <code>FrameScript_Initialize(0)</code>; shutdown before <code>FrameScript_Destroy()</code></td></tr>
+<tr><td>Lua VM</td><td><code>Engine/Source/FrameScript/</code> (<code>s_context</code>, <code>FrameScript_RegisterFunction</code>)</td><td>Untouched. WASM is a parallel runtime.</td></tr>
+<tr><td>Lua addon loading / TOC</td><td><code>FrameXML</code>, Glue addon list (<code>ShutdownAddOns</code>)</td><td>WASM packages live in <code>Interface/WasmAddOns/</code> (fallback <code>WasmAddOns/</code>), discovered independently.</td></tr>
+<tr><td>Event dispatch</td><td><code>FrameScript_SignalEvent</code> in <code>FrameScript.cpp</code></td><td>New observer hook fires after all Lua listeners; WASM-only events bypass the old no-listener early return.</td></tr>
+<tr><td>Chat</td><td><code>DEFAULT_CHAT_FRAME:AddMessage</code> (Lua), <code>CSimpleMessageFrame::AddMessage</code></td><td>Host service calls the Lua method with <code>lua_pcall</code>; no interpolated code.</td></tr>
+<tr><td>Inventory</td><td><code>WoW/Source/Ui/ContainerFrame_Scripts.cpp</code> (<code>GetContainerNumSlots/ItemID/ItemInfo</code>)</td><td>Host service snapshots bags 0–4 into a binary blob in one host call.</td></tr>
+<tr><td>UI ownership</td><td><code>CSimpleFrame</code> hierarchy under <code>UIParent</code></td><td>Guests hold generation-tagged opaque handles; the client maps them to Lua registry refs and destroys them on unload.</td></tr>
+<tr><td>Logging / config</td><td><code>ConsoleWrite</code> (<code>ConsoleBase</code>), CVar system in <code>Client_CVar.cpp</code></td><td>Manager logs via host <code>Log</code>; approvals persist in <code>wasm-permissions.cfg</code> next to the addons.</td></tr>
+<tr><td>Build</td><td>Root <code>CMakeLists.txt</code>, <code>cmake/Platform.cmake</code> (Win/Linux/macOS-arm64)</td><td><code>Engine/Source/WasmAddon</code> static lib; Wasmtime via <code>cmake/Wasmtime.cmake</code>.</td></tr>
+</table>
+
+<h2>Data flow</h2>
+<pre>
+Game event ──▶ FrameScript_SignalEvent ──▶ Lua listeners (unchanged order)
+                                        └─▶ observer ─▶ WasmAddonManager (main thread)
+                                                             ├─▶ Addon A (own Wasmtime instance + memory)
+                                                             ├─▶ Addon B        ▲ fuel + StoreLimiter per callback
+Host call  ◀── wow.* imports (permission-checked, memory-validated) ──────────┘
+           └─▶ IWasmHostServices ─▶ client: Lua/UI layer | tests: mock host
+</pre>
+
+<h2>Confirm overlay</h2>
+<p>An accepted confirm is executed by the host: chat goes through <code>CGChat::SendNative</code> and auction bids through <code>CGAuctionHouse::PlaceBidNative</code>. Each frame, <code>WasmAddonClient_ServiceConfirms</code> ticks the queue and applies a choice recorded by <code>WasmConfirmUi</code>. The prompt paints on a screen layer at z 11. Y or Enter accepts and N or Escape denies, after the 750 ms arming delay. <code>wasmconfirm &lt;id&gt; accept|deny</code> still works from the developer console.</p>
+
+<h2>Threading &amp; lifetime</h2>
+<p><code>WasmAddonManager</code> is main-thread only. Guest callbacks never run on worker
+threads; events raised reentrantly from inside a host call are queued and delivered after the
+current callback returns. Each addon owns one Wasmtime instance; unloading calls
+<code>wow_on_unload</code>, destroys its UI handles, clears subscriptions and drops the instance.
+A trap (including fuel exhaustion) faults or suspends only that addon.</p>
+
+<h2>Risks</h2>
+<ul>
+<li>Wasmtime is fetched prebuilt (pinned 36.0.0) when no system install exists — hash pinning is a follow-up.</li>
+<li>Event payloads are currently the event name only; rich payloads need a versioned ABI extension.</li>
+<li>Client host services depend on Lua globals (<code>DEFAULT_CHAT_FRAME</code>, <code>UIParent</code>) that appear during FrameXML load; early calls return <code>ErrUnavailable</code> rather than failing.</li>
+<li>Windows/ARM64/macOS builds are configured from the same CMake but unverified locally.</li>
+</ul>
+</body></html>
