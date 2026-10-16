@@ -826,15 +826,18 @@ int32_t VkContext::Submit(int32_t present) {
     VkCommandBuffer cmds[2];
     uint32_t cmdCount = 0;
 
+    // ʕ •ᴥ•ʔ✿ A failed end leaves the buffer invalid; omit it and still reach the fence submit ✿ ʕ •ᴥ•ʔ
     if (frame.uploadRecording) {
-        vkEndCommandBuffer(frame.uploadCmd);
-        cmds[cmdCount++] = frame.uploadCmd;
+        if (vkEndCommandBuffer(frame.uploadCmd) == VK_SUCCESS) {
+            cmds[cmdCount++] = frame.uploadCmd;
+        }
         frame.uploadRecording = 0;
     }
 
     if (frame.recording) {
-        vkEndCommandBuffer(frame.cmd);
-        cmds[cmdCount++] = frame.cmd;
+        if (vkEndCommandBuffer(frame.cmd) == VK_SUCCESS) {
+            cmds[cmdCount++] = frame.cmd;
+        }
         frame.recording = 0;
     }
 
