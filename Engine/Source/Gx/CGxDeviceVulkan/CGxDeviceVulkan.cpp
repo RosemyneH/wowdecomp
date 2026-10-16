@@ -1563,11 +1563,21 @@ void CGxDeviceVulkan::ITexCreate(CGxTex* texId) {
         return;
     }
 
+    // ʕ •ᴥ•ʔ✿ Stored 0 is an invalid extent, and a 0×0 non-DXT mip chain never returns ✿ ʕ •ᴥ•ʔ
+    if (!texId->m_width || !texId->m_height) {
+        return;
+    }
+
     uint32_t width;
     uint32_t height;
     uint32_t baseMip;
     uint32_t mipCount;
     this->ITexWHDStartEnd(texId, width, height, baseMip, mipCount);
+
+    // ʕ ◕ᴥ◕ ʔ✿ Base mip can shift a 1px side to 0; vkCreateImage rejects that extent ✿ ʕ ◕ᴥ◕ ʔ
+    if (!width || !height) {
+        return;
+    }
 
     texId->m_format = s_gxTexFormatToUse[texId->m_format];
 
