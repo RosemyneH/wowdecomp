@@ -62,6 +62,10 @@ bool BattlenetApplication::Send(uint32_t connection, const void* data, uint32_t 
         SErrDisplayAppFatalMessage("", "", 0);
     }
 
+    if (!this->m_wowConnection) {
+        return false;
+    }
+
     return this->m_wowConnection->Send(static_cast<uint8_t*>(const_cast<void*>(data)), size, true);
 }
 
