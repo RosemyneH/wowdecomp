@@ -604,6 +604,11 @@ const char* CombatLogEntry::ResolveName(PendingCombatLogData* data, const char**
 // OFFSET: 0x0074FD40
 const char* CombatLogEntry::GetObjectName(const WOWGUID& guid, uint32_t mask, const char** realm) {
     PendingCombatLogData* data = GetPendingCombatLogData(this, guid, mask);
+
+    if (!data) {
+        return FrameScript_GetText("UNKNOWNOBJECT", -1, GENDER_NOT_APPLICABLE);
+    }
+
     uint32_t high = static_cast<uint32_t>(guid.m_guid >> 32);
 
     if (!(high & 0xF0000000) && ((high & 0xF07FFFFF) | static_cast<uint32_t>(guid.m_guid))) {
@@ -1466,6 +1471,11 @@ void CombatLogEntry::SetExecuteItem(int32_t itemId) {
     this->m_infoFlags |= 0x200;
     this->m_info.m_values[0] = itemId;
     PendingCombatLogData* data = GetPendingCombatLogData(this, WOWGUID{ 0 }, 4);
+
+    if (!data) {
+        return;
+    }
+
     data->m_id = itemId;
     data->m_type = 5;
     this->m_info.m_names[1] = this->ResolveName(data, nullptr, true);
