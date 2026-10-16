@@ -616,7 +616,8 @@ void DayNight::ApplyFogSettings(const SMOFog::Fog* fog) {
 // OFFSET: 0x007ED250
 static void InitCloudNoise() {
     for (uint32_t i = 0; i < 256; i++) {
-        int32_t value = rand();
+        // ʕ •ᴥ•ʔ✿ The table is scaled for a 15-bit rand. Linux rand is 31-bit and turns the sky into static ✿ ʕ •ᴥ•ʔ
+        int32_t value = rand() & 0x7FFF;
         s_cloudNoise[i] = 1.0f - (value * 0.000030518509f + value * 0.000030518509f);
     }
 

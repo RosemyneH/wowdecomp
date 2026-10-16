@@ -218,7 +218,8 @@ void DayNight::DNClouds::Render() {
     GxUpdateAlphaRef(GxRs_AlphaRef);
     GxRsSet(GxRs_Lighting, 0);
     GxRsSet(GxRs_Fog, 0);
-    GxRsSet(GxRs_DepthTest, 0);
+    // ʕ •ᴥ•ʔ✿ The dome sits in the sky depth range. Testing keeps it off the terrain ✿ ʕ •ᴥ•ʔ
+    GxRsSet(GxRs_DepthTest, 1);
     GxRsSet(GxRs_DepthWrite, 0);
     GxRsSet(GxRs_ColorWrite, 15);
     GxRsSet(GxRs_Culling, 0);
