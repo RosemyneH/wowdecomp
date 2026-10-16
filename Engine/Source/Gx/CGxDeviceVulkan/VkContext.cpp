@@ -796,7 +796,8 @@ int32_t VkContext::BeginFrame() {
     if (vkBeginCommandBuffer(frame.cmd, &beginInfo) != VK_SUCCESS) {
         frame.recording = 0;
         this->EndFrame();
-        return 2;
+        // ʕ •ᴥ•ʔ✿ 2 is an acquire timeout; this image was already presented ✿ ʕ •ᴥ•ʔ
+        return 3;
     }
     frame.recording = 1;
 

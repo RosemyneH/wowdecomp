@@ -168,7 +168,7 @@ class VkContext {
     VkDescriptorPool CreateDescriptorPool();
     VkDescriptorSet AllocateSet(VkDescriptorSetLayout layout);
     VkDescriptorSet CachedSet(const VkSetKey& key, VkDescriptorSetLayout layout, int32_t& created);
-    // ʕ ◕ᴥ◕ ʔ✿ 1 acquired, 0 recreate needed, 2 skip this frame (timeout) ✿ ʕ ◕ᴥ◕ ʔ
+    // ʕ ◕ᴥ◕ ʔ✿ 1 acquired, 0 recreate needed, 2 timeout, 3 presented then begin failed ✿ ʕ ◕ᴥ◕ ʔ
     int32_t BeginFrame();
     VkCommandBuffer UploadCmd();
     int32_t Submit(int32_t present);
