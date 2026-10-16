@@ -516,7 +516,13 @@ void TSList<T, TGetLink>::LinkToTail(T* ptr) {
 // OFFSET: [0x00496C00<SIMPLEFONT, TSGetExplicitLink<SIMPLEFONT>>, 0x004B6E40, 0x004BFFC0, 0x004F3420<CACHEENTRY, TSGetExplicitLink<CACHEENTRY>>, 0x004F89E0, 0x0055A1D0<LFGListParty, TSGetExplicitLink<LFGListParty>>, 0x00560A00<OVERRIDEKEYBINDING, TSGetExplicitLink<OVERRIDEKEYBINDING>>, 0x005BDF00, 0x006329D0, 0x0066CCB0<DBCACHECALLBACK, TSGetLink<DBCACHECALLBACK>>, 0x006705D0, 0x00671030, 0x006883B0<CGxShader, TSGetExplicitLink<CGxShader>>, 0x006BBDB0<CGxuLight, TSGetLink<CGxuLight>>, 0x0074F2D0<CombatLogEntry, TSGetLink<CombatLogEntry>>, 0x00776BC0<RGN, TSGetExplicitLink<RGN>>, 0x007FBC60<LightningObject, TSGetLink<LightningObject>>, 0x007FBCE0<MountTransitionObject, TSGetLink<MountTransitionObject>>, 0x00783100]
 template <class T, class TGetLink>
 T* TSList<T, TGetLink>::NewNode(uint32_t location, size_t extrabytes, uint32_t flags) {
-    T* node = new (SMemAlloc(sizeof(T) + extrabytes, RAW_TYPE_NAME(T), SLOG_OBJECT, flags | SMEM_FLAG_ZEROMEMORY)) T;
+    void* mem = SMemAlloc(sizeof(T) + extrabytes, RAW_TYPE_NAME(T), SLOG_OBJECT, flags | SMEM_FLAG_ZEROMEMORY);
+
+    if (!mem) {
+        return nullptr;
+    }
+
+    T* node = new (mem) T;
 
     if (location) {
         this->LinkNode(node, location, nullptr);
