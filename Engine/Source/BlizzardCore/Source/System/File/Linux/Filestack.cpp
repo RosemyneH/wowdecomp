@@ -619,6 +619,12 @@ bool System_File::Copy(Blizzard::File::Filesystem* fs, System_File::Stacked::Fil
 bool System_File::Open(Blizzard::File::Filesystem* fs, System_File::Stacked::FileParms* parms) {
     int32_t mode = parms->m_mode;
     char path[1024];
+
+    if (parms->m_path && strlen(parms->m_path) >= sizeof(path)) {
+        Blizzard::File::SetLastError(8);
+        return false;
+    }
+
     Blizzard::String::MakeUnivPath(parms->m_path, path, sizeof(path));
 
     int fd = OpenNative(path, mode);
