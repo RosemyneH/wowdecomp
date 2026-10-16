@@ -250,9 +250,11 @@ TIMESTAMPCALLBACK* CGameTime::GameTimeRegisterCallback(const WowTime* time, void
     int32_t minutes = time->GetHourAndMinutes();
     HASHKEY_NONE key;
     TIMESTAMPSTRUCT* stamp = this->m_timeStamps.Ptr(minutes, key);
+    bool created = false;
 
     if (!stamp) {
         stamp = this->m_timeStamps.New(minutes, key, 0, 0);
+        created = stamp != nullptr;
     }
 
     if (!stamp) {
@@ -262,6 +264,10 @@ TIMESTAMPCALLBACK* CGameTime::GameTimeRegisterCallback(const WowTime* time, void
     TIMESTAMPCALLBACK* node = stamp->m_callbacks.NewNode(2, 0, 0);
 
     if (!node) {
+        if (created) {
+            this->m_timeStamps.Delete(stamp);
+        }
+
         return nullptr;
     }
 
