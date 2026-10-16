@@ -12,6 +12,7 @@
 #include "Engine/Source/Base/ObjectAlloc.h"
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
 #include "Engine/Source/Model2/M2Cache.h"
+#include "Engine/Source/Os/Processor.h"
 #include "Engine/Source/Model2/M2Light.h"
 #include "Engine/Source/Model2/M2Model.h"
 #include "Engine/Source/Model2/M2Shared.h"
@@ -512,7 +513,15 @@ void CM2Scene::TransformHitTestVerticesBlendSSE(const CM2Model* model, const M2S
         if (*reinterpret_cast<uint32_t*>(&vertex->m_weights) != weights || *reinterpret_cast<uint32_t*>(&vertex->m_indices) != indices) {
             weights = *reinterpret_cast<uint32_t*>(&vertex->m_weights);
             indices = *reinterpret_cast<uint32_t*>(&vertex->m_indices);
+#if defined(WOWDECOMP_AVX2_SKIN)
+            if (OsHasAvx2()) {
+                M2BlendBoneMatricesAVX2(model->m_boneMatrices, vertex->m_weights, vertex->m_indices, &matrix);
+            } else {
+                M2BlendBoneMatricesSSE(model->m_boneMatrices, vertex->m_weights, vertex->m_indices, &matrix);
+            }
+#else
             M2BlendBoneMatricesSSE(model->m_boneMatrices, vertex->m_weights, vertex->m_indices, &matrix);
+#endif
         }
 
         C3Vector p = vertex->m_position * matrix;

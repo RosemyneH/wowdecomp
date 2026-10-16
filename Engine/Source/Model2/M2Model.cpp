@@ -25,6 +25,7 @@
 #include "Engine/Source/Gx/CGxPool.h"
 #include "Engine/Source/Gx/Gx.h"
 #include "Engine/Source/Model2/M2Cache.h"
+#include "Engine/Source/Os/Processor.h"
 #include "Engine/Source/Model2/M2ModelLight.h"
 #include "Engine/Source/Model2/M2Scene.h"
 #include "Engine/Source/Services/AsyncFile.h"
@@ -2752,6 +2753,11 @@ int32_t CM2Model::GetRegionBounds(M2SkinSection* section, CAaBox& box, C44Matrix
             weights = *reinterpret_cast<uint32_t*>(&vertex->m_weights);
             indices = *reinterpret_cast<uint32_t*>(&vertex->m_indices);
 
+#if defined(WOWDECOMP_AVX2_SKIN)
+            if (OsHasAvx2()) {
+                M2BlendBoneMatricesAVX2(this->m_boneMatrices, vertex->m_weights, vertex->m_indices, &transform);
+            } else
+#endif
             if (CM2Cache::s_processorFeatures & 4) {
                 M2BlendBoneMatricesSSE(this->m_boneMatrices, vertex->m_weights, vertex->m_indices, &transform);
             } else {
@@ -3869,6 +3875,15 @@ CM2Model::CM2Model() {
         CM2Model::s_transformVertices[3] = CM2Model::TransformVertices_cpp;
         CM2Model::s_transformVertices[4] = CM2Model::TransformVertices_cpp;
 
+#if defined(WOWDECOMP_AVX2_SKIN)
+        if (OsHasAvx2()) {
+            CM2Model::s_transformVertices[0] = CM2Model::TransformVertices_avx2;
+            CM2Model::s_transformVertices[1] = CM2Model::TransformVerticesOneBone_avx2;
+            CM2Model::s_transformVertices[2] = CM2Model::TransformVertices_avx2;
+            CM2Model::s_transformVertices[3] = CM2Model::TransformVertices_avx2;
+            CM2Model::s_transformVertices[4] = CM2Model::TransformVertices_avx2;
+        } else
+#endif
         if (CM2Cache::s_processorFeatures & 4) {
             CM2Model::s_transformVertices[0] = CM2Model::TransformVertices_sse;
             CM2Model::s_transformVertices[1] = CM2Model::TransformVerticesOneBone_sse;

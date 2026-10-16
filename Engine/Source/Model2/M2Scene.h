@@ -137,5 +137,6 @@ uint32_t ParticleBlendToM2Blend(uint32_t blend);
 uint32_t ParticleFlagsToM2Flags(uint32_t flags);
 void M2BlendBoneMatrices(const C44Matrix* bones, ubyte4 weights, ubyte4 indices, C44Matrix* result);
 void M2BlendBoneMatricesSSE(const C44Matrix* bones, ubyte4 weights, ubyte4 indices, C44Matrix* result);
+void M2BlendBoneMatricesAVX2(const C44Matrix* bones, ubyte4 weights, ubyte4 indices, C44Matrix* result);
 
 #endif

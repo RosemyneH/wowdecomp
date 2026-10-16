@@ -235,6 +235,8 @@ class CM2Model {
     static void TransformVerticesNoUVSelect_cpp(const CM2Model* model, const M2SkinSection* section, M2VertexPNT2* out);
     static void TransformVerticesOneBone_cpp(CM2Model* model, M2SkinSection* section, uint8_t* vertices, int32_t texCoord);
     static void TransformVerticesOneBone_sse(CM2Model* model, M2SkinSection* section, uint8_t* vertices, int32_t texCoord);
+    static void TransformVertices_avx2(CM2Model* model, M2SkinSection* section, uint8_t* vertices, int32_t texCoord);
+    static void TransformVerticesOneBone_avx2(CM2Model* model, M2SkinSection* section, uint8_t* vertices, int32_t texCoord);
 
     CM2Model();
     ~CM2Model();
