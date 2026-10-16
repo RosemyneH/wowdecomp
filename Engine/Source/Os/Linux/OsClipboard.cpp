@@ -15,6 +15,10 @@ char* IOsClipboardGetString(void* window) {
 
     uint32_t size = static_cast<uint32_t>(SStrLen(text) + 1);
     char* string = static_cast<char*>(SMemAlloc(size, __FILE__, __LINE__, 0));
+    if (!string) {
+        SDL_free(text);
+        return nullptr;
+    }
     SStrCopy(string, text, size);
 
     SDL_free(text);
