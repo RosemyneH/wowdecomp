@@ -128,7 +128,11 @@ bool ComSat::Network::Manager::Send(uint16_t networkId, uint8_t talker, const ui
 // VERIFY: f240b463 manual
 // OFFSET: 0x008856D0
 ComSat::Network::Session* ComSat::Network::Manager::CreateSession(uint64_t id, ComSat::Network::Session::Callback& callback) {
-    ComSat::Network::Session* session = new (this->m_allocator->Alloc(sizeof(ComSat::Network::Session))) ComSat::Network::Session(*this, id, callback);
+    void* memory = this->m_allocator->Alloc(sizeof(ComSat::Network::Session));
+    if (!memory) {
+        return nullptr;
+    }
+    ComSat::Network::Session* session = new (memory) ComSat::Network::Session(*this, id, callback);
     this->m_sessions.PushBack(session);
     return session;
 }
