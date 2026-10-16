@@ -2104,6 +2104,12 @@ void CGxDeviceVulkan::DeviceReadDepths(CiRect& rect, TSGrowableArray<float>& dep
 
     uint32_t width = rect.maxX > rect.minX ? static_cast<uint32_t>(rect.maxX - rect.minX) : 0;
     uint32_t height = rect.maxY > rect.minY ? static_cast<uint32_t>(rect.maxY - rect.minY) : 0;
+
+    if (height != 0 && width > UINT32_MAX / height) {
+        depths.SetCount(0);
+        return;
+    }
+
     uint32_t count = width * height;
     depths.SetCount(count);
     memset(depths.Ptr(), 0, sizeof(float) * count);
