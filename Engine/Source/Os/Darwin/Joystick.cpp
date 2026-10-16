@@ -332,6 +332,11 @@ static void PollJoystick(uint32_t index, int32_t active) {
         return;
     }
 
+    if (!SDL_JoystickGetAttached(joystick->m_device)) {
+        OsJoystickClose(index);
+        return;
+    }
+
     uint32_t previous = joystick->m_stateIndex;
     uint32_t current = previous == 0;
     joystick->m_stateIndex = current;
