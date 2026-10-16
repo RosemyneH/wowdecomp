@@ -659,6 +659,21 @@ void RenderPortraitTexture(CSimpleTexture* texture, CGUnit_C* unit) {
 
         if (!portrait) {
             portrait = s_unitPortraits.InternalNewNode(displayId, 0, 0);
+
+            if (!portrait) {
+                GxXformSetProjection(savedProjection);
+                GxXformSetView(savedView);
+                GxMasterEnableSet(GxMasterEnable_Fog, fogEnabled);
+                GxXformSetViewport(viewportMinX, viewportMaxX, viewportMinY, viewportMaxY, viewportMinZ, viewportMaxZ);
+
+                if (createdCamera) {
+                    HandleClose(reinterpret_cast<HOBJECT>(createdCamera));
+                }
+
+                model->Release();
+                scene->Release();
+                return;
+            }
         }
 
         cache = &portrait->m_cache;
