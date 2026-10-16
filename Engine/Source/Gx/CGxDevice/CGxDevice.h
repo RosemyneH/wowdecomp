@@ -221,6 +221,7 @@ class CGxDevice {
     virtual int32_t DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t count);
     virtual int32_t TerrainBindless() { return 0; }
     virtual uint32_t TerrainTextureSlot(CGxTex*) { return ~0u; }
+    virtual uint64_t ResidentHeapBytes() const { return 0; }
     virtual void ResolveTexMatrix(uint32_t tmu, C44Matrix& matrix);
     virtual void PrimBegin(EGxPrim primType);
     virtual void PrimDrawElements();

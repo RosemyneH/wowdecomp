@@ -21,6 +21,8 @@ struct CGxPool : public TSLinkedNode<CGxPool> {
     /* 0020 */ TSList<CGxBuf> m_bufList;
     /* 002C */ EGxPoolHintBits m_hint;
     /* 0030 */ const char* m_name;
+    // ʕ •ᴥ•ʔ✿ Vulkan keeps this pool in device memory. The CPU shadow is copied up on unlock ✿ ʕ •ᴥ•ʔ
+    /* 0038 */ int32_t m_resident;
 
     CGxPool(EGxPoolTarget target, EGxPoolUsage usage, int32_t size, EGxPoolHintBits hint, const char* name);
     ~CGxPool();

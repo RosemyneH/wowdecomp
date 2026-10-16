@@ -23,6 +23,8 @@ struct VkBufferAlloc {
     VkBufferUsageFlags usage = 0;
     // ʕ •ᴥ•ʔ✿ A view of the frame ring. Destroying it would free the ring itself ✿ ʕ •ᴥ•ʔ
     int32_t borrowed = 0;
+    // ʕ •ᴥ•ʔ✿ mapped is a malloc shadow. The VkBuffer itself is device-local and not host visible ✿ ʕ •ᴥ•ʔ
+    int32_t shadow = 0;
 };
 
 struct VkImageAlloc {
@@ -38,6 +40,7 @@ struct VkGarbage {
     uint8_t* mapped = nullptr;
     VkDeviceSize size = 0;
     VkBufferUsageFlags usage = 0;
+    int32_t shadow = 0;
     VkImage image;
     VkImageView view;
     VkFramebuffer framebuffer;
@@ -48,6 +51,13 @@ struct VkStaging {
     VkBuffer buffer;
     VkDeviceSize offset;
     uint8_t* data;
+};
+
+struct ResidentCopy {
+    VkBuffer buffer;
+    const uint8_t* src;
+    VkDeviceSize offset;
+    VkDeviceSize size;
 };
 
 class VkHeap {
@@ -179,6 +189,8 @@ class VkContext {
     uint32_t m_rebarType = UINT32_MAX;
     uint32_t m_localType = UINT32_MAX;
     VkDeviceSize m_rebarHeap = 0;
+    VkDeviceSize m_localHeap = 0;
+    std::vector<ResidentCopy> m_residentUploads;
     uint32_t m_frameIndex = 0;
     int32_t m_bindless = 0;
     uint32_t m_imageIndex = 0;
@@ -211,6 +223,10 @@ class VkContext {
     void ChooseHeaps();
     uint32_t FindMemoryType(uint32_t typeBits, VkMemoryPropertyFlags flags);
     int32_t CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkBufferAlloc& out);
+    int32_t AllocateTypedBuffer(VkDeviceSize size, VkBufferUsageFlags usage, uint32_t memoryType, int32_t map, VkBufferAlloc& out);
+    int32_t CreateResidentBuffer(VkDeviceSize size, VkBufferAlloc& out);
+    void QueueResidentUpload(VkBuffer buffer, const uint8_t* src, VkDeviceSize offset, VkDeviceSize size);
+    void FlushResidentUploads(VkCommandBuffer cmd);
     int32_t AllocDrawItems(uint32_t count, uint32_t& first, GpuDrawItem*& mapped);
     int32_t AllocIndirect(uint32_t count, VkDeviceSize& offset, VkDrawIndexedIndirectCommand*& mapped);
     int32_t BumpChunk(std::vector<VkBufferAlloc>& chunks, uint32_t& chunkIndex, VkDeviceSize& cursor, VkDeviceSize chunkSize, VkBufferUsageFlags usage, uint32_t align, uint32_t bytes, uint32_t& index, VkBufferAlloc& out);

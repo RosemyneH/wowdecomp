@@ -2,7 +2,7 @@
 #include "Engine/Source/Gx/CGxPool.h"
 
 // INLINED
-CGxPool::CGxPool(EGxPoolTarget target, EGxPoolUsage usage, int32_t size, EGxPoolHintBits hint, const char* name) : m_target(target), m_usage(usage), m_size(size), m_apiSpecific(nullptr), m_offset(0), m_hint(hint), m_name(name) {
+CGxPool::CGxPool(EGxPoolTarget target, EGxPoolUsage usage, int32_t size, EGxPoolHintBits hint, const char* name) : m_target(target), m_usage(usage), m_size(size), m_apiSpecific(nullptr), m_offset(0), m_hint(hint), m_name(name), m_resident(0) {
 }
 
 // VERIFY: 434bd8af manual

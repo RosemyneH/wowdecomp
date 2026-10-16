@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -661,6 +662,7 @@ void VkContext::DestroyDevice() {
     }
 
     vkDeviceWaitIdle(this->m_device);
+    this->m_residentUploads.clear();
     this->DestroySwapchain();
 
     for (VkFrame& frame : this->m_frames) {
@@ -979,6 +981,7 @@ void VkContext::ChooseHeaps() {
     this->m_rebarType = UINT32_MAX;
     this->m_localType = UINT32_MAX;
     this->m_rebarHeap = 0;
+    this->m_localHeap = 0;
 
     VkDeviceSize bestLocal = 0;
 
@@ -1005,6 +1008,8 @@ void VkContext::ChooseHeaps() {
             this->m_localType = i;
         }
     }
+
+    this->m_localHeap = bestLocal;
 
     if (this->m_uploadType == UINT32_MAX) {
         this->m_uploadType = this->FindMemoryType(0xFFFFFFFFu, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
@@ -1175,12 +1180,207 @@ int32_t VkContext::StreamLock(uint32_t align, uint32_t bytes, uint32_t& index, V
 }
 
 void VkContext::DestroyBuffer(VkBufferAlloc& buffer) {
+    if (buffer.shadow && buffer.mapped) {
+        std::free(buffer.mapped);
+        buffer.mapped = nullptr;
+    }
+
     if (buffer.buffer) {
         vkDestroyBuffer(this->m_device, buffer.buffer, nullptr);
-        vkFreeMemory(this->m_device, buffer.memory, nullptr);
+        if (buffer.memory) {
+            vkFreeMemory(this->m_device, buffer.memory, nullptr);
+        }
     }
 
     buffer = {};
+}
+
+int32_t VkContext::AllocateTypedBuffer(VkDeviceSize size, VkBufferUsageFlags usage, uint32_t memoryType, int32_t map, VkBufferAlloc& out) {
+    out = {};
+    out.size = size;
+    out.usage = usage;
+
+    if (!size || memoryType == UINT32_MAX) {
+        return 0;
+    }
+
+    VkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    info.size = size;
+    info.usage = usage;
+    info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (vkCreateBuffer(this->m_device, &info, nullptr, &out.buffer) != VK_SUCCESS) {
+        out = {};
+        return 0;
+    }
+
+    VkMemoryRequirements requirements;
+    vkGetBufferMemoryRequirements(this->m_device, out.buffer, &requirements);
+
+    if (!(requirements.memoryTypeBits & (1u << memoryType))) {
+        this->DestroyBuffer(out);
+        return 0;
+    }
+
+    VkMemoryAllocateInfo allocInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+    allocInfo.allocationSize = requirements.size;
+    allocInfo.memoryTypeIndex = memoryType;
+
+    if (vkAllocateMemory(this->m_device, &allocInfo, nullptr, &out.memory) != VK_SUCCESS ||
+        vkBindBufferMemory(this->m_device, out.buffer, out.memory, 0) != VK_SUCCESS) {
+        this->DestroyBuffer(out);
+        return 0;
+    }
+
+    if (map && vkMapMemory(this->m_device, out.memory, 0, VK_WHOLE_SIZE, 0, reinterpret_cast<void**>(&out.mapped)) != VK_SUCCESS) {
+        this->DestroyBuffer(out);
+        return 0;
+    }
+
+    return 1;
+}
+
+int32_t VkContext::CreateResidentBuffer(VkDeviceSize size, VkBufferAlloc& out) {
+    VkBufferUsageFlags hostUsage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+    VkBufferUsageFlags gpuUsage = hostUsage | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+
+    // ʕ •ᴥ•ʔ✿ ReBAR is the VRAM heap and the CPU can write it. No second copy ✿ ʕ •ᴥ•ʔ
+    if (this->m_rebarType != UINT32_MAX && this->AllocateTypedBuffer(size, hostUsage, this->m_rebarType, 1, out)) {
+        return 1;
+    }
+
+    if (this->m_localType != UINT32_MAX && this->AllocateTypedBuffer(size, gpuUsage, this->m_localType, 0, out)) {
+        out.mapped = static_cast<uint8_t*>(std::malloc(static_cast<size_t>(size)));
+        if (out.mapped) {
+            out.shadow = 1;
+            return 1;
+        }
+        this->DestroyBuffer(out);
+    }
+
+    return this->CreateBuffer(size, hostUsage, out);
+}
+
+void VkContext::QueueResidentUpload(VkBuffer buffer, const uint8_t* src, VkDeviceSize offset, VkDeviceSize size) {
+    if (!buffer || !src || !size) {
+        return;
+    }
+
+    this->m_residentUploads.push_back({ buffer, src, offset, size });
+}
+
+void VkContext::FlushResidentUploads(VkCommandBuffer cmd) {
+    if (!cmd || this->m_residentUploads.empty()) {
+        return;
+    }
+
+    std::vector<ResidentCopy> pending;
+    pending.swap(this->m_residentUploads);
+    std::sort(pending.begin(), pending.end(), [](const ResidentCopy& a, const ResidentCopy& b) {
+        if (a.buffer != b.buffer) {
+            return a.buffer < b.buffer;
+        }
+        return a.offset < b.offset;
+    });
+
+    std::vector<ResidentCopy> merged;
+    merged.reserve(pending.size());
+
+    for (const ResidentCopy& copy : pending) {
+        if (!merged.empty()) {
+            ResidentCopy& tail = merged.back();
+            if (tail.buffer == copy.buffer && tail.offset + tail.size == copy.offset && tail.src + tail.size == copy.src) {
+                tail.size += copy.size;
+                continue;
+            }
+        }
+        merged.push_back(copy);
+    }
+
+    std::vector<VkBuffer> touched;
+    size_t doneCount = 0;
+
+    for (; doneCount < merged.size(); ++doneCount) {
+        const ResidentCopy& copy = merged[doneCount];
+        VkDeviceSize done = 0;
+        int32_t ok = 1;
+
+        while (done < copy.size) {
+            VkDeviceSize bytes = copy.size - done;
+            const VkDeviceSize slice = 8ull << 20;
+
+            if (bytes > slice) {
+                bytes = slice;
+            }
+
+            VkStaging staging = this->Stage(bytes);
+
+            if (!staging.buffer || !staging.data) {
+                ok = 0;
+                break;
+            }
+
+            std::memcpy(staging.data, copy.src + done, static_cast<size_t>(bytes));
+
+            VkBufferMemoryBarrier host = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER };
+            host.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+            host.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            host.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            host.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            host.buffer = staging.buffer;
+            host.offset = staging.offset;
+            host.size = bytes;
+            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 1, &host, 0, nullptr);
+
+            VkBufferCopy region = { staging.offset, copy.offset + done, bytes };
+            vkCmdCopyBuffer(cmd, staging.buffer, copy.buffer, 1, &region);
+            done += bytes;
+        }
+
+        if (!ok) {
+            if (done && (touched.empty() || touched.back() != copy.buffer)) {
+                touched.push_back(copy.buffer);
+            }
+
+            ResidentCopy rest = copy;
+            rest.src += done;
+            rest.offset += done;
+            rest.size -= done;
+
+            if (rest.size) {
+                this->m_residentUploads.push_back(rest);
+            }
+            break;
+        }
+
+        if (touched.empty() || touched.back() != copy.buffer) {
+            touched.push_back(copy.buffer);
+        }
+    }
+
+    for (size_t i = doneCount + 1; i < merged.size(); ++i) {
+        this->m_residentUploads.push_back(merged[i]);
+    }
+
+    if (touched.empty()) {
+        return;
+    }
+
+    std::vector<VkBufferMemoryBarrier> barriers(touched.size());
+
+    for (size_t i = 0; i < touched.size(); ++i) {
+        VkBufferMemoryBarrier& barrier = barriers[i];
+        barrier = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER };
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_INDEX_READ_BIT;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.buffer = touched[i];
+        barrier.offset = 0;
+        barrier.size = VK_WHOLE_SIZE;
+    }
+
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0, 0, nullptr, static_cast<uint32_t>(barriers.size()), barriers.data(), 0, nullptr);
 }
 
 int32_t VkContext::CreateImage(const VkImageCreateInfo& info, VkImageAspectFlags aspect, VkImageViewType viewType, const VkComponentMapping& swizzle, VkImageAlloc& out) {
@@ -1279,12 +1479,14 @@ void VkContext::RetireBuffer(VkBufferAlloc& buffer) {
         garbage.mapped = buffer.mapped;
         garbage.size = buffer.size;
         garbage.usage = buffer.usage;
+        garbage.shadow = buffer.shadow;
         this->Retire(garbage);
     }
 
     buffer.buffer = VK_NULL_HANDLE;
     buffer.memory = VK_NULL_HANDLE;
     buffer.mapped = nullptr;
+    buffer.shadow = 0;
 }
 
 void VkContext::RetireImage(VkImageAlloc& image) {
@@ -1314,7 +1516,7 @@ void VkContext::Collect(VkFrame& frame) {
         }
 
         // ʕ ◕ᴥ◕ ʔ✿ Only stream-pool buffers recycle; staging temps would pin hundreds of MB ✿ ʕ ◕ᴥ◕ ʔ
-        bool recyclable = garbage.buffer && garbage.mapped &&
+        bool recyclable = garbage.buffer && garbage.mapped && !garbage.shadow &&
             garbage.usage == (VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
         bool pushed = false;
         if (recyclable) {
@@ -1331,6 +1533,10 @@ void VkContext::Collect(VkFrame& frame) {
             }
         }
         if (!pushed) {
+            if (garbage.shadow && garbage.mapped) {
+                std::free(garbage.mapped);
+            }
+
             if (garbage.buffer) {
                 vkDestroyBuffer(this->m_device, garbage.buffer, nullptr);
             }
