@@ -293,6 +293,7 @@ void OsGuiDestroyGxWindow(void* window) {
         s_GxWindowParam = nullptr;
     }
 
+    OsInputSetMouseMode(OS_MOUSE_MODE_NORMAL);
     SDL_DestroyWindow(static_cast<SDL_Window*>(window));
 }
 
