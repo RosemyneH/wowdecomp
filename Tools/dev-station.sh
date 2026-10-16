@@ -6,7 +6,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 GAME_SRC="${WOWDECOMP_GAME_SRC:-$HOME/Games/WoW335}"
 PLAY_DIR="${WOWDECOMP_PLAY_DIR:-$ROOT/test/dev-335}"
 BUILD_DIR="${WOWDECOMP_BUILD_DIR:-$ROOT/build/linux-dev}"
+RELEASE_BUILD_DIR="${WOWDECOMP_RELEASE_BUILD_DIR:-$ROOT/build/linux-release}"
+RELEASE_BIN="$ROOT/bin/Linux/WowClient64.release"
 REALM_HOST="${WOWDECOMP_REALM_HOST:-127.0.0.1}"
+PROFILE_SHM="/dev/shm/wowdecomp-profile"
 
 # ʕ ◕ᴥ◕ ʔ✿ Live client scope. loop/memory-bomb trap or exhaust the host on load ✿ ʕ ◕ᴥ◕ ʔ
 # ʕ •ᴥ•ʔ✿ ElvUI and Details are whole addon trees staged as their own WasmAddOns folders ✿ ʕ •ᴥ•ʔ
@@ -27,19 +30,40 @@ DETAILS_SRC="${WOWDECOMP_DETAILS:-$HOME/Repos/Details-WotLK}"
 
 usage() {
     cat <<EOF
-Usage: $0 [all|deps|addons|scope|build|test|launch|smoke]
+Usage: $0 [all|deps|addons|scope|build|test|launch|release|smoke]
 
   all      deps, WASM packages, symlinked scope, client/host build, tests, smoke launch
   deps     wasm32 rust std + clang wasm linker
   addons   build Addons/Wasm into Addons/Wasm/dist
   scope    symlink $PLAY_DIR from $GAME_SRC and the built packages
-  build    Ninja build of WowClient, wasm_addon_host, wasm_addon_tests
+  build    Ninja RelWithDebInfo (-O2 -g) WowClient, wasm_addon_host, wasm_addon_tests
   test     headless host tests against Addons/Wasm/dist
-  launch   start AzerothCore in Docker, then WowClient64 in the dev scope
+  launch   start AzerothCore in Docker, then the RelWithDebInfo WowClient64 in the dev scope
+  release  build Release (-O3 -DNDEBUG) into a separate tree and launch that binary in the same scope
   smoke    start the client, require it to stay up, then stop it
 
-Env: WOWDECOMP_GAME_SRC WOWDECOMP_PLAY_DIR WOWDECOMP_BUILD_DIR WOWDECOMP_REALM_HOST
+Env: WOWDECOMP_GAME_SRC WOWDECOMP_PLAY_DIR WOWDECOMP_BUILD_DIR WOWDECOMP_RELEASE_BUILD_DIR WOWDECOMP_REALM_HOST
+     WOWDECOMP_PROFILE (on|off, default on — CPU zones in $PROFILE_SHM for wowdecomp-profile MCP)
 EOF
+}
+
+# ʕ •ᴥ•ʔ✿ In-game Profiler (Engine/Source/Base/Profiler.cpp) publishes frames for Tools/profile-mcp ✿ ʕ •ᴥ•ʔ
+apply_profiler_env() {
+    case "${WOWDECOMP_PROFILE:-on}" in
+        0|off|false|no|disable)
+            export WOW_PROFILE=0
+            ;;
+        *)
+            unset WOW_PROFILE 2>/dev/null || true
+            ;;
+    esac
+}
+
+profiler_launch_note() {
+    if [[ "${WOW_PROFILE:-}" == "0" ]]; then
+        return
+    fi
+    echo "CPU profiler: $PROFILE_SHM (Cursor MCP wowdecomp-profile; WOWDECOMP_PROFILE=off to disable)"
 }
 
 # ʕ •ᴥ•ʔ✿ Arch rustc rejects upstream wasm32 std, so addon builds use a user rustup toolchain ✿ ʕ •ᴥ•ʔ
@@ -183,6 +207,18 @@ configure_build() {
         -DWOWDECOMP_DISABLE_SIGNATURE_CHECKS=ON
 }
 
+configure_release() {
+    cmake -S "$ROOT" -B "$RELEASE_BUILD_DIR" -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DWOWDECOMP_DISABLE_SIGNATURE_CHECKS=ON \
+        -DWOWCLIENT_OUTPUT_OVERRIDE=WowClient64.release
+}
+
+build_release() {
+    configure_release
+    cmake --build "$RELEASE_BUILD_DIR" --target WowClient -j "$(nproc)"
+}
+
 build_client() {
     configure_build
     cmake --build "$BUILD_DIR" --target WowClient wasm_addon_host wasm_addon_tests -j "$(nproc)"
@@ -206,8 +242,29 @@ launch_client() {
         exit 1
     fi
     WOWDECOMP_SERVER_BACKEND=docker "$ROOT/Tools/local-server/start.sh"
+    apply_profiler_env
+    profiler_launch_note
+    echo "RelWithDebInfo (-O2 -g): $PLAY_DIR/WowClient64"
     cd "$PLAY_DIR"
     exec ./WowClient64
+}
+
+launch_release() {
+    build_release
+    if [[ ! -x "$RELEASE_BIN" ]]; then
+        echo "Missing $RELEASE_BIN — release build did not produce it" >&2
+        exit 1
+    fi
+    if [[ ! -d "$PLAY_DIR/Data" ]]; then
+        echo "Missing $PLAY_DIR/Data — run: $0 scope" >&2
+        exit 1
+    fi
+    WOWDECOMP_SERVER_BACKEND=docker "$ROOT/Tools/local-server/start.sh"
+    apply_profiler_env
+    profiler_launch_note
+    echo "Release (-O3 -DNDEBUG): $RELEASE_BIN"
+    cd "$PLAY_DIR"
+    exec "$RELEASE_BIN"
 }
 
 smoke_launch() {
@@ -218,6 +275,7 @@ smoke_launch() {
     mkdir -p "$PLAY_DIR/Logs"
     local log="$PLAY_DIR/Logs/dev-station-launch.log"
     : >"$log"
+    apply_profiler_env
     set +e
     (cd "$PLAY_DIR" && ./WowClient64) >"$log" 2>&1 &
     local pid=$!
@@ -254,6 +312,7 @@ case "$cmd" in
     build) build_client ;;
     test) run_tests ;;
     launch) launch_client ;;
+    release) launch_release ;;
     smoke) smoke_launch ;;
     all)
         ensure_packages
