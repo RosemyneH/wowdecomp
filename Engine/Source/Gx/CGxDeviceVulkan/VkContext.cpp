@@ -835,11 +835,12 @@ int32_t VkContext::Submit(int32_t present) {
     submit.commandBufferCount = cmdCount;
     submit.pCommandBuffers = cmds;
 
+    int32_t attachImageWait = 0;
     if (frame.acquired && !frame.imageWaited) {
         submit.waitSemaphoreCount = 1;
         submit.pWaitSemaphores = &frame.imageAvailable;
         submit.pWaitDstStageMask = &waitStage;
-        frame.imageWaited = 1;
+        attachImageWait = 1;
     }
 
     if (present) {
@@ -850,6 +851,10 @@ int32_t VkContext::Submit(int32_t present) {
     vkResetFences(this->m_device, 1, &frame.fence);
     if (vkQueueSubmit(this->m_queue, 1, &submit, frame.fence) == VK_SUCCESS) {
         frame.fenceUnsignaled = 0;
+        // ʕ •ᴥ•ʔ✿ imageAvailable is consumed only when this submit succeeds ✿ ʕ •ᴥ•ʔ
+        if (attachImageWait) {
+            frame.imageWaited = 1;
+        }
         return 1;
     }
 
