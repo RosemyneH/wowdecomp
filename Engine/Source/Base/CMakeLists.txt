@@ -9,3 +9,7 @@ target_include_directories(Base
     PUBLIC
         ${CMAKE_SOURCE_DIR}
 )
+
+if (WOWDECOMP_UNIX)
+    target_link_libraries(Base PRIVATE Threads::Threads)
+endif ()

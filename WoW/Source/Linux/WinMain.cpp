@@ -4,6 +4,7 @@
 #include <ucontext.h>
 #include <cstdint>
 #include <cstdlib>
+#include "Engine/Source/Base/Job/JobSystem.h"
 #include "Engine/Source/Storm/H/storm.h"
 #include "WoW/Source/Client.h"
 
@@ -21,7 +22,10 @@ static int32_t ClientMain() {
     fesetround(FE_TONEAREST);
     ReturnFalse();
 
-    return CommonMain();
+    Job::Init();
+    int32_t result = CommonMain();
+    Job::Shutdown();
+    return result;
 }
 
 static void MainFiberProc() {
