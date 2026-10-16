@@ -93,13 +93,24 @@ void OsCallInitialize(const char* name) {
         s_tlsIndex = OsTlsAlloc();
     }
 
+    void* memory = SMemAlloc(sizeof(OsCallThread), __FILE__, __LINE__, SMEM_FLAG_ZEROMEMORY);
+
+    if (!memory) {
+        if (--s_threadCount == 0) {
+            OsTlsFree(s_tlsIndex);
+        }
+
+        s_critsect.Leave();
+        return;
+    }
+
     OsCallThread* oldThread = static_cast<OsCallThread*>(OsTlsGetValue(s_tlsIndex));
 
     if (oldThread) {
         delete oldThread;
     }
 
-    OsCallThread* thread = new (SMemAlloc(sizeof(OsCallThread), __FILE__, __LINE__, SMEM_FLAG_ZEROMEMORY)) OsCallThread;
+    OsCallThread* thread = new (memory) OsCallThread;
     thread->m_threadId = static_cast<uint32_t>(gettid());
     thread->m_threadHandle = reinterpret_cast<void*>(pthread_self());
     SStrPrintf(thread->m_name, sizeof(thread->m_name), "%s [%u]", name, thread->m_threadId);
@@ -112,7 +123,13 @@ void OsCallInitialize(const char* name) {
 
 // OFFSET: 0x0086F880
 void* OsCallInitializeContext(const char* name) {
-    OsCallContext* context = new (SMemAlloc(sizeof(OsCallContext), __FILE__, __LINE__, SMEM_FLAG_ZEROMEMORY)) OsCallContext;
+    void* memory = SMemAlloc(sizeof(OsCallContext), __FILE__, __LINE__, SMEM_FLAG_ZEROMEMORY);
+
+    if (!memory) {
+        return nullptr;
+    }
+
+    OsCallContext* context = new (memory) OsCallContext;
     SStrCopy(context->m_name, name, sizeof(context->m_name));
     context->unused_000C = -1;
 
