@@ -800,11 +800,17 @@ void CVehicle_C::RemoveAllPassengersLocally() {
     while (passenger) {
         CPassenger* next = this->m_passengers.Next(passenger);
 
-        if (camera->m_targetGUID == *passenger->m_ownerGuid) {
+        if (camera && camera->m_targetGUID == *passenger->m_ownerGuid) {
             camera->MakeRelativeTo(WOWGUID{ 0 });
         }
 
         CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(*passenger->m_ownerGuid, TYPEMASK_UNIT, __FILE__, __LINE__));
+
+        if (!unit) {
+            passenger = next;
+            continue;
+        }
+
         CMovement_C* movement = static_cast<CMovement_C*>(passenger);
 
         if (unit->m_obj->m_guid == CGUnit_C::s_activeMover) {
