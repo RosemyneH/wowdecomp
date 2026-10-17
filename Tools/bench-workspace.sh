@@ -44,13 +44,17 @@ ensure_awesome_cvars() {
 
 sway_rule() {
     command -v swaymsg >/dev/null || return 0
+    # -- ʕ •ᴥ•ʔ✿ Workspace 7 otherwise lands on HDMI. The bench has to fill the ultrawide. ✿ ʕ •ᴥ•ʔ
+    swaymsg "workspace ${WORKSPACE} output DP-1" >/dev/null
     swaymsg "for_window [title=\"${TITLE}\"] move container to workspace number ${WORKSPACE}" >/dev/null
 }
 
 park_window() {
     command -v swaymsg >/dev/null || return 0
     local pid="$1"
+    swaymsg "workspace ${WORKSPACE} output DP-1" >/dev/null 2>&1 || true
     swaymsg "[pid=${pid}] move container to workspace number ${WORKSPACE}" >/dev/null 2>&1 || true
+    swaymsg "[pid=${pid}] fullscreen enable" >/dev/null 2>&1 || true
 }
 
 enable_profile() {

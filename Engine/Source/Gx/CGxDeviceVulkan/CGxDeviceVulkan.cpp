@@ -1,6 +1,8 @@
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <thread>
+#include <vector>
 #include "Engine/Source/Gx/CGxDeviceVulkan/CGxDeviceVulkan.h"
 #include "Engine/Source/Gx/Blit.h"
 #include "Engine/Source/Gx/CGxBuf.h"
@@ -8,6 +10,8 @@
 #include "Engine/Source/Gx/CGxTex.h"
 #include "Engine/Source/Gx/Gx.h"
 #include "Engine/Source/Base/Profiler.h"
+#include "Engine/Source/BlizzardCore/SFile2-Core.h"
+#include "Engine/Source/Gx/WowDecompVk.h"
 #include "Engine/Source/Storm/H/storm.h"
 
 static const uint32_t s_ffpVertexCode[] =
@@ -1151,6 +1155,10 @@ void CGxDeviceVulkan::IBuildUniforms(VkDrawUniforms& uniforms) {
     uniforms.misc[1] = static_cast<float>(this->m_gpuDrawMode);
     uniforms.misc[2] = this->m_skinThisDraw ? 1.0f : 0.0f;
     uniforms.misc[3] = this->m_skinThisDraw ? static_cast<float>(this->m_skinInfluences) : 0.0f;
+
+    if (WowDecompVk_Unlit()) {
+        uniforms.flags[0] = 0;
+    }
 }
 
 void CGxDeviceVulkan::IRsSendToHw(EGxRenderState which) {
@@ -1548,7 +1556,10 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
     key.depthWrite = (enables & 0x8) && rs[GxRs_DepthWrite].m_value.m_data.i[0];
     key.colorMask = (enables & 0x10) ? static_cast<uint8_t>(rs[GxRs_ColorWrite].m_value.m_data.u[0] & 0xF) : 0;
     key.cull = (enables & 0x20) ? static_cast<uint8_t>(std::min<uint32_t>(rs[GxRs_Culling].m_value.m_data.u[0], 2)) : 0;
-    key.fill = !(enables & (1 << GxMasterEnable_PolygonFill)) && this->m_vk.m_features.fillModeNonSolid;
+    // ʕ •ᴥ•ʔ✿ UI draws with depth off, so the experiment does not turn the options frame into lines ✿ ʕ •ᴥ•ʔ
+    int32_t gameWire = (enables & (1 << GxMasterEnable_PolygonFill)) == 0;
+    int32_t forceWire = WowDecompVk_Wireframe() && depthTestOn;
+    key.fill = (gameWire || forceWire) && this->m_vk.m_features.fillModeNonSolid;
     key.pass = this->m_passTarget != nullptr;
     key.bindless = this->m_gpuDrawMode == 2 && this->m_bindless;
 
@@ -1925,22 +1936,23 @@ uint32_t CGxDeviceVulkan::TerrainTextureSlot(CGxTex* tex) {
         return ~0u;
     }
 
-    int32_t sameSlot = texture->terrainEpoch == this->m_terrainEpoch && texture->terrainSlot != ~0u;
+    uint32_t frame = this->m_vk.m_frameIndex;
+    // -- ʕ •ᴥ•ʔ✿ Two frames are in flight, and each has its own set. A slot written on one is empty on the other. ✿ ʕ •ᴥ•ʔ
+    int32_t sameSlot = texture->terrainEpoch == this->m_terrainEpoch && texture->terrainSlot != ~0u && texture->terrainView == texture->image.view && texture->terrainSampler == sampler;
 
-    if (sameSlot && texture->terrainView == texture->image.view && texture->terrainSampler == sampler) {
+    if (sameSlot && (texture->terrainFrames & (1u << frame))) {
         return texture->terrainSlot;
     }
 
-    if (!sameSlot && (this->m_terrainCount >= TerrainSlots || !this->EnsureTerrainSet())) {
+    if (!sameSlot && this->m_terrainCount >= TerrainSlots) {
         return ~0u;
     }
 
-    if (sameSlot && !this->EnsureTerrainSet()) {
+    if (!this->EnsureTerrainSet()) {
         return ~0u;
     }
 
     uint32_t slot = sameSlot ? texture->terrainSlot : this->m_terrainCount++;
-    uint32_t frame = this->m_vk.m_frameIndex;
     VkDescriptorImageInfo image = { sampler, texture->image.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
     VkWriteDescriptorSet write = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
     write.dstSet = this->m_terrainSets[frame];
@@ -1954,7 +1966,12 @@ uint32_t CGxDeviceVulkan::TerrainTextureSlot(CGxTex* tex) {
     texture->terrainSlot = slot;
     texture->terrainView = texture->image.view;
     texture->terrainSampler = sampler;
+    texture->terrainFrames = sameSlot ? (texture->terrainFrames | (1u << frame)) : (1u << frame);
     return slot;
+}
+
+static float TerrainSlotFloat(uint32_t index) {
+    return index == ~0u ? -1.0f : static_cast<float>(index);
 }
 
 int32_t CGxDeviceVulkan::DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t count) {
@@ -1980,8 +1997,25 @@ int32_t CGxDeviceVulkan::DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t c
         memcpy(items[i].lightDiffuse, draws[i].lightDiffuse, sizeof(items[i].lightDiffuse));
         memcpy(items[i].lightAmbient, draws[i].lightAmbient, sizeof(items[i].lightAmbient));
         memcpy(items[i].lightAtten, draws[i].lightAtten, sizeof(items[i].lightAtten));
-        items[i].lightAmbient[0][3] = static_cast<float>(draws[i].texIndex0);
-        items[i].lightAmbient[1][3] = draws[i].texIndex1 == ~0u ? -1.0f : static_cast<float>(draws[i].texIndex1);
+
+        // -- ʕ •ᴥ•ʔ✿ ambient.w is the color slot. atten.w is the alpha slot. rgb and xyz stay the light ✿ ʕ •ᴥ•ʔ
+        uint32_t layers = draws[i].layerCount > 4 ? 4 : draws[i].layerCount;
+
+        if (layers) {
+            for (uint32_t k = 0; k < 4; ++k) {
+                items[i].lightAmbient[k][3] = k < layers ? TerrainSlotFloat(draws[i].layerTex[k]) : -1.0f;
+                items[i].lightAtten[k][3] = k < layers ? TerrainSlotFloat(draws[i].layerAlpha[k]) : -1.0f;
+            }
+        } else {
+            items[i].lightAmbient[0][3] = TerrainSlotFloat(draws[i].texIndex0);
+            items[i].lightAmbient[1][3] = -1.0f;
+            items[i].lightAmbient[2][3] = -1.0f;
+            items[i].lightAmbient[3][3] = -1.0f;
+            items[i].lightAtten[0][3] = TerrainSlotFloat(draws[i].texIndex1);
+            items[i].lightAtten[1][3] = -1.0f;
+            items[i].lightAtten[2][3] = -1.0f;
+            items[i].lightAtten[3][3] = -1.0f;
+        }
         commands[i].indexCount = draws[i].indexCount;
         commands[i].instanceCount = 1;
         commands[i].firstIndex = draws[i].firstIndex;

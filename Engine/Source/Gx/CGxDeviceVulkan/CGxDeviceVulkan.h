@@ -19,6 +19,7 @@ struct VkTexture {
     uint8_t initialized;
     uint32_t terrainSlot = ~0u;
     uint32_t terrainEpoch = 0;
+    uint32_t terrainFrames = 0;
     VkImageView terrainView = VK_NULL_HANDLE;
     VkSampler terrainSampler = VK_NULL_HANDLE;
 };
@@ -248,6 +249,7 @@ class CGxDeviceVulkan : public CGxDevice {
     void ISetCaps(const CGxFormat& format);
     void IStateSetDefaults();
     void ISceneBegin();
+    void IReloadExperimentalShaders();
     void ISceneEnd();
     void ISceneAbort();
     void IInvalidateCmdState();

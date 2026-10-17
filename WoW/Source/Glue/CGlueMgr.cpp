@@ -1143,8 +1143,12 @@ static void MaybeAutoLogin() {
             wantName[0] = '\0';
         }
 
-        started = 1;
         CGlueMgr::LoginServerLogin(user, pass);
+
+        if (CGlueMgr::m_idleState == IDLE_LOGIN_SERVER_LOGIN) {
+            started = 1;
+        }
+
         return;
     }
 
