@@ -766,15 +766,216 @@ void FinishChannel(Channel& channel, Vec2 origin) {
     channel.distance = sample.distance;
 }
 
-uint32_t Encode(double distance) {
-    // ʕ •ᴥ•ʔ✿ Raw distance is negative inside. The shader treats values above 0.5 as ink ✿ ʕ •ᴥ•ʔ
-    double value = (-distance) / static_cast<double>(kGxFontMsdfRange) + 0.5;
-    value = std::clamp(value, 0.0, 1.0);
-    return static_cast<uint32_t>(value * 255.0 + 0.5);
-}
-
 double Median(double a, double b, double c) {
     return std::max(std::min(a, b), std::min(std::max(a, b), c));
+}
+
+float FieldValue(double distance) {
+    // ʕ •ᴥ•ʔ✿ Raw distance is negative inside. The shader treats values above 0.5 as ink ✿ ʕ •ᴥ•ʔ
+    double value = (-distance) / static_cast<double>(kGxFontMsdfRange) + 0.5;
+    return static_cast<float>(std::clamp(value, 0.0, 1.0));
+}
+
+bool MedianOutside(float am, float bm, float xm) {
+    return xm < std::min(am, bm) || xm > std::max(am, bm);
+}
+
+bool DeviationExceeded(float am, float bm, float xm, double t, float span) {
+    float ax = static_cast<float>(t) * span;
+    float bx = (1.0f - static_cast<float>(t)) * span;
+    return xm < am - ax || xm > am + ax || xm < bm - bx || xm > bm + bx;
+}
+
+// ʕ •ᴥ•ʔ✿ A channel pair meeting between two texels is where the filtered median spikes ✿ ʕ •ᴥ•ʔ
+bool LinearArtifact(const float a[3], const float b[3], float span) {
+    float am = static_cast<float>(Median(a[0], a[1], a[2]));
+    float bm = static_cast<float>(Median(b[0], b[1], b[2]));
+
+    if (std::fabs(am - 0.5f) < std::fabs(bm - 0.5f)) {
+        return false;
+    }
+
+    float deltaA[3] = { a[1] - a[0], a[2] - a[1], a[0] - a[2] };
+    float deltaB[3] = { b[1] - b[0], b[2] - b[1], b[0] - b[2] };
+
+    for (int pair = 0; pair < 3; pair++) {
+        float denom = deltaA[pair] - deltaB[pair];
+
+        if (denom == 0.0f) {
+            continue;
+        }
+
+        double t = static_cast<double>(deltaA[pair]) / denom;
+
+        if (t <= 0.01 || t >= 0.99) {
+            continue;
+        }
+
+        float mixed[3] = {
+            static_cast<float>(a[0] + (b[0] - a[0]) * t),
+            static_cast<float>(a[1] + (b[1] - a[1]) * t),
+            static_cast<float>(a[2] + (b[2] - a[2]) * t),
+        };
+        float xm = static_cast<float>(Median(mixed[0], mixed[1], mixed[2]));
+
+        if (MedianOutside(am, bm, xm) && DeviationExceeded(am, bm, xm, t, span)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool DiagonalArtifact(const float a[3], const float b[3], const float c[3], const float d[3], float span) {
+    float am = static_cast<float>(Median(a[0], a[1], a[2]));
+    float dm = static_cast<float>(Median(d[0], d[1], d[2]));
+
+    if (std::fabs(am - 0.5f) < std::fabs(dm - 0.5f)) {
+        return false;
+    }
+
+    float linear[3];
+    float quad[3];
+    double extreme[3];
+
+    for (int channel = 0; channel < 3; channel++) {
+        float abc = a[channel] - b[channel] - c[channel];
+        linear[channel] = -a[channel] - abc;
+        quad[channel] = d[channel] + abc;
+        extreme[channel] = quad[channel] != 0.0f ? -0.5 * linear[channel] / quad[channel] : 2.0;
+    }
+
+    float deltaA[3] = { a[1] - a[0], a[2] - a[1], a[0] - a[2] };
+    float deltaD[3] = { d[1] - d[0], d[2] - d[1], d[0] - d[2] };
+    float deltaBC[3] = {
+        (b[1] - b[0]) + (c[1] - c[0]),
+        (b[2] - b[1]) + (c[2] - c[1]),
+        (b[0] - b[2]) + (c[0] - c[2]),
+    };
+    int extremePair[3][2] = { { 0, 1 }, { 1, 2 }, { 2, 0 } };
+
+    for (int pair = 0; pair < 3; pair++) {
+        double roots[2];
+        int count = SolveQuadratic(roots, deltaD[pair] - deltaBC[pair] + deltaA[pair], deltaBC[pair] - deltaA[pair] - deltaA[pair], deltaA[pair]);
+
+        for (int root = 0; root < count; root++) {
+            double t = roots[root];
+
+            if (t <= 0.01 || t >= 0.99) {
+                continue;
+            }
+
+            auto sample = [&](double s) {
+                float mixed[3];
+
+                for (int channel = 0; channel < 3; channel++) {
+                    mixed[channel] = static_cast<float>(s * (s * quad[channel] + linear[channel]) + a[channel]);
+                }
+
+                return static_cast<float>(Median(mixed[0], mixed[1], mixed[2]));
+            };
+
+            float xm = sample(t);
+            bool artifact = MedianOutside(am, dm, xm) && DeviationExceeded(am, dm, xm, t, span);
+
+            for (int end = 0; end < 2 && !artifact; end++) {
+                double tEx = extreme[extremePair[pair][end]];
+
+                if (tEx <= 0.0 || tEx >= 1.0) {
+                    continue;
+                }
+
+                float bound0 = am;
+                float bound1 = dm;
+                double from = 0.0;
+                double to = 1.0;
+
+                if (tEx > t) {
+                    bound1 = sample(tEx);
+                    to = tEx;
+                } else {
+                    bound0 = sample(tEx);
+                    from = tEx;
+                }
+
+                float ax = static_cast<float>(t - from) * span;
+                float bx = static_cast<float>(to - t) * span;
+                artifact = MedianOutside(bound0, bound1, xm) && (xm < bound0 - ax || xm > bound0 + ax || xm < bound1 - bx || xm > bound1 + bx);
+            }
+
+            if (artifact) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+// ʕ •ᴥ•ʔ✿ Filtering two agreeing texels can still paint a ring just outside the stroke ✿ ʕ •ᴥ•ʔ
+void FlattenArtifacts(float* field, int width, int height) {
+    float span = 1.1111111111111111f / static_cast<float>(kGxFontMsdfRange);
+    float diagonal = span * 1.41421356f;
+    std::vector<char> error(static_cast<size_t>(width) * height);
+
+    auto at = [&](int x, int y) {
+        return field + (static_cast<size_t>(y) * width + x) * 3;
+    };
+
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            float* texel = at(x, y);
+            bool bad = false;
+
+            if (x > 0) {
+                bad = LinearArtifact(texel, at(x - 1, y), span);
+            }
+
+            if (!bad && x + 1 < width) {
+                bad = LinearArtifact(texel, at(x + 1, y), span);
+            }
+
+            if (!bad && y > 0) {
+                bad = LinearArtifact(texel, at(x, y - 1), span);
+            }
+
+            if (!bad && y + 1 < height) {
+                bad = LinearArtifact(texel, at(x, y + 1), span);
+            }
+
+            if (!bad && x > 0 && y > 0) {
+                bad = DiagonalArtifact(texel, at(x - 1, y), at(x, y - 1), at(x - 1, y - 1), diagonal);
+            }
+
+            if (!bad && x + 1 < width && y > 0) {
+                bad = DiagonalArtifact(texel, at(x + 1, y), at(x, y - 1), at(x + 1, y - 1), diagonal);
+            }
+
+            if (!bad && x > 0 && y + 1 < height) {
+                bad = DiagonalArtifact(texel, at(x - 1, y), at(x, y + 1), at(x - 1, y + 1), diagonal);
+            }
+
+            if (!bad && x + 1 < width && y + 1 < height) {
+                bad = DiagonalArtifact(texel, at(x + 1, y), at(x, y + 1), at(x + 1, y + 1), diagonal);
+            }
+
+            error[static_cast<size_t>(y) * width + x] = bad;
+        }
+    }
+
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            if (!error[static_cast<size_t>(y) * width + x]) {
+                continue;
+            }
+
+            float* texel = at(x, y);
+            float median = static_cast<float>(Median(texel[0], texel[1], texel[2]));
+            texel[0] = median;
+            texel[1] = median;
+            texel[2] = median;
+        }
+    }
 }
 
 }
@@ -873,6 +1074,7 @@ bool MsdfRasterizeGlyph(FT_Face face, uint32_t pixelSize, uint32_t code, uint32_
 
     std::fill(pixels, pixels + size / 4, 0u);
 
+    std::vector<float> field(static_cast<size_t>(width) * height * 3);
     double baselineRow = static_cast<double>(baseline) + range;
 
     for (uint32_t row = 0; row < height; row++) {
@@ -915,9 +1117,21 @@ bool MsdfRasterizeGlyph(FT_Face face, uint32_t pixelSize, uint32_t code, uint32_
                 red.distance = green.distance = blue.distance = nearest.distance;
             }
 
-            uint32_t r = Encode(red.distance);
-            uint32_t g = Encode(green.distance);
-            uint32_t b = Encode(blue.distance);
+            float* texel = &field[(static_cast<size_t>(row) * width + col) * 3];
+            texel[0] = FieldValue(red.distance);
+            texel[1] = FieldValue(green.distance);
+            texel[2] = FieldValue(blue.distance);
+        }
+    }
+
+    FlattenArtifacts(field.data(), width, static_cast<int>(height));
+
+    for (uint32_t row = 0; row < height; row++) {
+        for (int col = 0; col < width; col++) {
+            const float* texel = &field[(static_cast<size_t>(row) * width + col) * 3];
+            uint32_t r = static_cast<uint32_t>(texel[0] * 255.0f + 0.5f);
+            uint32_t g = static_cast<uint32_t>(texel[1] * 255.0f + 0.5f);
+            uint32_t b = static_cast<uint32_t>(texel[2] * 255.0f + 0.5f);
             pixels[row * width + col] = 0xFF000000u | (r << 16) | (g << 8) | b;
         }
     }
