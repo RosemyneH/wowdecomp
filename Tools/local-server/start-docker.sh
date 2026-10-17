@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SERVER_DIR="${WOWDECOMP_ACORE_DIR:-$ROOT/test/local-server/acore-docker}"
+# shellcheck source=docker/cdn-env.sh
+source "$ROOT/Tools/local-server/docker/cdn-env.sh"
 
 if docker info >/dev/null 2>&1; then
     DOCKER=(docker)
@@ -34,14 +36,30 @@ if [[ ! -f .env ]]; then
 DOCKER_AUTH_EXTERNAL_PORT=3724
 DOCKER_WORLD_EXTERNAL_PORT=8085
 DOCKER_DB_EXTERNAL_PORT=63306
+DOCKER_CDN_EXTERNAL_PORT=1119
 EOF
 fi
 
+if [[ -f .env ]] && ! grep -q '^DOCKER_CDN_EXTERNAL_PORT=' .env; then
+    echo 'DOCKER_CDN_EXTERNAL_PORT=1119' >> .env
+fi
+
+wowdecomp_prepare_cdn "$ROOT"
+cdn_port=1119
+if [[ -f .env ]] && grep -q '^DOCKER_CDN_EXTERNAL_PORT=' .env; then
+    cdn_port="$(sed -n 's/^DOCKER_CDN_EXTERNAL_PORT=//p' .env | tail -1)"
+fi
+export DOCKER_CDN_EXTERNAL_PORT="$cdn_port"
+
+compose() {
+    "${DOCKER[@]}" compose -f "$SERVER_DIR/docker-compose.yml" "${COMPOSE_EXTRA[@]}" "$@"
+}
+
 if ! "${DOCKER[@]}" image inspect "acore/ac-wotlk-worldserver:master" >/dev/null 2>&1; then
     echo "Pulling images (first run can take a while)..."
-    "${DOCKER[@]}" compose pull
+    compose pull
 fi
-"${DOCKER[@]}" compose up -d
+compose up -d
 
 db_password="password"
 if [[ -f .env ]] && grep -q '^DOCKER_DB_ROOT_PASSWORD=' .env; then
@@ -49,7 +67,7 @@ if [[ -f .env ]] && grep -q '^DOCKER_DB_ROOT_PASSWORD=' .env; then
 fi
 
 mysql_exec() {
-    "${DOCKER[@]}" compose exec -T ac-database mysql -uroot -p"$db_password" --batch --skip-column-names -e "$1"
+    compose exec -T ac-database mysql -uroot -p"$db_password" --batch --skip-column-names -e "$1"
 }
 
 echo "Waiting for the auth database..."
@@ -57,7 +75,7 @@ deadline=$((SECONDS + 900))
 until mysql_exec "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='acore_auth' AND table_name='account'" 2>/dev/null | grep -qx 1; do
     if (( SECONDS > deadline )); then
         echo "AzerothCore database was not ready after 15 minutes." >&2
-        "${DOCKER[@]}" compose logs --tail 40 ac-db-import ac-database >&2 || true
+        compose logs --tail 40 ac-db-import ac-database >&2 || true
         exit 1
     fi
     sleep 3
@@ -73,10 +91,10 @@ UPDATE acore_auth.realmlist SET address='127.0.0.1', localAddress='127.0.0.1', p
 echo "Waiting for worldserver..."
 deadline=$((SECONDS + 900))
 # grep -q + pipefail treats SIGPIPE from compose as failure; read without -q
-until "${DOCKER[@]}" compose logs --tail 200 ac-worldserver 2>/dev/null | grep -i "world initialized" >/dev/null; do
+until compose logs --tail 200 ac-worldserver 2>/dev/null | grep -i "world initialized" >/dev/null; do
     if (( SECONDS > deadline )); then
         echo "worldserver did not finish starting." >&2
-        "${DOCKER[@]}" compose logs --tail 40 ac-worldserver >&2 || true
+        compose logs --tail 40 ac-worldserver >&2 || true
         exit 1
     fi
     sleep 3
@@ -84,10 +102,20 @@ done
 
 python3 "$ROOT/Tools/local-server/acore-account.py" a a --check 127.0.0.1:3724
 
+cdn_line="CDN off (no Data folder)."
+if [[ ${#COMPOSE_EXTRA[@]} -gt 0 ]]; then
+    cdn_host="$(wowdecomp_cdn_host)"
+    cdn_host="${cdn_host:-127.0.0.1}"
+    sed "s|source=http://yourcdn.com/|source=http://${cdn_host}:${cdn_port}/|" \
+        "$ROOT/ThirdParty/streamingclient/WoW.mfil.example" > "$SERVER_DIR/WoW.mfil"
+    cdn_line="CDN http://${cdn_host}:${cdn_port}/  (WoW.mfil written to $SERVER_DIR/WoW.mfil)"
+fi
+
 cat <<EOF
 
 AzerothCore (Docker, gitignored): $SERVER_DIR
 Auth 127.0.0.1:3724  World 127.0.0.1:8085
+$cdn_line
 Account: a / a   gmlevel 3 (all realms)
 Stop: WOWDECOMP_SERVER_BACKEND=docker $ROOT/Tools/local-server/stop.sh
 EOF

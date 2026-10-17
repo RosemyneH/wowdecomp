@@ -119,6 +119,8 @@ If `WoW.mfil` is next to the client, startup calls `SFile::InitializeStreaming` 
 
 His server sources and the GPL-2.0 text are vendored in [`ThirdParty/streamingclient/`](ThirdParty/streamingclient/README.md). The module is not linked into the client. A copy of his example manifest is `ThirdParty/streamingclient/WoW.mfil.example`. `source=` must end with `/`.
 
+The local Docker stack (`Tools/local-server/start-docker.sh`) adds an `ac-cdn` nginx service on port **1119**. It serves `$WOWDECOMP_GAME_SRC/Data` (default `~/Games/WoW335/Data`) at the same `/Data/*.MPQ` paths his module serves from `DataDir/cdn`. He recommends a normal HTTP server for this. The script writes `WoW.mfil` into the acore-docker directory with `source=` set to this machine's LAN address, which is what the Android app should use.
+
 ---
 
 ## Building

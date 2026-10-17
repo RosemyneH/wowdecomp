@@ -1,0 +1,19 @@
+services:
+  ac-cdn:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "${DOCKER_CDN_EXTERNAL_PORT:-1119}:80"
+    volumes:
+      - type: bind
+        source: ${WOWDECOMP_GAME_DATA}
+        target: /srv/cdn/Data
+        read_only: true
+      - type: bind
+        source: ${WOWDECOMP_CDN_NGINX_CONF}
+        target: /etc/nginx/conf.d/default.conf
+        read_only: true
+      - type: bind
+        source: ${WOWDECOMP_CDN_SIGNATURE}
+        target: /srv/cdn/signaturefile
+        read_only: true

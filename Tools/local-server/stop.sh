@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=docker/cdn-env.sh
+source "$ROOT/Tools/local-server/docker/cdn-env.sh"
 RUN_DIR="${WOWDECOMP_ACORE_RUN_DIR:-$ROOT/test/local-server/acore-run}"
 PID_DIR="$RUN_DIR/pids"
 
@@ -13,10 +15,11 @@ done
 if [[ "${WOWDECOMP_SERVER_BACKEND:-}" == "docker" ]]; then
     SERVER_DIR="${WOWDECOMP_ACORE_DIR:-$ROOT/test/local-server/acore-docker}"
     if [[ -f "$SERVER_DIR/docker-compose.yml" ]]; then
+        wowdecomp_prepare_cdn "$ROOT"
         if docker info >/dev/null 2>&1; then
-            docker compose -f "$SERVER_DIR/docker-compose.yml" down
+            docker compose -f "$SERVER_DIR/docker-compose.yml" "${COMPOSE_EXTRA[@]}" down --remove-orphans
         else
-            sudo docker compose -f "$SERVER_DIR/docker-compose.yml" down
+            sudo docker compose -f "$SERVER_DIR/docker-compose.yml" "${COMPOSE_EXTRA[@]}" down --remove-orphans
         fi
     fi
     exit 0
