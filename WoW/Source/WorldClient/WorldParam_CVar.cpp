@@ -459,6 +459,11 @@ bool CWorldParam::ExtendedViewCallback(CVar* var, const char* oldValue, const ch
 
     const bool full = SStrToInt(value) != 0;
 
+    // ʕ •ᴥ•ʔ✿ The cvar stores the new value after this returns. Dependents read m_intValue now ✿ ʕ •ᴥ•ʔ
+    if (var) {
+        var->m_intValue = full ? 1 : 0;
+    }
+
     if (CWorldParam::cvar_distanceFog) {
         CWorldParam::cvar_distanceFog->Set(full ? "0" : "1", true, true, false, true);
     }
@@ -472,7 +477,13 @@ bool CWorldParam::ExtendedViewCallback(CVar* var, const char* oldValue, const ch
     }
 
     if (CWorldParam::cvar_farClip) {
-        World::SetFarClip(CWorldParam::cvar_farClip->m_floatValue);
+        float farClip = CWorldParam::cvar_farClip->m_floatValue;
+
+        if (full) {
+            farClip = CWorldParamSlider::kFarclipMaxExtended;
+        }
+
+        World::SetFarClip(farClip);
     }
 
     return true;
@@ -483,6 +494,10 @@ bool CWorldParam::ExtendedHorizonZClipCallback(CVar* var, const char* oldValue, 
         ConsoleWrite("extendedHorizonZClip must be 0 or 1.", DEFAULT_COLOR);
 
         return false;
+    }
+
+    if (var) {
+        var->m_intValue = SStrToInt(value) != 0;
     }
 
     if (CWorldParam::cvar_horizonFarClip) {
