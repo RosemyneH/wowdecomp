@@ -14,7 +14,7 @@ void OsJoystickMapStick(uint32_t index, int32_t stick, int32_t xAxis, int32_t yA
 uint32_t OsJoystickOpen(uint32_t index);
 void OsJoystickSetMouseMode(uint32_t index, int32_t enable);
 
-#if defined(WOWDECOMP_LINUX)
+#if defined(WOWDECOMP_LINUX) || defined(WOWDECOMP_ANDROID)
 void OsGamepadCamera(float* x, float* y);
 int32_t OsGamepadCursorMode();
 #else

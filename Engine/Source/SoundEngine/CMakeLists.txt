@@ -28,7 +28,7 @@ else ()
         ${FMODEX_DIR}/win32/src/fmod_dsp_resampler_linear.cpp
     )
     set(FMODEX_PLATFORM_DIR ${FMODEX_DIR}/linux/src)
-    if (WOWDECOMP_APPLE)
+    if (WOWDECOMP_APPLE OR WOWDECOMP_ANDROID)
         list(FILTER FMODEX_PLATFORM_SOURCES EXCLUDE REGEX "fmod_output_alsa\\.cpp$")
     else ()
         find_package(ALSA REQUIRED)
@@ -71,7 +71,7 @@ if (WIN32)
             ws2_32
             msacm32
     )
-elseif (WOWDECOMP_APPLE)
+elseif (WOWDECOMP_APPLE OR WOWDECOMP_ANDROID)
     target_link_libraries(fmodex
         PUBLIC
             Threads::Threads

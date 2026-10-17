@@ -418,6 +418,12 @@ FodyWeavers.xsd
 CMakeSettings.json
 /build/
 
+android/.gradle/
+android/local.properties
+android/**/.cxx/
+android/app/build/
+android/build/
+
 # Cursor / agent orchestration (local instructions, not product source)
 .cursor/
 AGENTS.md

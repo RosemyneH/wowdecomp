@@ -23,7 +23,11 @@ static void SetThreadAffinityMask(Blizzard::Thread::ThreadRecord* thread, uint32
         }
     }
 
+#if defined(__ANDROID__)
+    sched_setaffinity(pthread_gettid_np(static_cast<System_Thread::ThreadHandle*>(thread->m_handle)->m_thread), sizeof(set), &set);
+#else
     pthread_setaffinity_np(static_cast<System_Thread::ThreadHandle*>(thread->m_handle)->m_thread, sizeof(set), &set);
+#endif
 #endif
 }
 

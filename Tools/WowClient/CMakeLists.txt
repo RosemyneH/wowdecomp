@@ -1,10 +1,15 @@
 file(GLOB CLIENT_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/WoW/Source/*.cpp")
 list(APPEND CLIENT_SOURCES "${CMAKE_SOURCE_DIR}/Engine/Source/Perf/PerfLog.cpp")
 
-if (WOWDECOMP_LINUX)
+if (WOWDECOMP_LINUX OR WOWDECOMP_ANDROID)
     file(GLOB CLIENT_PLATFORM_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/WoW/Source/Linux/*.cpp")
-    set(WOWCLIENT_OUTPUT_NAME WowClient64)
-    set(WOWCLIENT_BIN_DIR ${CMAKE_SOURCE_DIR}/bin/Linux)
+    if (WOWDECOMP_ANDROID)
+        set(WOWCLIENT_OUTPUT_NAME main)
+        set(WOWCLIENT_BIN_DIR "")
+    else ()
+        set(WOWCLIENT_OUTPUT_NAME WowClient64)
+        set(WOWCLIENT_BIN_DIR ${CMAKE_SOURCE_DIR}/bin/Linux)
+    endif ()
 elseif (WOWDECOMP_APPLE)
     file(GLOB CLIENT_PLATFORM_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/WoW/Source/Darwin/*.cpp" "${CMAKE_SOURCE_DIR}/WoW/Source/Linux/BotCheck.cpp")
     set(WOWCLIENT_OUTPUT_NAME WowClient64)
@@ -30,7 +35,9 @@ if (WOWCLIENT_CRASH_LOG AND WIN32)
     list(APPEND CLIENT_TOOL_SOURCES crash_log.cpp)
 endif ()
 
-if (WIN32)
+if (WOWDECOMP_ANDROID)
+    add_library(WowClient SHARED ${CLIENT_SOURCES} ${CLIENT_PLATFORM_SOURCES} ${CLIENT_TOOL_SOURCES})
+elseif (WIN32)
     add_executable(WowClient WIN32 ${CLIENT_SOURCES} ${CLIENT_PLATFORM_SOURCES} ${CLIENT_TOOL_SOURCES})
 else ()
     add_executable(WowClient ${CLIENT_SOURCES} ${CLIENT_PLATFORM_SOURCES} ${CLIENT_TOOL_SOURCES})
@@ -43,13 +50,18 @@ endif ()
 
 set_target_properties(WowClient PROPERTIES
     OUTPUT_NAME ${WOWCLIENT_OUTPUT_NAME}
-    RUNTIME_OUTPUT_DIRECTORY ${WOWCLIENT_BIN_DIR}
 )
 
-foreach (config ${CMAKE_CONFIGURATION_TYPES} ${CMAKE_BUILD_TYPE})
-    string(TOUPPER ${config} config)
-    set_target_properties(WowClient PROPERTIES RUNTIME_OUTPUT_DIRECTORY_${config} ${WOWCLIENT_BIN_DIR})
-endforeach ()
+if (WOWCLIENT_BIN_DIR)
+    set_target_properties(WowClient PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${WOWCLIENT_BIN_DIR}
+    )
+
+    foreach (config ${CMAKE_CONFIGURATION_TYPES} ${CMAKE_BUILD_TYPE})
+        string(TOUPPER ${config} config)
+        set_target_properties(WowClient PROPERTIES RUNTIME_OUTPUT_DIRECTORY_${config} ${WOWCLIENT_BIN_DIR})
+    endforeach ()
+endif ()
 
 target_include_directories(WowClient
     PRIVATE
@@ -108,7 +120,11 @@ set(WOWCLIENT_LIBS
         Os
 )
 
-if (WIN32 OR WOWDECOMP_APPLE)
+if (WOWDECOMP_ANDROID)
+    list(JOIN WOWCLIENT_LIBS "," WOWCLIENT_LIBS_GROUP)
+    target_link_libraries(WowClient PRIVATE "$<LINK_GROUP:RESCAN,${WOWCLIENT_LIBS_GROUP}>" SDL3::SDL3 log android)
+    target_link_options(WowClient PRIVATE "-Wl,-z,max-page-size=16384")
+elseif (WIN32 OR WOWDECOMP_APPLE)
     target_link_libraries(WowClient PRIVATE ${WOWCLIENT_LIBS})
 else ()
     list(JOIN WOWCLIENT_LIBS "," WOWCLIENT_LIBS_GROUP)

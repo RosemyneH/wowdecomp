@@ -940,6 +940,12 @@
 
 #endif
 
+#if defined(__ANDROID__)
+    #undef FMOD_SUPPORT_ALSA
+    #undef FMOD_SUPPORT_OSS
+    #undef FMOD_SUPPORT_ESD
+#endif
+
 #ifdef FMOD_STATICFORPLUGINS
 
     #undef FMOD_SUPPORT_DSOUND

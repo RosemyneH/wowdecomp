@@ -29,3 +29,7 @@ if (WIN32)
             lgLcd
     )
 endif ()
+
+if (TARGET SDL3::SDL3)
+    target_link_libraries(Ui PRIVATE SDL3::SDL3)
+endif ()

@@ -1,3 +1,7 @@
+if (WOWDECOMP_ANDROID)
+    return()
+endif ()
+
 file(GLOB PRIVATE_SOURCES CONFIGURE_DEPENDS "*.cpp")
 
 if (WOWDECOMP_LINUX)

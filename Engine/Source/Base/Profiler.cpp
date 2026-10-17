@@ -6,8 +6,9 @@
 #include <cstdlib>
 #include "Engine/Source/Os/TimeManager.h"
 
-#if defined(__linux__)
+#if defined(__linux__) && !defined(__ANDROID__)
 #include <fcntl.h>
+#include <new>
 #include <sys/mman.h>
 #include <unistd.h>
 #endif
@@ -106,7 +107,7 @@ void Publish() {
 }
 
 void OpenShm() {
-#if defined(__linux__)
+#if defined(__linux__) && !defined(__ANDROID__)
     int fd = shm_open("/wowdecomp-profile", O_CREAT | O_RDWR, 0600);
     if (fd < 0) {
         return;

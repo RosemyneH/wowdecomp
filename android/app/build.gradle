@@ -1,0 +1,71 @@
+plugins {
+    id "com.android.application"
+}
+
+def sdlRoot = System.getenv("SDL3_ROOT")
+if (sdlRoot == null || sdlRoot.isEmpty()) {
+    def fromProp = findProperty("SDL3_ROOT")
+    sdlRoot = fromProp == null ? "" : fromProp.toString()
+}
+if (!sdlRoot) {
+    throw new GradleException("Set SDL3_ROOT to an SDL 3.4.16 source tree (the android-project Java sources).")
+}
+
+android {
+    namespace "com.wowdecomp.client"
+    compileSdk 35
+    ndkVersion "28.2.13676358"
+
+    defaultConfig {
+        applicationId "com.wowdecomp.client"
+        minSdk 33
+        targetSdk 35
+        versionCode 1
+        versionName "1.0"
+
+        ndk {
+            abiFilters "arm64-v8a"
+        }
+
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_STL=c++_shared",
+                        "-DSDL3_ROOT=${sdlRoot}",
+                        "-DCMAKE_BUILD_TYPE=Release"
+                abiFilters "arm64-v8a"
+                targets "WowClient"
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file("../../CMakeLists.txt")
+            version "3.31.6"
+        }
+    }
+
+    sourceSets.main.java.srcDirs += "${sdlRoot}/android-project/app/src/main/java"
+
+    lint {
+        abortOnError false
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging true
+        }
+    }
+}

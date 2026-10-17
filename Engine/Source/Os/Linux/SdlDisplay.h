@@ -5,10 +5,14 @@
 
 // ʕ •ᴥ•ʔ✿ SDL still tries X11 first when DISPLAY is set, which is XWayland on a Wayland desktop ✿ ʕ •ᴥ•ʔ
 inline void SdlUseWayland() {
+#if defined(__ANDROID__)
+    return;
+#else
     const char* chosen = SDL_getenv("SDL_VIDEODRIVER");
     if (!chosen || !chosen[0]) {
         SDL_setenv_unsafe("SDL_VIDEODRIVER", "wayland", 0);
     }
+#endif
 }
 
 inline SDL_DisplayID SdlPrimaryDisplay() {

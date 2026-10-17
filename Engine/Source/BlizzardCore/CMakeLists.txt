@@ -23,13 +23,14 @@ if(WIN32)
             wininet
     )
 elseif(WOWDECOMP_UNIX)
-    find_package(CURL REQUIRED)
+    if (NOT TARGET CURL::libcurl)
+        find_package(CURL REQUIRED)
+    endif ()
 
     target_link_libraries(BlizzardCore
         PUBLIC
             Threads::Threads
             ${CMAKE_DL_LIBS}
-        PRIVATE
             CURL::libcurl
     )
 endif()

@@ -191,6 +191,22 @@ elseif (WIN32)
         INTERFACE
             XvidDecoder
     )
+elseif (ANDROID)
+    add_library(XvidDecoder STATIC
+        ${CMAKE_SOURCE_DIR}/Tools/XvidDecoder/XvidDecoder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/xvidcore/android/xvid_stub.c
+    )
+
+    target_include_directories(XvidDecoder
+        PRIVATE
+            ${CMAKE_SOURCE_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/xvidcore/include
+    )
+
+    target_link_libraries(DivxDecoder
+        INTERFACE
+            XvidDecoder
+    )
 else ()
     find_path(XVID_INCLUDE_DIR xvid.h
         HINTS ${CMAKE_CURRENT_SOURCE_DIR}/xvidcore/include

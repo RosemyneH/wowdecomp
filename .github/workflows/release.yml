@@ -88,9 +88,50 @@ jobs:
           name: package-windows-arm64
           path: wowdecomp-windows-arm64.zip
 
+  android-arm64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: SDK and NDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358" "cmake;3.31.6"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+
+      - name: SDL 3.4.16
+        run: |
+          curl -fsSL -o sdl.tgz https://github.com/libsdl-org/SDL/archive/refs/tags/release-3.4.16.tar.gz
+          tar -xzf sdl.tgz
+          echo "SDL3_ROOT=$PWD/SDL-release-3.4.16" >> "$GITHUB_ENV"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.12"
+
+      - name: Assemble APK
+        run: gradle -p android assembleRelease --stacktrace
+
+      - name: Package
+        run: cp android/app/build/outputs/apk/release/app-release.apk wowdecomp-android-arm64.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-android-arm64
+          path: wowdecomp-android-arm64.apk
+
   publish:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [linux-x64, windows-x64, windows-arm64]
+    needs: [linux-x64, windows-x64, windows-arm64, android-arm64]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -104,10 +145,13 @@ jobs:
           files: dist/*
           generate_release_notes: true
           body: |
-            **Experimental build.** You still need a retail **WoW 3.3.5a (12340)** install — place `WowClient64` (or `.exe`) beside your `Data` folder (see README).
+            **Experimental build.** Desktop archives still need a retail **WoW 3.3.5a (12340)** `Data` folder beside the client. The Android APK is a native Vulkan app (arm64, API 33+). On first launch it writes a starter `WoW.mfil` into app storage; point `source=` at an HTTP CDN that serves the 3.3.5a archives. That CDN layout is brian8544's, GPL-2.0: https://github.com/brian8544/streamingclient-3.3.5
+
+            The APK is signed with the CI debug key. Gamepad input matches the Linux client. Audio and cinematics are not wired up on Android yet.
 
             | Archive | Platform |
             |---------|----------|
             | `wowdecomp-linux-x86_64.tar.gz` | Linux x86_64 |
             | `wowdecomp-windows-x64.zip` | Windows x64 |
             | `wowdecomp-windows-arm64.zip` | Windows on ARM (when the ARM job succeeds) |
+            | `wowdecomp-android-arm64.apk` | Android arm64, Vulkan |

@@ -40,7 +40,7 @@ extern char** environ;
 #include "WoW/Source/Ui/Types.h"
 #include "WoW/Source/Ui/WorldFrame.h"
 #include "WoW/Source/UIUtil/Tooltip.h"
-#if defined(WOWDECOMP_LINUX)
+#if defined(WOWDECOMP_LINUX) || defined(WOWDECOMP_ANDROID)
 #include <SDL3/SDL.h>
 #elif !defined(_WIN32)
 #include <SDL2/SDL.h>

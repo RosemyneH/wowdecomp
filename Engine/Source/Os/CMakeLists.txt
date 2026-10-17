@@ -27,12 +27,16 @@ elseif(WOWDECOMP_UNIX)
             ${CMAKE_DL_LIBS}
     )
 
-    if (WOWDECOMP_LINUX)
+    if (WOWDECOMP_LINUX OR WOWDECOMP_ANDROID)
         target_link_libraries(Os PUBLIC SDL3::SDL3)
         target_compile_definitions(Os PUBLIC WOWDECOMP_SDL3=1)
     else ()
         target_link_libraries(Os PUBLIC SDL2::SDL2)
         target_compile_definitions(Os PUBLIC WOWDECOMP_SDL2=1)
+    endif ()
+
+    if (WOWDECOMP_ANDROID)
+        target_link_libraries(Os PUBLIC log android)
     endif ()
 
     if (WOWDECOMP_LINUX)

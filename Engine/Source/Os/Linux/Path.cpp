@@ -8,6 +8,19 @@
 
 static CommandLineUTF8 s_commandLineUTF8;
 
+#if defined(__ANDROID__)
+static char s_androidExecutable[1024];
+
+void AndroidSetExecutablePath(const char* path) {
+    if (!path) {
+        s_androidExecutable[0] = '\0';
+        return;
+    }
+
+    SStrCopy(s_androidExecutable, path, sizeof(s_androidExecutable));
+}
+#endif
+
 // OFFSET: 0x0086BBD0
 uint32_t GetModuleFileNameUTF8(void* module, char* path, uint32_t size) {
     if (!size) {
@@ -16,12 +29,30 @@ uint32_t GetModuleFileNameUTF8(void* module, char* path, uint32_t size) {
 
     ssize_t written = -1;
 
+#if defined(__ANDROID__)
+    if (!module && s_androidExecutable[0]) {
+        written = static_cast<ssize_t>(SStrCopy(path, s_androidExecutable, size));
+        if (written < 0) {
+            written = 0;
+        }
+        path[written] = '\0';
+        return static_cast<uint32_t>(written);
+    }
+#endif
+
     if (module) {
+#if defined(__ANDROID__)
+        Dl_info info{};
+        if (dladdr(module, &info) && info.dli_fname) {
+            written = static_cast<ssize_t>(SStrCopy(path, info.dli_fname, size));
+        }
+#else
         link_map* map = nullptr;
 
         if (!dlinfo(module, RTLD_DI_LINKMAP, &map) && map && map->l_name) {
             written = static_cast<ssize_t>(SStrCopy(path, map->l_name, size));
         }
+#endif
     } else {
         written = readlink("/proc/self/exe", path, size - 1);
     }

@@ -194,6 +194,7 @@ static int32_t ConvertKeyCode(SDL_Keycode code, KEY* key) {
         case SDLK_SCROLLLOCK: *key = KEY_SCROLLLOCK; return 1;
         case SDLK_PAUSE: *key = KEY_PAUSE; return 1;
         case SDLK_PRINTSCREEN: *key = KEY_PRINTSCREEN; return 1;
+        case SDLK_AC_BACK: *key = KEY_ESCAPE; return 1;
         case SDLK_SPACE: *key = KEY_SPACE; return 1;
         case SDLK_KP_0: *key = KEY_NUMPAD0; return 1;
         case SDLK_KP_PLUS: *key = KEY_NUMPAD_PLUS; return 1;
@@ -380,6 +381,10 @@ int32_t OsInputIsMouseButtonDown(MOUSEBUTTON button) {
 
 void OsInputInitialize() {
     SdlUseWayland();
+#if defined(__ANDROID__)
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "1");
+    SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
+#endif
     SDL_SetHint(SDL_HINT_QUIT_ON_LAST_WINDOW_CLOSE, "0");
     SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");

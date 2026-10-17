@@ -48,7 +48,7 @@ if (WOWDECOMP_ENABLE_VULKAN)
     )
 endif ()
 
-if (WOWDECOMP_LINUX)
+if (WOWDECOMP_LINUX OR WOWDECOMP_ANDROID)
     target_link_libraries(Gx PUBLIC SDL3::SDL3)
 elseif (WOWDECOMP_UNIX)
     target_link_libraries(Gx PUBLIC SDL2::SDL2)

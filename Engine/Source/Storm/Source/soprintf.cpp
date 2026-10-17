@@ -268,7 +268,14 @@ int32_t vsnoprintf(char* out, size_t outSize, const char* format, va_list argume
             written = _snprintf(dest, avail, specifier, values[argument].doubleValue);
             break;
         case e_takesNoSpace:
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wformat-security"
+#endif
             written = _snprintf(dest, avail, specifier);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
             break;
         }
 

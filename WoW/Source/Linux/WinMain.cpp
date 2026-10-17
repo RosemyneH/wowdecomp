@@ -1,16 +1,29 @@
 #if defined(WOWDECOMP_UNIX)
 
 #include <fenv.h>
-#include <ucontext.h>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
+#if !defined(__ANDROID__)
+#include <ucontext.h>
+#endif
+#if defined(__ANDROID__)
+#include <pthread.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <SDL3/SDL.h>
+#include "Engine/Source/Os/Path.h"
+#endif
 #include "Engine/Source/Base/Job/JobSystem.h"
 #include "Engine/Source/Storm/H/storm.h"
 #include "WoW/Source/Client.h"
 
+static int32_t s_fiberResult = -1;
+
+#if !defined(__ANDROID__)
 static ucontext_t s_mainContext;
 static ucontext_t s_fiberContext;
-static int32_t s_fiberResult = -1;
+#endif
 
 static bool ReturnFalse() {
     return false;
@@ -28,9 +41,111 @@ static int32_t ClientMain() {
     return result;
 }
 
+#if !defined(__ANDROID__)
 static void MainFiberProc() {
     s_fiberResult = ClientMain();
 }
+#endif
+
+#if defined(__ANDROID__)
+
+static const char kStreamingMfil[] =
+    "version=1\n"
+    "isTrial=0\n"
+    "source=http://yourcdn.com/\n"
+    "Data;0;12340;0\n"
+    "Data/enUS;0;12340;0\n"
+    "Data/common.MPQ;2881154862;12340;0\n"
+    "Data/common-2.MPQ;1810430636;12340;0\n"
+    "Data/expansion.MPQ;1921219911;12340;0\n"
+    "Data/lichking.MPQ;2553948549;12340;0\n"
+    "Data/patch.MPQ;4004713057;12340;0\n"
+    "Data/patch-2.MPQ;1401729059;12340;0\n"
+    "Data/patch-3.MPQ;605089137;12340;0\n"
+    "Data/enUS/base-enUS.MPQ;29176975;12340;0\n"
+    "Data/enUS/locale-enUS.MPQ;204291376;12340;0\n"
+    "Data/enUS/expansion-locale-enUS.MPQ;17389181;12340;0\n"
+    "Data/enUS/expansion-speech-enUS.MPQ;241033297;12340;0\n"
+    "Data/enUS/lichking-locale-enUS.MPQ;12354378;12340;0\n"
+    "Data/enUS/lichking-speech-enUS.MPQ;354008839;12340;0\n"
+    "Data/enUS/speech-enUS.MPQ;438430439;12340;0\n"
+    "Data/enUS/backup-enUS.MPQ;167245856;12340;0\n"
+    "Data/enUS/patch-enUS.MPQ;296616080;12340;0\n"
+    "Data/enUS/patch-enUS-2.MPQ;225570171;12340;0\n"
+    "Data/enUS/patch-enUS-3.MPQ;100373935;12340;0\n";
+
+static void WriteIfMissing(const char* path, const char* text) {
+    FILE* existing = fopen(path, "rb");
+    if (existing) {
+        fclose(existing);
+        return;
+    }
+
+    FILE* file = fopen(path, "wb");
+    if (!file) {
+        return;
+    }
+
+    fputs(text, file);
+    fclose(file);
+}
+
+static void AndroidPrepareGameRoot() {
+    const char* root = SDL_GetAndroidExternalStoragePath();
+    if (!root || !root[0]) {
+        root = SDL_GetAndroidInternalStoragePath();
+    }
+    if (!root || !root[0]) {
+        return;
+    }
+
+    mkdir(root, 0755);
+    chdir(root);
+
+    char executable[512];
+    snprintf(executable, sizeof(executable), "%s/WowClient", root);
+    AndroidSetExecutablePath(executable);
+
+    mkdir("Data", 0755);
+    mkdir("Data/enUS", 0755);
+    mkdir("WTF", 0755);
+    WriteIfMissing("WoW.mfil", kStreamingMfil);
+    WriteIfMissing("WTF/Config.wtf", "SET realmList \"127.0.0.1\"\nSET locale \"enUS\"\n");
+    WriteIfMissing("Data/enUS/realmlist.wtf", "SET realmList \"127.0.0.1\"\n");
+    WriteIfMissing("streaming-credits.txt",
+        "WoW.mfil streaming follows brian8544's 3.3.5a CDN client.\n"
+        "https://github.com/brian8544/streamingclient-3.3.5\n"
+        "Server module (GPL-2.0): https://github.com/brian8544/mod-streamingclient\n"
+        "Copyright brian8544. Sources live in ThirdParty/streamingclient/ of the wowdecomp tree.\n");
+}
+
+static void* AndroidClientThread(void*) {
+    StormRtlInitialize();
+    s_fiberResult = ClientMain();
+    return nullptr;
+}
+
+extern "C" __attribute__((visibility("default"))) int SDL_main(int argc, char** argv) {
+    (void)argc;
+    (void)argv;
+    AndroidPrepareGameRoot();
+
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, 0x800000);
+
+    pthread_t thread;
+    int created = pthread_create(&thread, &attr, AndroidClientThread, nullptr);
+    pthread_attr_destroy(&attr);
+    if (created) {
+        return -1;
+    }
+
+    pthread_join(thread, nullptr);
+    return s_fiberResult;
+}
+
+#else
 
 int main(int argc, char** argv) {
     StormRtlInitialize();
@@ -56,5 +171,7 @@ int main(int argc, char** argv) {
 
     return s_fiberResult;
 }
+
+#endif
 
 #endif

@@ -1,0 +1,18 @@
+[worldserver]
+
+########################################
+# mod-streamingclient configuration
+########################################
+#
+#    ModStreamingClient.Enabled
+#        Description: Enable the streaming client HTTP file-server.
+#        Default:     1 (enabled)
+#
+#    ModStreamingClient.Port
+#        Description: TCP port to listen on for incoming HTTP connections.
+#                     Must be in the range 1–65535.
+#        Default:     1119
+#
+
+ModStreamingClient.Enabled = 1
+ModStreamingClient.Port    = 1119

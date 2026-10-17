@@ -15,8 +15,10 @@ target_link_libraries(Images
         jpeg
 )
 
+if (NOT ANDROID)
 find_package(PkgConfig QUIET)
-if (PKG_CONFIG_FOUND)
+endif ()
+if (PKG_CONFIG_FOUND AND NOT ANDROID)
     pkg_check_modules(LIBJXL IMPORTED_TARGET libjxl)
 endif ()
 
