@@ -468,17 +468,21 @@ static void LinkLiquidBucket(CChunkLiquid* liquid, const C3Vector& pos, const C4
     CWorldScene::sortTable.m_table[bucket].m_liquidList.LinkToTail(liquid);
 }
 
+static void LinkJob(const VisJob& job, const C4Plane& planeXY) {
+    if (job.linkChunk) {
+        job.chunk->m_distToCamera = job.dist;
+        LinkChunkBucket(job.chunk, job.corner, planeXY);
+    }
+
+    for (uint32_t n = 0; n < job.liquidCount; ++n) {
+        const LiquidOut& out = s_visLiquids[job.liquidBegin + n];
+        LinkLiquidBucket(out.liquid, out.corner, planeXY);
+    }
+}
+
 static void LinkVisibilityResults(const VisSnapshot& snap) {
     for (const VisJob& job : s_visJobs) {
-        if (job.linkChunk) {
-            job.chunk->m_distToCamera = job.dist;
-            LinkChunkBucket(job.chunk, job.corner, snap.camPlaneXY);
-        }
-
-        for (uint32_t n = 0; n < job.liquidCount; ++n) {
-            const LiquidOut& out = s_visLiquids[job.liquidBegin + n];
-            LinkLiquidBucket(out.liquid, out.corner, snap.camPlaneXY);
-        }
+        LinkJob(job, snap.camPlaneXY);
     }
 }
 
@@ -515,24 +519,24 @@ static void FillVisibilityBuckets(const VisSnapshot& snap) {
             job.corner.z = chunk->m_height[index] + chunk->m_topLeftCoords.z;
         }
 
-        if (!req.wantLiquids || chunk->m_liquidBounds.t.x < chunk->m_liquidBounds.b.x) {
-            continue;
+        if (req.wantLiquids && chunk->m_liquidBounds.t.x >= chunk->m_liquidBounds.b.x) {
+            const float cornerX = vertX + chunk->m_topLeftCoords.x;
+            const float cornerY = vertY + chunk->m_topLeftCoords.y;
+
+            for (CChunkLiquid* liquid = chunk->m_liquidChunkLinkList.Head(); liquid; liquid = chunk->m_liquidChunkLinkList.Next(liquid)) {
+                const float top = liquid->m_height.y;
+                const float bottom = liquid->m_height.x;
+                LiquidOut out;
+                out.liquid = liquid;
+                out.corner.x = cornerX;
+                out.corner.y = cornerY;
+                out.corner.z = (camZ <= top ? camZ : top) < bottom ? bottom : (camZ > top ? top : camZ);
+                s_visLiquids.push_back(out);
+                ++job.liquidCount;
+            }
         }
 
-        const float cornerX = vertX + chunk->m_topLeftCoords.x;
-        const float cornerY = vertY + chunk->m_topLeftCoords.y;
-
-        for (CChunkLiquid* liquid = chunk->m_liquidChunkLinkList.Head(); liquid; liquid = chunk->m_liquidChunkLinkList.Next(liquid)) {
-            const float top = liquid->m_height.y;
-            const float bottom = liquid->m_height.x;
-            LiquidOut out;
-            out.liquid = liquid;
-            out.corner.x = cornerX;
-            out.corner.y = cornerY;
-            out.corner.z = (camZ <= top ? camZ : top) < bottom ? bottom : (camZ > top ? top : camZ);
-            s_visLiquids.push_back(out);
-            ++job.liquidCount;
-        }
+        LinkJob(job, snap.camPlaneXY);
     }
 }
 
@@ -564,7 +568,6 @@ void CMapChunk::FlushQueuedVisibility() {
     s_visCacheValid = 0;
 
     FillVisibilityBuckets(snap);
-    LinkVisibilityResults(snap);
     s_cachedSnap = snap;
     s_visCacheValid = 1;
 }
