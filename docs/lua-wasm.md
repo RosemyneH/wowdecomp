@@ -263,6 +263,14 @@ let _ = lua::call("SendChatMessage", &[
 
 `port.wim` is a Rust addon on this path. It calls the client’s real widget and unit functions. It does not ship or execute Lua source. ElvUI and Details are the original Lua addons in `Interface/AddOns`.
 
+## AwesomeWotLK
+
+`awesome.api` is a separate grant. Declare it, then `wasmgrant <id> awesome.api`. Guests call `wow_addon_sdk::awesome` (`awesome_call` on the host). The call list is the AwesomeWotLK surface: nameplates, text to speech, unit flags, transmog, spell cooldown, instant item info, window flash, clipboard, interact, and the AwesomeWotLK CVars. Tables come back as maps. A nameplate frame comes back as `nameplateN`. Anything outside that list returns `-10`.
+
+`GetCVar` and `SetCVar` through this grant only accept the AwesomeWotLK CVar names. `MSDFMode`, `cameraIndirectAlpha`, `nameplateExtendWorldFrameHeight`, and the nameplate speed CVars store a value. `cameraFov` applies after it is changed. `cameraIndirectVisibility` lets the camera pass through world objects.
+
+Owner GUIDs leave the host only through this grant. Unit snapshots still omit them. `port.awesome` flashes the window on a whisper and edits the CVars from a panel. It does not need `lua.full`.
+
 ## Intentionally not Lua
 
 - No secure action buttons, no `SecureActionButtonTemplate`, no macro text, no `CastSpellByName` from the guest.
@@ -270,4 +278,4 @@ let _ = lua::call("SendChatMessage", &[
 - No WASI, no files, no sockets. Imports outside module `wow` are rejected.
 - No widget XML and no inherited templates. Refresh is `wow_on_update` at about 5 Hz, or an event you subscribed to.
 - Texture paths are restricted to `Interface\`. The font file is chosen by the host.
-- Unit GUIDs never leave the host.
+- Unit snapshots omit GUIDs. `awesome.api` is the grant that can return an owner GUID or a nameplate token.

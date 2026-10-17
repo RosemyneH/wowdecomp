@@ -94,6 +94,18 @@ struct MockHost final : IWasmHostServices {
         return 0;
     }
     int BindLua(const std::string&, int32_t, const std::string&, std::string&) override { return 0; }
+    int AwesomeCall(const std::string&, const uint8_t* req, uint32_t reqLen, std::vector<uint8_t>& out, std::string&) override {
+        if (!req || reqLen < 2) return ErrInvalidArgument;
+        uint16_t nameLen = (uint16_t)req[0] | ((uint16_t)req[1] << 8);
+        if (!nameLen || (uint32_t)nameLen + 2 > reqLen) return ErrInvalidArgument;
+        std::string name(reinterpret_cast<const char*>(req + 2), nameLen);
+        if (name == "Nope") return ErrNotFound;
+        if (name == "IsWindowFocused") {
+            out = {1, 0, 2, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f};
+            return 0;
+        }
+        return ErrNotFound;
+    }
 };
 
 static InspectorInfo Find(WasmAddonManager& m, const std::string& id) {
@@ -709,6 +721,19 @@ int main(int argc, char** argv) {
         CHECK(m.CallExportInt("test.lua-full", "wow_call", called) && called == 1);
         CHECK(!host.luaExec.empty() && host.luaExec[0].find("SlashCmdList") != std::string::npos);
         CHECK((Find(m, "test.lua-full").grantedPermissions & PermLuaFull) != 0);
+        m.Shutdown();
+    }
+
+    {   // ʕ •ᴥ•ʔ✿ awesome.api stays denied until granted, then the whitelist answers ✿ ʕ •ᴥ•ʔ
+        MockHost host; WasmAddonManager m; m.Initialize(tmp.string(), &host);
+        CHECK(m.LoadAddon((dist / "awesome-api").string()));
+        CHECK(Find(m, "test.awesome").state == AddonState::Running);
+        CHECK((Find(m, "test.awesome").grantedPermissions & PermAwesome) == 0);
+        int64_t probe = 0, missing = 0;
+        CHECK(m.CallExportInt("test.awesome", "wow_probe", probe) && probe == ErrPermissionDenied);
+        m.SetPermissionOverride("test.awesome", PermAwesome, true);
+        CHECK(m.CallExportInt("test.awesome", "wow_probe", probe) && probe == 1);
+        CHECK(m.CallExportInt("test.awesome", "wow_missing", missing) && missing == ErrNotFound);
         m.Shutdown();
     }
 

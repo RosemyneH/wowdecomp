@@ -54,6 +54,7 @@ enum Permission : uint32_t {
     PermProfilingRead = 1u << 13,
     PermCombatRead = 1u << 14,
     PermLuaFull = 1u << 15,
+    PermAwesome = 1u << 16,
 };
 const char* PermissionName(Permission perm);
 bool PermissionFromName(const std::string& name, Permission& out);
@@ -281,6 +282,7 @@ public:
     virtual int LoadNamedAddon(const std::string& name, std::string& error) { (void)name; (void)error; return ErrUnavailable; }
     virtual int CallLua(const std::string& addonId, const uint8_t* req, uint32_t reqLen, std::vector<uint8_t>& out, std::string& error) { (void)addonId; (void)req; (void)reqLen; (void)out; (void)error; return ErrUnavailable; }
     virtual int BindLua(const std::string& addonId, int32_t handle, const std::string& script, std::string& error) { (void)addonId; (void)handle; (void)script; (void)error; return ErrUnavailable; }
+    virtual int AwesomeCall(const std::string& addonId, const uint8_t* req, uint32_t reqLen, std::vector<uint8_t>& out, std::string& error) { (void)addonId; (void)req; (void)reqLen; (void)out; (void)error; return ErrUnavailable; }
     virtual void ReleaseLua(const std::string& addonId) { (void)addonId; }
     virtual void UiDestroy(uint64_t hostHandle) { (void)hostHandle; }
     virtual void Log(const std::string& message) { (void)message; }
@@ -293,7 +295,7 @@ public:
 
 enum class HostFn : uint32_t {
     ApiVersion = 0, Ping, ChatPrint, EventSubscribe, InventorySnapshot, UiCreate, UiSetText, PerfQuery,
-    StorageGet, StorageLen, StorageKeys, StorageUsage, StorageSet, StorageDelete, UnitSnapshot, AuctionSnapshot, ChatSendRequest, AuctionBidRequest, UiSpawn, UiStyle, UiBind, UiGetText, UnitNames, LuaExec, LuaLoad, LuaLoadAddon, LuaCall, LuaBind, Count
+    StorageGet, StorageLen, StorageKeys, StorageUsage, StorageSet, StorageDelete, UnitSnapshot, AuctionSnapshot, ChatSendRequest, AuctionBidRequest, UiSpawn, UiStyle, UiBind, UiGetText, UnitNames, LuaExec, LuaLoad, LuaLoadAddon, LuaCall, LuaBind, AwesomeCall, Count
 };
 static_assert((uint32_t)HostFn::Count <= 32, "hostCallsByFn array too small");
 

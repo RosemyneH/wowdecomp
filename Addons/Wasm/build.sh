@@ -21,8 +21,10 @@ build examples/whisper-window whisper-window examples/whisper-window/addon.toml
 build ports/elvui elvui ports/elvui/addon.toml
 build ports/details details ports/details/addon.toml
 build ports/wim wim ports/wim/addon.toml
+build ports/awesome awesome ports/awesome/addon.toml
 build fixtures/lua-parity lua-parity fixtures/lua-parity/addon.toml
 build fixtures/lua-full lua-full fixtures/lua-full/addon.toml
+build fixtures/awesome-api awesome-api fixtures/awesome-api/addon.toml
 build fixtures/ping ping fixtures/ping/addon.toml
 build fixtures/loop loop fixtures/loop/addon.toml
 build fixtures/memory-bomb memory-bomb fixtures/memory-bomb/addon.toml

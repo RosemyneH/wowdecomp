@@ -16,6 +16,17 @@ pub fn call(name: &str, args: &[Val]) -> Result<Vec<Val>, i32> {
     invoke(0, 0, name, args)
 }
 
+pub fn awesome_call(name: &str, args: &[Val]) -> Result<Vec<Val>, i32> {
+    let mut blob = Vec::new();
+    blob.extend_from_slice(&(name.len() as u16).to_le_bytes());
+    blob.extend_from_slice(name.as_bytes());
+    for arg in args { write_val(&mut blob, arg); }
+    let mut out = vec![0u8; 16 * 1024];
+    let wrote = unsafe { raw::awesome_call(blob.as_ptr(), blob.len() as u32, out.as_mut_ptr(), out.len() as u32) };
+    if wrote < 0 { return Err(wrote); }
+    decode(&out[..wrote as usize])
+}
+
 pub fn method(obj: i32, name: &str, args: &[Val]) -> Result<Vec<Val>, i32> {
     invoke(1, obj, name, args)
 }
@@ -171,7 +182,7 @@ fn decode(buf: &[u8]) -> Result<Vec<Val>, i32> {
 }
 
 fn read_val(buf: &[u8], mut pos: usize, depth: u8) -> Result<(Val, usize), i32> {
-    if pos >= buf.len() || depth > 3 { return Err(-1); }
+    if pos >= buf.len() || depth > 4 { return Err(-1); }
     let tag = buf[pos];
     pos += 1;
     let val = match tag {
@@ -202,6 +213,24 @@ fn read_val(buf: &[u8], mut pos: usize, depth: u8) -> Result<(Val, usize), i32> 
             let handle = i32::from_le_bytes(buf[pos..pos + 4].try_into().map_err(|_| -1)?);
             pos += 4;
             Val::Obj(handle)
+        }
+        5 => {
+            if pos + 2 > buf.len() { return Err(-1); }
+            let n = u16::from_le_bytes([buf[pos], buf[pos + 1]]) as usize;
+            pos += 2;
+            let mut fields = Vec::with_capacity(n);
+            for _ in 0..n {
+                if pos + 2 > buf.len() { return Err(-1); }
+                let klen = u16::from_le_bytes([buf[pos], buf[pos + 1]]) as usize;
+                pos += 2;
+                if pos + klen > buf.len() { return Err(-1); }
+                let key = String::from_utf8_lossy(&buf[pos..pos + klen]).into_owned();
+                pos += klen;
+                let (value, next) = read_val(buf, pos, depth + 1)?;
+                pos = next;
+                fields.push((key, value));
+            }
+            Val::Map(fields)
         }
         _ => return Err(-1),
     };

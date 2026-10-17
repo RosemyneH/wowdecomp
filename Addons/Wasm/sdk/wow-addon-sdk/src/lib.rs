@@ -37,6 +37,7 @@ mod raw {
         pub fn lua_load_addon(ptr: *const u8, len: u32) -> i32;
         pub fn lua_call(ptr: *const u8, len: u32, out: *mut u8, cap: u32) -> i32;
         pub fn lua_bind(handle: i32, ptr: *const u8, len: u32) -> i32;
+        pub fn awesome_call(ptr: *const u8, len: u32, out: *mut u8, cap: u32) -> i32;
     }
 }
 
@@ -389,4 +390,5 @@ pub extern "C" fn wow_free(ptr: *mut u8, len: u32) {
     }
 }
 
+pub mod awesome;
 pub mod frame;

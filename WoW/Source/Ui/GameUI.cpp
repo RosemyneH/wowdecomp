@@ -93,6 +93,7 @@
 #include "WoW/Source/Ui/DuelInfo.h"
 #include "WoW/Source/Ui/EquipmentManager.h"
 #include "WoW/Source/Ui/GameUI.h"
+#include "WoW/Source/Ui/AwesomeWotlk.h"
 #include "WoW/Source/WasmAddonClient.h"
 #include "WoW/Source/Ui/GlyphInfo.h"
 #include "WoW/Source/Ui/GMSurveyInfo.h"
@@ -1998,6 +1999,7 @@ int32_t CGGameUI::Idle(const void* data, void* param) {
     lua_State* L = FrameScript_GetContext();
     lua_taintexpected = 0;
     WasmAddonClient_ServiceConfirms();
+    AwesomeWotlkService();
 
     if (lua_gettop(FrameScript_GetContext())) {
         SErrDisplayAppFatalMessage("", "", 0);

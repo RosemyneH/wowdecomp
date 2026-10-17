@@ -63,6 +63,7 @@
 #include "WoW/Source/ObjectMgrClient/ObjectMgrClient.h"
 #include "WoW/Source/SoundInterface/SoundInterface2.h"
 #include "WoW/Source/Ui/ActionBarFrame.h"
+#include "WoW/Source/Ui/AwesomeWotlk.h"
 #include "WoW/Source/Ui/BattlefieldInfo.h"
 #include "WoW/Source/Ui/ChatBubbleFrame.h"
 #include "WoW/Source/Ui/GameUI.h"
@@ -783,6 +784,8 @@ void CGUnit_C::DestroyNamePlate() {
     if (!this->m_namePlateFrame) {
         return;
     }
+
+    AwesomeWotlkOnNamePlateRemoved(this->m_namePlateFrame);
 
     if (CGUnit_C::s_namePlateFocus == this->m_namePlateFrame) {
         CGUnit_C::s_namePlateFocus = nullptr;
@@ -20098,6 +20101,7 @@ void CGUnit_C::NamePlateAddOrUpdate(const C3Vector& position, CGWorldFrame* worl
         this->m_namePlateFrame->Show();
         this->m_namePlateFrame->m_position = position;
         NamePlateSort(this->m_namePlateFrame);
+        AwesomeWotlkOnNamePlateAdded(this->m_namePlateFrame);
         worldFrame->SetNamePlateUpdate();
 
         if (this->m_chatBubble) {
@@ -20131,24 +20135,139 @@ void CGUnit_C::NamePlateAddOrUpdate(const C3Vector& position, CGWorldFrame* worl
 
 // VERIFY: b1479e18 auto
 // OFFSET: 0x00725890
+static float PlatePx(const char* name) {
+    CVar* cvar = CVar::Lookup(name);
+    return cvar ? cvar->m_floatValue : 0.0f;
+}
+
+static bool PlateFriendly(CGNamePlateFrame* frame) {
+    CGPlayer_C* player = ClntObjMgrGetActivePlayerObj();
+    CGUnit_C* unit = frame ? static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(frame->m_guid, TYPEMASK_UNIT, __FILE__, __LINE__)) : nullptr;
+    if (!player || !unit) return false;
+    CVar* mode = CVar::Lookup("nameplateStackFriendlyMode");
+    if (mode && mode->m_intValue == 1) return frame->m_healthBarColor.g > frame->m_healthBarColor.r + 20;
+    int32_t reaction = player->UnitReaction(unit);
+    return reaction >= 5 || (reaction == 4 && !player->CanAttack(unit));
+}
+
+static bool PlateBoss(CGNamePlateFrame* frame) {
+    CGUnit_C* unit = frame ? static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(frame->m_guid, TYPEMASK_UNIT, __FILE__, __LINE__)) : nullptr;
+    return unit && unit->GetCreatureClassification() == 3;
+}
+
+static float PlateOrigin() {
+    CVar* stacking = CVar::Lookup("nameplateStacking");
+    CVar* origin = CVar::Lookup("nameplateOriginPos");
+    if (!origin) return 0.0f;
+    if (origin->m_modified || (stacking && stacking->m_intValue)) return origin->m_floatValue / 1024.0f;
+    return 0.0f;
+}
+
+static void ApplyNameplateHitboxes() {
+    for (CGNamePlateFrame* frame = s_namePlates.Head(); frame; frame = s_namePlates.Next(frame)) {
+        bool friendly = PlateFriendly(frame);
+        float width = friendly ? PlatePx("nameplateFriendlyHitboxWidth") : 0.0f;
+        float height = friendly ? PlatePx("nameplateFriendlyHitboxHeight") : 0.0f;
+        if (width <= 0.0f) width = PlatePx("nameplateHitboxWidth");
+        if (height <= 0.0f) height = PlatePx("nameplateHitboxHeight");
+        if (width > 0.0f) frame->SetWidth(width / 1024.0f);
+        if (height > 0.0f) frame->SetHeight(height / 1024.0f);
+    }
+}
+
 void CGUnit_C::UnitNameplatesReposition(CGWorldFrame* worldFrame) {
-    CGNamePlateFrame* frame = s_namePlates.Head();
+    CVar* stacking = CVar::Lookup("nameplateStacking");
+    float origin = PlateOrigin();
 
-    while (frame) {
-        CGNamePlateFrame* next = s_namePlates.Next(frame);
+    if (stacking && stacking->m_intValue) {
+        struct Plate {
+            CGNamePlateFrame* frame;
+            float x;
+            float y;
+            float base;
+            bool friendly;
+            bool boss;
+        };
+        Plate plates[48];
+        int count = 0;
 
-        if (s_cvNameplateAllowOverlap && s_cvNameplateAllowOverlap->m_intValue) {
-            C3Vector position = frame->m_position;
-            frame->SetPoint(FRAMEPOINT_TOP, worldFrame, FRAMEPOINT_BOTTOMLEFT, position.x, position.y, 1);
-            frame->SetFrameDepth(position.z - worldFrame->m_layoutDepth, true);
-        } else {
-            C3Vector position = frame->m_position;
-            SmartScreenRectPositionFrame(0, frame, worldFrame, position, 0);
+        for (CGNamePlateFrame* frame = s_namePlates.Head(); frame && count < 48; frame = s_namePlates.Next(frame)) {
+            plates[count].frame = frame;
+            plates[count].x = frame->m_position.x;
+            plates[count].y = frame->m_position.y + origin;
+            plates[count].base = plates[count].y;
+            plates[count].friendly = PlateFriendly(frame);
+            plates[count].boss = PlateBoss(frame);
+            count++;
         }
 
-        frame = next;
+        for (int i = 1; i < count; i++) {
+            Plate key = plates[i];
+            int j = i;
+            while (j > 0 && plates[j - 1].y > key.y) {
+                plates[j] = plates[j - 1];
+                j--;
+            }
+            plates[j] = key;
+        }
+
+        bool stackFriendly = true;
+        if (CVar* friendly = CVar::Lookup("nameplateStackFriendly")) stackFriendly = friendly->m_intValue != 0;
+        float xSpace = PlatePx("nameplateXSpace");
+        float ySpace = PlatePx("nameplateYSpace");
+        float maxRaise = PlatePx("nameplateMaxRaiseDistance");
+        float upper = PlatePx("nameplateUpperBorder");
+        if (xSpace <= 0.0f) xSpace = 130.0f;
+        if (ySpace <= 0.0f) ySpace = 20.0f;
+        if (maxRaise <= 0.0f) maxRaise = 200.0f;
+        if (upper <= 0.0f) upper = 30.0f;
+        xSpace /= 1024.0f;
+        ySpace /= 1024.0f;
+        maxRaise /= 1024.0f;
+        upper /= 1024.0f;
+        CVar* bossCap = CVar::Lookup("nameplateUpperBorderOnlyBoss");
+        bool onlyBoss = bossCap && bossCap->m_intValue;
+        float top = worldFrame->GetHeight();
+        if (top < 0.2f) top = 0.75f;
+        float cap = top - upper;
+
+        for (int i = 0; i < count; i++) {
+            if (!stackFriendly && plates[i].friendly) continue;
+
+            for (int j = 0; j < i; j++) {
+                if (!stackFriendly && plates[j].friendly) continue;
+                if (fabsf(plates[i].x - plates[j].x) < xSpace && plates[i].y < plates[j].y + ySpace) plates[i].y = plates[j].y + ySpace;
+            }
+
+            if (plates[i].y > plates[i].base + maxRaise) plates[i].y = plates[i].base + maxRaise;
+            if ((!onlyBoss || plates[i].boss) && plates[i].y > cap) plates[i].y = cap;
+        }
+
+        for (int i = 0; i < count; i++) {
+            CGNamePlateFrame* frame = plates[i].frame;
+            frame->SetPoint(FRAMEPOINT_TOP, worldFrame, FRAMEPOINT_BOTTOMLEFT, plates[i].x, plates[i].y, 1);
+            frame->SetFrameDepth(frame->m_position.z - worldFrame->m_layoutDepth, true);
+        }
+    } else {
+        CGNamePlateFrame* frame = s_namePlates.Head();
+
+        while (frame) {
+            CGNamePlateFrame* next = s_namePlates.Next(frame);
+            C3Vector position = frame->m_position;
+            position.y += origin;
+
+            if (s_cvNameplateAllowOverlap && s_cvNameplateAllowOverlap->m_intValue) {
+                frame->SetPoint(FRAMEPOINT_TOP, worldFrame, FRAMEPOINT_BOTTOMLEFT, position.x, position.y, 1);
+                frame->SetFrameDepth(position.z - worldFrame->m_layoutDepth, true);
+            } else {
+                SmartScreenRectPositionFrame(0, frame, worldFrame, position, 0);
+            }
+
+            frame = next;
+        }
     }
 
+    ApplyNameplateHitboxes();
     CLayoutFrame::ResizePending();
 }
 
@@ -20236,6 +20355,8 @@ void CGUnit_C::NamePlateClearAll() {
         CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(frame->m_guid, TYPEMASK_UNIT, __FILE__, __LINE__));
 
         if (unit && unit->m_namePlateFrame) {
+            AwesomeWotlkOnNamePlateRemoved(unit->m_namePlateFrame);
+
             if (CGUnit_C::s_namePlateFocus == unit->m_namePlateFrame) {
                 CGUnit_C::s_namePlateFocus = nullptr;
             }
@@ -20398,7 +20519,10 @@ int32_t CGUnit_C::ShouldShowNamePlate(CGWorldFrame* worldFrame, C3Vector* positi
     if (!map || map->m_instanceType != 4) {
         C3Vector delta = this->GetPosition() - target->GetPosition();
 
-        if (delta.y * delta.y + delta.x * delta.x + delta.z * delta.z > 1681.0f) {
+        float limit = 41.0f;
+        if (CVar* distance = CVar::Lookup("nameplateDistance")) limit = distance->m_floatValue;
+        if (limit < 1.0f) limit = 1.0f;
+        if (delta.y * delta.y + delta.x * delta.x + delta.z * delta.z > limit * limit) {
             return 0;
         }
     }

@@ -75,6 +75,7 @@ Clean-room layouts, not the upstream Lua addons:
 | Unit frames | `examples/unit-frames` | `example.unit-frames` | Player, target, and party bars |
 | Whisper list | `examples/whisper-window` | `example.whisper-window` | One whisper log |
 | WIM | `ports/wim` | `port.wim` | Rust whisper windows. Enter calls `SendChatMessage` |
+| Awesome | `ports/awesome` | `port.awesome` | Nameplates, TTS, window flash, and the AwesomeWotLK CVars |
 
 The play client keeps **ElvUI** and **Details** as their own `Interface/WasmAddOns/<Name>` folders. Those folders are the original addon trees plus a wasm manifest. `addon.wasm` in that folder is only a package stub; the UI is still the original TOC. `/ec` is ElvUI’s options. `/details` is the meter. `Tools/dev-station.sh` stages those folders on `scope`.
 

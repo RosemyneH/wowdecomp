@@ -153,7 +153,7 @@ bool WasmAddonManager::IsKnownEvent(const std::string& name) {
         size_t n = std::strlen(prefix);
         return name.size() > n && name.compare(0, n, prefix) == 0;
     };
-    return starts("UNIT_") || starts("CHAT_MSG_") || starts("PLAYER_");
+    return starts("UNIT_") || starts("CHAT_MSG_") || starts("PLAYER_") || starts("NAME_PLATE_") || starts("VOICE_CHAT_");
 }
 
 std::vector<uint8_t> WasmAddonManager::SerializeInventory(const std::vector<InventoryItem>& items) {
@@ -934,6 +934,20 @@ int64_t WasmAddonManager::HandleHostCall(Addon& addon, IWasmInstance& instance, 
             addon.storageDirty[scope] = true;
             RecordActivity(addon.info.manifest.id, "storage.write", std::string(scope ? "character " : "account ") + std::to_string(value.size()) + " bytes");
             return Ok;
+        }
+        case HostFn::AwesomeCall: {
+            if (!HasPermission(addon, PermAwesome, fn)) return ErrPermissionDenied;
+            if (args.size() < 4 || args[0] < 0 || args[1] < 1 || args[1] > 16384 || args[2] < 0 || args[3] < 0) return ErrInvalidArgument;
+            std::string raw;
+            if (!instance.ReadMemory((uint32_t)args[0], (uint32_t)args[1], raw)) return ErrInvalidMemory;
+            if (!m_host) return ErrUnavailable;
+            std::vector<uint8_t> out;
+            std::string error;
+            int rc = m_host->AwesomeCall(addon.info.manifest.id, reinterpret_cast<const uint8_t*>(raw.data()), (uint32_t)raw.size(), out, error);
+            if (rc != 0) { RecordError(addon, error.empty() ? "awesome_call failed" : error); return rc; }
+            if ((uint64_t)args[3] < out.size()) return ErrBufferTooSmall;
+            if (!out.empty() && !instance.WriteMemory((uint32_t)args[2], out.data(), (uint32_t)out.size())) return ErrInvalidMemory;
+            return (int64_t)out.size();
         }
         default: return ErrGeneric;
     }

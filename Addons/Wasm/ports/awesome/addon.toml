@@ -1,0 +1,14 @@
+[addon]
+id = "port.awesome"
+name = "Awesome"
+version = "0.1.0"
+author = "wowdecomp"
+api_version = "2"
+
+[permissions]
+awesome.api = true
+chat.print = true
+ui.create = true
+
+[limits]
+memory_mb = 32

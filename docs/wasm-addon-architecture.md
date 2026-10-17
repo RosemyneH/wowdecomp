@@ -41,6 +41,7 @@ An accepted confirm is executed by the host. Chat goes through `CGChat::SendNati
 ## Risks
 
 - Wasmtime is fetched prebuilt (pinned 36.0.0) when no system install exists. Hash pinning is a follow-up.
-- API v2 addons receive WEV1 payloads. Chat and unit arguments are redacted unless `chat.read` or `units.read` is granted. `UNIT_*`, `CHAT_MSG_*`, and `PLAYER_*` names can be subscribed.
+- API v2 addons receive WEV1 payloads. Chat and unit arguments are redacted unless `chat.read` or `units.read` is granted. `UNIT_*`, `CHAT_MSG_*`, `PLAYER_*`, `NAME_PLATE_*`, and `VOICE_CHAT_*` names can be subscribed.
+- `awesome.api` is sensitive. `awesome_call` exposes the AwesomeWotLK whitelist without `lua.full`. Nameplate frames on an event arrive as `nameplateN`.
 - Client host services depend on Lua globals (`DEFAULT_CHAT_FRAME`, `UIParent`) that appear during FrameXML load. Early calls return unavailable rather than failing the process.
 - Windows, ARM64, and macOS builds use the same CMake and are less verified than the Linux host tests.

@@ -30,6 +30,7 @@ static const PermEntry kPerms[] = {
     {"process.execute", PermProcessExecute, true},     {"profiling.read", PermProfilingRead, false},
     {"combat.read", PermCombatRead, true},
     {"lua.full", PermLuaFull, false},
+    {"awesome.api", PermAwesome, true},
 };
 const char* PermissionName(Permission p) {
     for (auto& e : kPerms) if (e.perm == p) return e.name;

@@ -17,6 +17,7 @@
 #include "WoW/Source/Object/ObjectClient/Unit_C.h"
 #include "WoW/Source/ObjectMgrClient/ObjectMgrClient.h"
 #include "WoW/Source/Ui/ActionBarFrame.h"
+#include "WoW/Source/Ui/AwesomeWotlk.h"
 #include "WoW/Source/Ui/GameUI.h"
 #include "WoW/Source/Ui/PetInfo.h"
 #include "WoW/Source/Ui/RuneInfo.h"
@@ -8545,7 +8546,9 @@ bool Spell_C_CastSpell(CGUnit_C* caster, int32_t spellId, const CGItem_C* item, 
 // VERIFY: 5c215492 manual
 // OFFSET: 0x0080DA40
 bool Spell_C::CastSpell(int32_t spellId, const CGItem_C* item, WOWGUID target, bool confirmed) {
-    return Spell_C_CastSpell(ClntObjMgrGetActivePlayerObj(), spellId, item, target, nullptr, confirmed);
+    bool ok = Spell_C_CastSpell(ClntObjMgrGetActivePlayerObj(), spellId, item, target, nullptr, confirmed);
+    AwesomeWotlkAfterCast(spellId, ok);
+    return ok;
 }
 
 // VERIFY: e8a1babb manual

@@ -1,6 +1,7 @@
 #include <cstdint>
 #include "Engine/Source/Storm/H/stpl.h"
 #include "Engine/Source/FrameScript/FrameScript.h"
+#include "WoW/Source/Ui/AwesomeWotlk.h"
 #include "WoW/Source/Ui/ScriptEvents.h"
 #include "WoW/Source/Object/ObjectClient/Unit_C.h"
 #include "WoW/Source/Object/Types.h"
@@ -168,6 +169,14 @@ bool Script_GetGUIDFromToken(const char* token, WOWGUID& guid, bool defaultToTar
     } else if (!SStrCmpI(token, "questnpc", STORM_MAX_STR)) {
         token += 8;
         guid = *GetCurrentQuestGiverGUID();
+    } else if (!SStrCmpI(token, "nameplate", 9) && token[9] >= '0' && token[9] <= '9') {
+        token = AwesomeWotlkConsumeNameplateToken(token, guid);
+    } else if (!SStrCmpI(token, "playerlocation", 14) && (!token[14] || token[14] == '-')) {
+        token += 14;
+        AwesomeWotlkNoteGroundTarget("playerlocation");
+    } else if (!SStrCmpI(token, "cursor", 6) && (!token[6] || token[6] == '-')) {
+        token += 6;
+        AwesomeWotlkNoteGroundTarget("cursor");
     } else if (!SStrCmpI(token, "none", STORM_MAX_STR)) {
         token += 4;
         guid.m_guid = 0xFFFFFFFFFFFFFFFFULL;

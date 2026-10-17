@@ -129,6 +129,15 @@ static float WrapAngle0To2Pi(float angle) {
 // OFFSET: 0x005FF500
 float CGCamera::FOV() const {
     float fov = this->m_targetFov + this->m_fov;
+    // ʕ •ᴥ•ʔ✿ cameraFov stays out of the way until somebody sets it ✿ ʕ •ᴥ•ʔ
+    if (CVar* cvar = CVar::Lookup("cameraFov")) {
+        if (cvar->m_modified) {
+            int value = cvar->m_intValue;
+            if (value < 1) value = 1;
+            if (value > 200) value = 200;
+            fov = 3.14159265f * static_cast<float>(value) / 200.0f;
+        }
+    }
     return 0.0f > fov ? 0.0f : (3.1241393f <= fov ? 3.1241393f : fov);
 }
 
@@ -2482,7 +2491,10 @@ void CGCamera::CalcTargetCamera(CGObject_C* target, uint32_t time) {
 
     float heightAdjust = 0.0f;
     this->m_state &= ~0x30000;
-    this->m_state |= this->CollideCameraWithWorld(safePos, distance, heightAdjust, offset, liquid, this->m_collideExtent);
+    CVar* indirect = CVar::Lookup("cameraIndirectVisibility");
+    if (!(indirect && indirect->m_intValue)) {
+        this->m_state |= this->CollideCameraWithWorld(safePos, distance, heightAdjust, offset, liquid, this->m_collideExtent);
+    }
 
     C3Vector cameraTarget = C3Vector(safePos.x + offset.x, safePos.y + offset.y, offset.z + safePos.z + heightAdjust);
 

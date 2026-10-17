@@ -1,6 +1,7 @@
 #include "WoW/Source/WasmAddonClient.h"
 #include "Engine/Source/Base/Status.h"
 #include "WoW/Source/Ui/AddOns.h"
+#include "WoW/Source/Ui/AwesomeWotlk.h"
 #include "WoW/Source/Ui/AuctionHouse.h"
 #include "WoW/Source/Ui/ChatFrame.h"
 #include "WoW/Source/Ui/ScriptEvents.h"
@@ -167,6 +168,10 @@ public:
 
     int CallLua(const std::string& addonId, const uint8_t* req, uint32_t reqLen, std::vector<uint8_t>& out, std::string& error) override {
         return DoCallLua(addonId, req, reqLen, out, error);
+    }
+
+    int AwesomeCall(const std::string& addonId, const uint8_t* req, uint32_t reqLen, std::vector<uint8_t>& out, std::string& error) override {
+        return DoAwesomeCall(addonId, req, reqLen, out, error);
     }
 
     int BindLua(const std::string& addonId, int32_t handle, const std::string& script, std::string& error) override {
@@ -1052,6 +1057,179 @@ private:
         }
     }
 
+    bool PushAwesomeArg(lua_State* L, const uint8_t*& p, const uint8_t* end) {
+        if (p >= end) return false;
+        uint8_t tag = *p++;
+        switch (tag) {
+            case 0: lua_pushnil(L); return true;
+            case 1:
+                if (p >= end) return false;
+                lua_pushboolean(L, *p++ != 0);
+                return true;
+            case 2: {
+                if (p + 8 > end) return false;
+                double number = 0;
+                memcpy(&number, p, 8);
+                p += 8;
+                lua_pushnumber(L, number);
+                return true;
+            }
+            case 3: {
+                if (p + 4 > end) return false;
+                uint32_t n = ReadU32(p);
+                p += 4;
+                if (n > 8192 || p + n > end) return false;
+                lua_pushlstring(L, reinterpret_cast<const char*>(p), n);
+                p += n;
+                return true;
+            }
+            default: return false;
+        }
+    }
+
+    bool ResolveAwesome(lua_State* L, const std::string& name) {
+        size_t dot = name.find('.');
+        if (dot == std::string::npos) {
+            lua_getfield(L, LUA_GLOBALSINDEX, name.c_str());
+            return lua_isfunction(L, -1);
+        }
+        if (name.find('.', dot + 1) != std::string::npos) return false;
+        lua_getfield(L, LUA_GLOBALSINDEX, name.substr(0, dot).c_str());
+        if (!lua_istable(L, -1)) return false;
+        lua_getfield(L, -1, name.substr(dot + 1).c_str());
+        lua_remove(L, -2);
+        return lua_isfunction(L, -1);
+    }
+
+    bool WriteAwesomeVal(std::vector<uint8_t>& bytes, lua_State* L, int idx, int depth) {
+        if (idx < 0) idx = lua_gettop(L) + idx + 1;
+        if (depth > 4 || bytes.size() > 16384) return false;
+        switch (lua_type(L, idx)) {
+            case LUA_TNIL: bytes.push_back(0); return true;
+            case LUA_TBOOLEAN:
+                bytes.push_back(1);
+                bytes.push_back(lua_toboolean(L, idx) ? 1 : 0);
+                return true;
+            case LUA_TNUMBER: {
+                bytes.push_back(2);
+                double number = lua_tonumber(L, idx);
+                uint8_t raw[8];
+                memcpy(raw, &number, 8);
+                bytes.insert(bytes.end(), raw, raw + 8);
+                return true;
+            }
+            case LUA_TSTRING: {
+                size_t len = 0;
+                const char* text = lua_tolstring(L, idx, &len);
+                if (!text || len > 4096) return false;
+                bytes.push_back(3);
+                WriteU32(bytes, (uint32_t)len);
+                bytes.insert(bytes.end(), text, text + len);
+                return true;
+            }
+            case LUA_TTABLE: {
+                lua_pushnumber(L, 0);
+                lua_rawget(L, idx);
+                if (lua_islightuserdata(L, -1)) {
+                    const char* token = AwesomeWotlkTokenForPointer(lua_touserdata(L, -1));
+                    lua_pop(L, 1);
+                    if (token) {
+                        size_t len = strlen(token);
+                        bytes.push_back(3);
+                        WriteU32(bytes, (uint32_t)len);
+                        bytes.insert(bytes.end(), token, token + len);
+                        return true;
+                    }
+                } else {
+                    lua_pop(L, 1);
+                }
+                int count = 0;
+                lua_pushnil(L);
+                while (lua_next(L, idx)) {
+                    int keyType = lua_type(L, -2);
+                    if (keyType == LUA_TSTRING || (keyType == LUA_TNUMBER && lua_tonumber(L, -2) != 0.0 && lua_tonumber(L, -2) == (double)(int)lua_tonumber(L, -2))) count++;
+                    lua_pop(L, 1);
+                    if (count > 80) { lua_pop(L, 1); return false; }
+                }
+                bytes.push_back(5);
+                WriteU16(bytes, (uint16_t)count);
+                int written = 0;
+                lua_pushnil(L);
+                while (lua_next(L, idx)) {
+                    char keybuf[64];
+                    const char* key = nullptr;
+                    size_t keyLen = 0;
+                    if (lua_type(L, -2) == LUA_TSTRING) key = lua_tolstring(L, -2, &keyLen);
+                    else if (lua_type(L, -2) == LUA_TNUMBER) {
+                        double k = lua_tonumber(L, -2);
+                        if (k != 0.0 && k == (double)(int)k) {
+                            snprintf(keybuf, sizeof(keybuf), "%d", (int)k);
+                            key = keybuf;
+                            keyLen = strlen(keybuf);
+                        }
+                    }
+                    bool ok = true;
+                    if (key && keyLen > 0 && keyLen < 64) {
+                        WriteU16(bytes, (uint16_t)keyLen);
+                        bytes.insert(bytes.end(), key, key + keyLen);
+                        ok = WriteAwesomeVal(bytes, L, -1, depth + 1);
+                        if (ok) written++;
+                    }
+                    lua_pop(L, 1);
+                    if (!ok) return false;
+                }
+                return written == count;
+            }
+            default: bytes.push_back(0); return true;
+        }
+    }
+
+    int DoAwesomeCall(const std::string& addonId, const uint8_t* req, uint32_t reqLen, std::vector<uint8_t>& out, std::string& error) {
+        if (!req || reqLen < 2) { error = "short awesome call"; return WasmAddon::ErrInvalidArgument; }
+        const uint8_t* p = req;
+        const uint8_t* end = req + reqLen;
+        uint16_t nameLen = ReadU16(p);
+        p += 2;
+        if (!nameLen || nameLen > 128 || p + nameLen > end) return WasmAddon::ErrInvalidArgument;
+        std::string name(reinterpret_cast<const char*>(p), nameLen);
+        p += nameLen;
+        if (!AwesomeWotlkIsCall(name.c_str())) { error = "unknown awesome call"; return WasmAddon::ErrNotFound; }
+        lua_State* L = FrameScript_GetContext();
+        if (!L) { error = "lua state unavailable"; return WasmAddon::ErrUnavailable; }
+        TaintScope taint(addonId);
+        int saved = lua_gettop(L);
+        if (!ResolveAwesome(L, name)) { error = "missing " + name; lua_settop(L, saved); return WasmAddon::ErrNotFound; }
+        int nargs = 0;
+        while (p < end) {
+            if (nargs >= 8) { error = "too many args"; lua_settop(L, saved); return WasmAddon::ErrLimitExceeded; }
+            if (!PushAwesomeArg(L, p, end)) { error = "bad argument"; lua_settop(L, saved); return WasmAddon::ErrInvalidArgument; }
+            nargs++;
+        }
+        if (name == "GetCVar" || name == "SetCVar") {
+            if (nargs < 1 || lua_type(L, saved + 2) != LUA_TSTRING || !AwesomeWotlkIsCVar(lua_tostring(L, saved + 2))) {
+                error = "cvar";
+                lua_settop(L, saved);
+                return WasmAddon::ErrNotFound;
+            }
+        }
+        if (lua_pcall(L, nargs, 8, 0)) {
+            error = lua_tostring(L, -1) ? lua_tostring(L, -1) : "lua error";
+            lua_settop(L, saved);
+            return WasmAddon::ErrGeneric;
+        }
+        int nret = lua_gettop(L) - saved;
+        if (nret < 0) nret = 0;
+        if (nret > 8) nret = 8;
+        std::vector<uint8_t> bytes;
+        WriteU16(bytes, (uint16_t)nret);
+        for (int i = 1; i <= nret; i++) {
+            if (!WriteAwesomeVal(bytes, L, saved + i, 0)) { error = "awesome result"; lua_settop(L, saved); return WasmAddon::ErrLimitExceeded; }
+        }
+        lua_settop(L, saved);
+        out.swap(bytes);
+        return WasmAddon::Ok;
+    }
+
     int DoCallLua(const std::string& addonId, const uint8_t* req, uint32_t reqLen, std::vector<uint8_t>& out, std::string& error) {
         if (!req || reqLen < 7) { error = "short lua call"; return WasmAddon::ErrInvalidArgument; }
         const uint8_t* p = req;
@@ -1265,6 +1443,15 @@ void OnGameEvent(uint32_t, const char* eventName, lua_State* L, int32_t argCount
                 size_t len = 0;
                 const char* text = lua_tolstring(L, idx, &len);
                 writer.String(text ? text : "", text ? len : 0);
+                break;
+            }
+            case LUA_TTABLE: {
+                lua_pushnumber(L, 0);
+                lua_rawget(L, idx);
+                const char* token = lua_islightuserdata(L, -1) ? AwesomeWotlkTokenForPointer(lua_touserdata(L, -1)) : nullptr;
+                lua_pop(L, 1);
+                if (token) writer.String(token, strlen(token));
+                else writer.Nil();
                 break;
             }
             default: writer.Nil(); break;

@@ -1,3 +1,4 @@
+#include "AwesomeWotlk.h"
 #include "GameUI.h"
 #include <cmath>
 #include <cstdarg>
@@ -6547,6 +6548,7 @@ void LoadScriptFunctions() {
     SI2::RegisterScriptFunctions();
     SpellRegisterScriptFunctions();
     ScriptEventsRegisterFunctions();
+    AwesomeWotlkRegister();
     MinimapRegisterScriptFunctions();
     UnitCombatLogRegisterScriptFunctions();
     ActionBarRegisterScriptFunctions();
@@ -6632,6 +6634,7 @@ void UnloadScriptFunctions() {
     SpellUnregisterScriptFunctions();
     MinimapUnregisterScriptFunctions();
     ScriptEventsUnregisterFunctions();
+    AwesomeWotlkUnregister();
     UnitCombatLogUnregisterScriptFunctions();
     ActionBarUnregisterScriptFunctions();
     CGPartyInfo::UnregisterScriptFunctions();
