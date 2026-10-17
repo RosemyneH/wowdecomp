@@ -2173,7 +2173,7 @@ void CWorldScene::FrustumPush() {
 // VERIFY: 11ca4f8e manual
 // OFFSET: 0x00791980
 void CWorldScene::CullHorizon(CRect* rect) {
-    if (!(CWorld::enables & Enable_LowDetail)) {
+    if (!(CWorld::enables & Enable_LowDetail) || !CGWorldFrame::GetActiveCamera()) {
         return;
     }
 

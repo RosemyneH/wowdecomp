@@ -143,6 +143,8 @@ void OpenShm() {
     const char* env = std::getenv("WOW_PROFILE");
     if (env && env[0] == '0' && env[1] == '\0') {
         g_shm->enabled = 0;
+    } else {
+        g_shm->enabled = 1;
     }
 #else
     (void)kMagic;

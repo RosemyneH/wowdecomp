@@ -97,29 +97,26 @@ void CMapLowDetail::CullHorizonAreas(const C3Vector* pos) {
         maxRow = 63;
     }
 
-    for (int32_t r = minRow; r <= maxRow; r++) {
-        for (int32_t c = minCol; c <= maxCol; c++) {
-            CMapAreaLow* area = this->m_areas[64 * r + c];
+    // ʕ •ᴥ•ʔ✿ Full view draws the continent mesh, so the facing list is not rebuilt while you look around ✿ ʕ •ᴥ•ʔ
+    if (!CWorldParamSlider::ExtendedViewEnabled()) {
+        for (int32_t r = minRow; r <= maxRow; r++) {
+            for (int32_t c = minCol; c <= maxCol; c++) {
+                CMapAreaLow* area = this->m_areas[64 * r + c];
 
-            if (!area) {
-                continue;
-            }
-
-            // ʕ •ᴥ•ʔ✿ Full view keeps the high-detail frustum short and only drops WDL tiles behind the camera ✿ ʕ •ᴥ•ʔ
-            if (CWorldParamSlider::ExtendedViewEnabled()) {
-                const C4Plane& plane = CWorldScene::camPlane;
-                float forward = area->m_sphere.c.x * plane.n.x + area->m_sphere.c.y * plane.n.y + area->m_sphere.c.z * plane.n.z + plane.d;
-
-                if (forward < -area->m_sphere.r) {
+                if (!area) {
                     continue;
                 }
-            } else if (CWorldScene::FrustumCull(&area->m_bbox) || CWorldOcclusion::QueryVolumes(&area->m_sphere)) {
-                continue;
-            } else if (World::s_farClip > 300.0f && CWorldOcclusion::QueryBuffer(&area->m_bbox, 40)) {
-                continue;
-            }
 
-            CWorldScene::AddHorizonChunk(area);
+                if (CWorldScene::FrustumCull(&area->m_bbox) || CWorldOcclusion::QueryVolumes(&area->m_sphere)) {
+                    continue;
+                }
+
+                if (World::s_farClip > 300.0f && CWorldOcclusion::QueryBuffer(&area->m_bbox, 40)) {
+                    continue;
+                }
+
+                CWorldScene::AddHorizonChunk(area);
+            }
         }
     }
 
