@@ -38,6 +38,10 @@ local function WowDecomp_SetupRegisteredControl(control, panel, entry)
         end
     end
 
+    if entry.tooltip then
+        control.tooltipText = entry.tooltip;
+    end
+
     BlizzardOptionsPanel_SetupControl(control);
     BlizzardOptionsPanel_RefreshControl(control);
 end
@@ -61,7 +65,7 @@ local function WowDecomp_UpdateFarclipSlider()
         EffectsPanelOptions.farclip.valueStep = step;
     end
 
-    if WowDecomp_PlaytestCheckboxValue(VideoOptionsEffectsPanelFullView) then
+    if WowDecomp_PlaytestCheckboxValue(VideoOptionsAdvancedPanelFullView) then
         BlizzardOptionsPanel_Slider_Disable(slider);
     else
         BlizzardOptionsPanel_Slider_Enable(slider);
@@ -85,26 +89,33 @@ local function WowDecomp_UpdateGroundRadiusSlider()
     EffectsPanelOptions.groundEffectDist.valueStep = step;
 end
 
+local function WowDecomp_RefreshShaderStatus()
+    local status = _G["VideoOptionsAdvancedPanelShaderStatus"];
+    if not status then
+        return;
+    end
+    if GetVulkanShaderStatus then
+        status:SetText(GetVulkanShaderStatus());
+    end
+end
+
 local function WowDecomp_OnPlaytestCVarChanged()
     WowDecomp_UpdateFarclipSlider();
     WowDecomp_UpdateGroundRadiusSlider();
+    WowDecomp_RefreshShaderStatus();
 end
 
-local function WowDecomp_RegisterCheckbox(parent, name, label, cvar, anchor, x, y, refresh)
+local function WowDecomp_RegisterCheckbox(panel, parent, name, label, cvar, tooltip, anchor, x, y, refresh)
     local button = CreateFrame("CheckButton", name, parent, "VideoOptionsSmallCheckButtonTemplate");
-    button:SetPoint("TOPLEFT", anchor, "TOPLEFT", x, y);
     button.type = CONTROLTYPE_CHECKBOX;
     button.cvar = cvar;
+    button.tooltipText = tooltip;
 
-    local text = _G[button:GetName() .. "Text"];
-    if text then
-        text:SetText(label);
-    end
-
-    local entry = { text = label };
-    EffectsPanelOptions[cvar] = entry;
-    BlizzardOptionsPanel_RegisterControl(button, parent);
-    WowDecomp_SetupRegisteredControl(button, parent, entry);
+    local entry = { text = label, tooltip = tooltip };
+    panel.options[cvar] = entry;
+    BlizzardOptionsPanel_RegisterControl(button, panel);
+    WowDecomp_SetupRegisteredControl(button, panel, entry);
+    button:SetPoint("TOPLEFT", anchor, "TOPLEFT", x, y);
 
     button:SetScript("OnClick", function(self)
         if self:GetChecked() then
@@ -114,6 +125,9 @@ local function WowDecomp_RegisterCheckbox(parent, name, label, cvar, anchor, x, 
         end
         BlizzardOptionsPanel_CheckButton_OnClick(self);
         WowDecomp_ApplyPlaytestCVar(self);
+        if VideoOptionsFrameApply then
+            VideoOptionsFrameApply:Enable();
+        end
         if refresh then
             refresh();
         end
@@ -122,70 +136,122 @@ local function WowDecomp_RegisterCheckbox(parent, name, label, cvar, anchor, x, 
     return button;
 end
 
-local function WowDecomp_ShiftShadersDown()
-    local shaders = VideoOptionsEffectsPanelShaders;
-    if not shaders or shaders.wowDecompShifted then
+WowDecompAdvancedOptions = {
+    extendedView = { text = "Full view", tooltip = "Unlocks the far view used for map-wide playtests and disables the view distance slider." },
+    vkWireframe = { text = "Wireframe", tooltip = "Draws depth-tested world geometry as lines through the Vulkan shaders." },
+    vkUnlit = { text = "Unlit", tooltip = "Turns off fixed-function lighting in the Vulkan vertex shader." },
+};
+
+local function WowDecomp_InstallAdvancedPanel()
+    if VideoOptionsAdvancedPanel or not VideoOptionsFramePanelContainer or not VideoOptionsPanel_OnLoad then
         return;
     end
 
-    local point, relativeTo, relativePoint, x, y = shaders:GetPoint(1);
-    if not point then
-        return;
-    end
+    local panel = CreateFrame("Frame", "VideoOptionsAdvancedPanel", VideoOptionsFramePanelContainer);
+    panel:Hide();
+    panel.name = "Advanced";
+    panel.options = WowDecompAdvancedOptions;
+    VideoOptionsPanel_OnLoad(panel);
 
-    shaders.wowDecompShifted = true;
-    shaders:ClearAllPoints();
-    shaders:SetPoint(point, relativeTo, relativePoint, x or 0, (y or 0) - 22);
-end
+    local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge");
+    title:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -16);
+    title:SetJustifyH("LEFT");
+    title:SetText("Advanced");
 
-local function WowDecomp_InstallEffectsPanelPlaytest(panel)
-    if panel.wowDecompPlaytestInstalled then
-        return;
-    end
+    local subText = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall");
+    subText:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8);
+    subText:SetPoint("RIGHT", panel, "RIGHT", -32, 0);
+    subText:SetJustifyH("LEFT");
+    subText:SetJustifyV("TOP");
+    subText:SetHeight(32);
+    subText:SetText("Playtest settings. Full view is here, and the shader controls change how Vulkan draws the world.");
 
-    local shadowSlider = VideoOptionsEffectsPanelShadowQuality;
-    local viewDist = VideoOptionsEffectsPanelViewDistance;
-    if not shadowSlider or not viewDist then
-        return;
-    end
+    local view = CreateFrame("Frame", "VideoOptionsAdvancedPanelView", panel, "OptionsBoxTemplate");
+    view:SetWidth(380);
+    view:SetHeight(44);
+    view:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -72);
+    _G[view:GetName() .. "Title"]:SetText("View");
 
-    panel.wowDecompPlaytestInstalled = true;
-    EffectsPanelOptions.extendedView = { text = "Full view" };
-
-    local fullView = WowDecomp_RegisterCheckbox(
+    WowDecomp_RegisterCheckbox(
         panel,
-        "VideoOptionsEffectsPanelFullView",
+        view,
+        "VideoOptionsAdvancedPanelFullView",
         "Full view",
         "extendedView",
-        shadowSlider,
-        0,
-        0,
+        WowDecompAdvancedOptions.extendedView.tooltip,
+        view,
+        12,
+        -10,
         WowDecomp_OnPlaytestCVarChanged
     );
-    fullView:ClearAllPoints();
-    fullView:SetPoint("TOPLEFT", shadowSlider, "BOTTOMLEFT", 0, -6);
 
-    WowDecomp_ShiftShadersDown();
-    WowDecomp_OnPlaytestCVarChanged();
-end
+    local shaders = CreateFrame("Frame", "VideoOptionsAdvancedPanelShaders", panel, "OptionsBoxTemplate");
+    shaders:SetWidth(380);
+    shaders:SetHeight(196);
+    shaders:SetPoint("TOPLEFT", view, "BOTTOMLEFT", 0, -28);
+    _G[shaders:GetName() .. "Title"]:SetText("Shaders");
 
-if VideoOptionsEffectsPanel_OnLoad then
-    local origEffectsOnLoad = VideoOptionsEffectsPanel_OnLoad;
-    VideoOptionsEffectsPanel_OnLoad = function(self)
-        origEffectsOnLoad(self);
-        WowDecomp_InstallEffectsPanelPlaytest(self);
-    end;
-end
+    local wireframe = WowDecomp_RegisterCheckbox(
+        panel,
+        shaders,
+        "VideoOptionsAdvancedPanelWireframe",
+        "Wireframe",
+        "vkWireframe",
+        WowDecompAdvancedOptions.vkWireframe.tooltip,
+        shaders,
+        12,
+        -10,
+        nil
+    );
 
-if VideoOptionsEffectsPanel then
-    WowDecomp_InstallEffectsPanelPlaytest(VideoOptionsEffectsPanel);
+    local unlit = WowDecomp_RegisterCheckbox(
+        panel,
+        shaders,
+        "VideoOptionsAdvancedPanelUnlit",
+        "Unlit",
+        "vkUnlit",
+        WowDecompAdvancedOptions.vkUnlit.tooltip,
+        wireframe,
+        0,
+        -28,
+        nil
+    );
+
+    local reload = CreateFrame("Button", "VideoOptionsAdvancedPanelReloadShaders", shaders, "UIPanelButtonTemplate");
+    reload:SetWidth(148);
+    reload:SetHeight(22);
+    reload:SetPoint("TOPLEFT", unlit, "BOTTOMLEFT", 0, -8);
+    reload:SetText("Reload shaders");
+    reload:SetScript("OnClick", function()
+        PlaySound("igMainMenuOptionCheckBoxOn");
+        if ReloadVulkanShaders then
+            ReloadVulkanShaders();
+        end
+        WowDecomp_RefreshShaderStatus();
+    end);
+
+    local status = shaders:CreateFontString("VideoOptionsAdvancedPanelShaderStatus", "ARTWORK", "GameFontHighlightSmall");
+    status:SetPoint("TOPLEFT", reload, "BOTTOMLEFT", 0, -8);
+    status:SetWidth(348);
+    status:SetJustifyH("LEFT");
+    status:SetJustifyV("TOP");
+    status:SetText(GetVulkanShaderStatus and GetVulkanShaderStatus() or "");
+
+    panel:SetScript("OnUpdate", function(self, elapsed)
+        self.wowDecompStatusTimer = (self.wowDecompStatusTimer or 0) + elapsed;
+        if self.wowDecompStatusTimer < 0.25 then
+            return;
+        end
+        self.wowDecompStatusTimer = 0;
+        WowDecomp_RefreshShaderStatus();
+    end);
 end
 
 if VideoOptionsFrame then
     VideoOptionsFrame:HookScript("OnShow", function()
-        if VideoOptionsEffectsPanel and not VideoOptionsEffectsPanel.wowDecompPlaytestInstalled then
-            WowDecomp_InstallEffectsPanelPlaytest(VideoOptionsEffectsPanel);
-        end
+        WowDecomp_InstallAdvancedPanel();
         WowDecomp_OnPlaytestCVarChanged();
     end);
 end
+
+WowDecomp_InstallAdvancedPanel();

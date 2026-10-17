@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <new>
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
+#include "Engine/Source/Gx/WowDecompVk.h"
 #include "Engine/Source/Services/GfxSingletonManager.h"
 #include "Engine/Source/Services/Texture.h"
 #include "Engine/Source/ShaderEffect/ShaderEffect.h"
@@ -698,6 +699,23 @@ bool CWorldParam::GxTextureCacheSizeCallback(CVar* var, const char* oldValue, co
     return true;
 }
 
+static bool VkExperimentCallback(CVar*, const char*, const char* value, void* arg) {
+    if (SStrToInt(value) > 1) {
+        ConsoleWrite("Vulkan experiment cvars must be 0 or 1.", DEFAULT_COLOR);
+        return false;
+    }
+
+    int32_t enabled = SStrToInt(value) != 0;
+
+    if (arg) {
+        WowDecompVk_SetUnlit(enabled);
+    } else {
+        WowDecompVk_SetWireframe(enabled);
+    }
+
+    return true;
+}
+
 // VERIFY: 9acf82a1 auto
 // OFFSET: 0x0078E400
 void CWorldParam::Initialize() {
@@ -735,6 +753,8 @@ void CWorldParam::Initialize() {
     CWorldParam::cvar_projectedTextures = CVar::Register("projectedTextures", "Projected Textures", 1, "0", CWorldParam::ProjectedTexturesCallback, CATEGORY_GRAPHICS, false, nullptr, false);
     CWorldParam::cvar_gxTextureCacheSize = CVar::Register("gxTextureCacheSize", "GX Texture Cache Size", 1, "0", CWorldParam::GxTextureCacheSizeCallback, CATEGORY_GRAPHICS, false, nullptr, false);
     CVar::Register("spellEffectLevel", "Video Option: Spell Effects", 1, "9", nullptr, CATEGORY_GRAPHICS, false, nullptr, false);
+    CVar::Register("vkWireframe", "Vulkan experiment: wireframe world geometry", 1, "0", VkExperimentCallback, CATEGORY_GRAPHICS, false, nullptr, false);
+    CVar::Register("vkUnlit", "Vulkan experiment: disable fixed-function lighting", 1, "0", VkExperimentCallback, CATEGORY_GRAPHICS, false, reinterpret_cast<void*>(1), false);
 
     AddConsoleDeviceDefaultCallback(CWorldParam::SetDefaults);
 

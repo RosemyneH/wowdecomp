@@ -13,6 +13,7 @@
 #include "Engine/Source/Gx/CGxDevice/Types.h"
 #include "Engine/Source/Gx/CGxFormat.h"
 #include "Engine/Source/Gx/Gx.h"
+#include "Engine/Source/Gx/WowDecompVk.h"
 #include "Engine/Source/Gx/Types.h"
 #include "Engine/Source/Os/System.h"
 #include "Engine/Source/Storm/H/stpl.h"
@@ -165,6 +166,25 @@ static int32_t Script_IsStereoVideoAvailable(lua_State* L) {
         lua_pushnil(L);
     }
 
+    return 1;
+}
+
+static int32_t Script_ReloadVulkanShaders(lua_State* L) {
+#if defined(WOWDECOMP_VULKAN)
+    if (g_theGxDevicePtr && g_theGxDevicePtr->DeviceApi() == GxApi_Vulkan) {
+        WowDecompVk_RequestShaderReload();
+    } else {
+        WowDecompVk_SetStatus("Vulkan is not the active renderer.");
+    }
+#else
+    WowDecompVk_SetStatus("This build has no Vulkan renderer.");
+#endif
+    lua_pushstring(L, WowDecompVk_Status());
+    return 1;
+}
+
+static int32_t Script_GetVulkanShaderStatus(lua_State* L) {
+    lua_pushstring(L, WowDecompVk_Status());
     return 1;
 }
 
@@ -523,6 +543,8 @@ static FrameScript_Method s_scriptFunctions[] = {
     { "SetTerrainMip", &Script_SetTerrainMip },
     { "IsStereoVideoAvailable", &Script_IsStereoVideoAvailable },
     { "IsPlayerResolutionAvailable", &Script_IsPlayerResolutionAvailable },
+    { "ReloadVulkanShaders", &Script_ReloadVulkanShaders },
+    { "GetVulkanShaderStatus", &Script_GetVulkanShaderStatus },
 };
 
 // VERIFY: 9fc618b7 auto

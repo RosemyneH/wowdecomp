@@ -633,9 +633,158 @@ void CGxDeviceVulkan::IInvalidateCmdState() {
     this->m_uniformsValid = 0;
 }
 
+static void ShaderOverrideDir(char* dest, size_t destSize) {
+    char base[260];
+    SFile::GetBasePath(base, sizeof(base));
+
+    for (char* cursor = base; *cursor; ++cursor) {
+        if (*cursor == '\\') {
+            *cursor = '/';
+        }
+    }
+
+    size_t length = strlen(base);
+
+    if (length && base[length - 1] != '/' && length + 1 < sizeof(base)) {
+        base[length] = '/';
+        base[length + 1] = '\0';
+    }
+
+    SStrPrintf(dest, destSize, "%sShaders/Vulkan", base);
+}
+
+static int32_t LoadSpirvWords(const char* path, std::vector<uint32_t>& words) {
+    FILE* file = fopen(path, "rb");
+
+    if (!file) {
+        return 0;
+    }
+
+    if (fseek(file, 0, SEEK_END) != 0) {
+        fclose(file);
+        return -1;
+    }
+
+    long size = ftell(file);
+
+    if (size < 20 || (size % 4) != 0 || fseek(file, 0, SEEK_SET) != 0) {
+        fclose(file);
+        return -1;
+    }
+
+    words.resize(static_cast<size_t>(size / 4));
+
+    if (fread(words.data(), sizeof(uint32_t), words.size(), file) != words.size() || words[0] != 0x07230203u) {
+        fclose(file);
+        words.clear();
+        return -1;
+    }
+
+    fclose(file);
+    return 1;
+}
+
+static VkShaderModule CreateShaderModule(VkDevice device, const uint32_t* code, size_t bytes) {
+    VkShaderModuleCreateInfo info = { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
+    info.codeSize = bytes;
+    info.pCode = code;
+
+    VkShaderModule module = VK_NULL_HANDLE;
+
+    if (vkCreateShaderModule(device, &info, nullptr, &module) != VK_SUCCESS) {
+        return VK_NULL_HANDLE;
+    }
+
+    return module;
+}
+
+static const char* SwapShaderModule(VkDevice device, VkShaderModule& slot, const uint32_t* builtin, size_t builtinBytes, const char* filename) {
+    char directory[300];
+    char path[560];
+    ShaderOverrideDir(directory, sizeof(directory));
+    SStrPrintf(path, sizeof(path), "%s/%s", directory, filename);
+
+    std::vector<uint32_t> words;
+    int32_t file = LoadSpirvWords(path, words);
+    VkShaderModule module = VK_NULL_HANDLE;
+    const char* label = "built-in";
+
+    if (file > 0) {
+        module = CreateShaderModule(device, words.data(), words.size() * sizeof(uint32_t));
+        label = module ? "override" : "override failed, built-in";
+    } else if (file < 0) {
+        label = "rejected, built-in";
+    }
+
+    if (!module) {
+        module = CreateShaderModule(device, builtin, builtinBytes);
+    }
+
+    if (!module) {
+        return "failed";
+    }
+
+    if (slot) {
+        vkDestroyShaderModule(device, slot, nullptr);
+    }
+
+    slot = module;
+    return label;
+}
+
+static void AppendShaderLine(char* report, size_t reportSize, const char* filename, const char* label) {
+    size_t used = strlen(report);
+
+    if (used && used + 1 < reportSize) {
+        report[used++] = '\n';
+        report[used] = '\0';
+    }
+
+    SStrPrintf(report + used, reportSize - used, "%s: %s", filename, label);
+}
+
+void CGxDeviceVulkan::IReloadExperimentalShaders() {
+    VkDevice device = this->m_vk.m_device;
+
+    if (!device) {
+        WowDecompVk_SetStatus("Vulkan device is not ready.");
+        return;
+    }
+
+    // ʕ •ᴥ•ʔ✿ Pipelines still reference the modules until the GPU finishes the last frame ✿ ʕ •ᴥ•ʔ
+    if (vkDeviceWaitIdle(device) != VK_SUCCESS) {
+        WowDecompVk_SetStatus("GPU was busy. Reload again.");
+        return;
+    }
+
+    for (auto& pipeline : this->m_pipelines) {
+        vkDestroyPipeline(device, pipeline.second, nullptr);
+    }
+
+    this->m_pipelines.clear();
+
+    char directory[300];
+    char report[512];
+    ShaderOverrideDir(directory, sizeof(directory));
+    SStrCopy(report, directory, sizeof(report));
+
+    AppendShaderLine(report, sizeof(report), "Ffp.vert.spv", SwapShaderModule(device, this->m_vertexModule, s_ffpVertexCode, sizeof(s_ffpVertexCode), "Ffp.vert.spv"));
+    AppendShaderLine(report, sizeof(report), "Ffp.frag.spv", SwapShaderModule(device, this->m_fragmentModule, s_ffpFragmentCode, sizeof(s_ffpFragmentCode), "Ffp.frag.spv"));
+
+    if (this->m_terrainFragment) {
+        AppendShaderLine(report, sizeof(report), "FfpTerrain.frag.spv", SwapShaderModule(device, this->m_terrainFragment, s_ffpTerrainCode, sizeof(s_ffpTerrainCode), "FfpTerrain.frag.spv"));
+    }
+
+    WowDecompVk_SetStatus(report);
+}
+
 void CGxDeviceVulkan::ISceneBegin() {
     if (!this->m_context || this->m_frameActive || !this->m_windowVisible) {
         return;
+    }
+
+    if (WowDecompVk_ConsumeShaderReload()) {
+        this->IReloadExperimentalShaders();
     }
 
     // ʕ •ᴥ•ʔ✿ Pools are recreated per frame; a buffer fallback last frame must not mute this one ✿ ʕ •ᴥ•ʔ

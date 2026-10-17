@@ -1,0 +1,15 @@
+#ifndef ENGINE_SOURCE_GX_WOWDECOMPVK_H
+#define ENGINE_SOURCE_GX_WOWDECOMPVK_H
+
+#include <cstdint>
+
+void WowDecompVk_SetWireframe(int32_t enabled);
+int32_t WowDecompVk_Wireframe();
+void WowDecompVk_SetUnlit(int32_t enabled);
+int32_t WowDecompVk_Unlit();
+void WowDecompVk_RequestShaderReload();
+int32_t WowDecompVk_ConsumeShaderReload();
+const char* WowDecompVk_Status();
+void WowDecompVk_SetStatus(const char* status);
+
+#endif
