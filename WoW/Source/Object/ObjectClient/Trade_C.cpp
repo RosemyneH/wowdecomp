@@ -157,6 +157,11 @@ void Trade_C_UnacceptTrade() {
 // VERIFY: d10db303 manual
 // OFFSET: 0x00704040
 void Trade_C_CancelTrade() {
+    // -- ʕ •ᴥ•ʔ✿ Logout and login both call this with no trade open. The world session rejects it until the player is in. ✿ ʕ •ᴥ•ʔ
+    if (!CGTradeInfo::m_playerTrade.m_tradeId && !s_tradeRequested) {
+        return;
+    }
+
     CDataStore msg;
     msg.Put(static_cast<uint32_t>(CMSG_CANCEL_TRADE));
     msg.Finalize();
