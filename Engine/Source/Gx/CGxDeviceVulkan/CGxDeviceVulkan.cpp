@@ -563,12 +563,28 @@ void CGxDeviceVulkan::ISetCaps(const CGxFormat& format) {
 
         VkFormatProperties properties;
         vkGetPhysicalDeviceFormatProperties(this->m_vk.m_physicalDevice, s_gxTexFmtToVkFmt[i], &properties);
-        this->m_caps.m_texFmt[i] = (properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) != 0;
+        VkFormatFeatureFlags required = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+
+        // ʕ •ᴥ•ʔ✿ Block copies need a transfer dest, and the samplers are linear ✿ ʕ •ᴥ•ʔ
+        if (i >= GxTex_Dxt1 && i <= GxTex_Dxt5) {
+            required |= VK_FORMAT_FEATURE_TRANSFER_DST_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+        }
+
+        this->m_caps.m_texFmt[i] = (properties.optimalTilingFeatures & required) == required;
     }
 
-    s_gxTexFormatToUse[GxTex_Dxt1] = GxTex_Argb8888;
-    s_gxTexFormatToUse[GxTex_Dxt3] = GxTex_Argb8888;
-    s_gxTexFormatToUse[GxTex_Dxt5] = GxTex_Argb8888;
+    // ʕ •ᴥ•ʔ✿ Keep DXT on the GPU. Expanding it to RGBA is 4–8× the sample traffic ✿ ʕ •ᴥ•ʔ
+    if (!this->m_caps.m_texFmt[GxTex_Dxt1]) {
+        s_gxTexFormatToUse[GxTex_Dxt1] = GxTex_Argb8888;
+    }
+
+    if (!this->m_caps.m_texFmt[GxTex_Dxt3]) {
+        s_gxTexFormatToUse[GxTex_Dxt3] = GxTex_Argb8888;
+    }
+
+    if (!this->m_caps.m_texFmt[GxTex_Dxt5]) {
+        s_gxTexFormatToUse[GxTex_Dxt5] = GxTex_Argb8888;
+    }
 
     this->m_caps.m_rttFormat[GxTex_Argb8888] = 1;
     this->m_caps.unk_0134 = 1;
@@ -2012,6 +2028,11 @@ void CGxDeviceVulkan::ITexCreate(CGxTex* texId) {
 
     texId->m_format = s_gxTexFormatToUse[texId->m_format];
 
+    // ʕ •ᴥ•ʔ✿ BC images reject extents that are not a multiple of the 4×4 block ✿ ʕ •ᴥ•ʔ
+    if (texId->m_format >= GxTex_Dxt1 && texId->m_format <= GxTex_Dxt5 && ((width | height) & 3)) {
+        texId->m_format = GxTex_Argb8888;
+    }
+
     VkFormat format = s_gxTexFmtToVkFmt[texId->m_format];
     int32_t renderTarget = texId->m_flags.m_renderTarget;
 
@@ -2062,9 +2083,13 @@ void CGxDeviceVulkan::ITexCreate(CGxTex* texId) {
         texture->layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         VkContext::Barrier(upload, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-        VkImageSubresourceRange range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, texture->levels, 0, 1 };
-        VkClearColorValue clear = {};
-        vkCmdClearColorImage(upload, texture->image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear, 1, &range);
+        // ʕ •ᴥ•ʔ✿ vkCmdClearColorImage rejects block-compressed images ✿ ʕ •ᴥ•ʔ
+        if (texId->m_format < GxTex_Dxt1 || texId->m_format > GxTex_Dxt5) {
+            VkImageSubresourceRange range = { VK_IMAGE_ASPECT_COLOR_BIT, 0, texture->levels, 0, 1 };
+            VkClearColorValue clear = {};
+            vkCmdClearColorImage(upload, texture->image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear, 1, &range);
+        }
+
         VkContext::Barrier(upload, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         texture->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         texture->initialized = 1;
