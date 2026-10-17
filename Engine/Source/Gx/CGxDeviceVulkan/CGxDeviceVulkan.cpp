@@ -654,10 +654,7 @@ void CGxDeviceVulkan::ISceneBegin() {
 
     int32_t begun = this->m_vk.BeginFrame();
 
-    if (begun == 1) {
-        this->ResetTerrainTable();
-    }
-
+    // -- ʕ •ᴥ•ʔ✿ The bindless set survives the frame. Resetting it rewrote every terrain texture on each scene. ✿ ʕ •ᴥ•ʔ
     if (begun == 2) {
         // ʕ ●ᴥ●ʔ✿ No image yet (hidden/suspended surface): skip without rebuilding the swapchain ✿ ʕ ●ᴥ●ʔ
         this->m_imageStarved = 1;

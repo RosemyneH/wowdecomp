@@ -2814,13 +2814,19 @@ static void ApplyChunkFog(const TerrainCapture& cap) {
     GxRsSet(GxRs_Fog, cap.fog);
 }
 
-static void FillTerrainDraw(GxTerrainDraw& draw, const TerrainCapture& cap) {
+static void FillTerrainDraw(GxTerrainDraw& draw, const TerrainCapture& cap, const C44Matrix* eye0, const C44Matrix* eye1) {
     draw.world = cap.world;
-    GxXformSet(GxXform_Tex0, cap.tex0);
-    GxXformSet(GxXform_Tex1, cap.tex1);
-    // ʕ ◕ᴥ◕ ʔ✿ Eye-linear texgen is the view inverse, refreshed by IRsSync before this ✿ ʕ ◕ᴥ◕ ʔ
-    g_theGxDevicePtr->ResolveTexMatrix(0, draw.tex0);
-    g_theGxDevicePtr->ResolveTexMatrix(1, draw.tex1);
+
+    // -- ʕ •ᴥ•ʔ✿ Eye-linear texgen is one view inverse for the whole flush. Per chunk it is that matrix times the layer matrix. ✿ ʕ •ᴥ•ʔ
+    if (eye0 && eye1) {
+        draw.tex0 = (*eye0) * cap.tex0;
+        draw.tex1 = (*eye1) * cap.tex1;
+    } else {
+        GxXformSet(GxXform_Tex0, cap.tex0);
+        GxXformSet(GxXform_Tex1, cap.tex1);
+        g_theGxDevicePtr->ResolveTexMatrix(0, draw.tex0);
+        g_theGxDevicePtr->ResolveTexMatrix(1, draw.tex1);
+    }
     memcpy(draw.lightPos, cap.lightPos, sizeof(draw.lightPos));
     memcpy(draw.lightDiffuse, cap.lightDiffuse, sizeof(draw.lightDiffuse));
     memcpy(draw.lightAmbient, cap.lightAmbient, sizeof(draw.lightAmbient));
@@ -2894,7 +2900,19 @@ void CMapRenderChunk::FlushMultiPass() {
     int32_t bindless = g_theGxDevicePtr->TerrainBindless();
     g_theGxDevicePtr->IRsSync(0);
 
-    // -- ʕ •ᴥ•ʔ✿ Grouping is the chunk set. Matrices still refresh every flush. ✿ ʕ •ᴥ•ʔ
+    const CGxAppRenderState* rs = g_theGxDevicePtr->m_appRenderStates.m_data;
+    int32_t fastEye = rs[GxRs_TextureShader0].m_value.m_data.i[0] == 1 && rs[GxRs_TextureShader1].m_value.m_data.i[0] == 1 && rs[GxRs_TexGen0].m_value.m_data.i[0] && rs[GxRs_TexGen1].m_value.m_data.i[0];
+    const C44Matrix* eye0 = nullptr;
+    const C44Matrix* eye1 = nullptr;
+
+    if (fastEye) {
+        CGxMatrixStack& gen0 = g_theGxDevicePtr->m_texGen[0];
+        CGxMatrixStack& gen1 = g_theGxDevicePtr->m_texGen[1];
+        eye0 = &gen0.m_mtx[gen0.m_level];
+        eye1 = &gen1.m_mtx[gen1.m_level];
+    }
+
+    // -- ʕ •ᴥ•ʔ✿ Grouping is the chunk set. Eye-linear texgen is one multiply per chunk, not a state change. ✿ ʕ •ᴥ•ʔ
     if (!TerrainPlanMatches(bindless) || s_layerPlans.size() < maxLayers) {
         BuildTerrainPlans(maxLayers, bindless);
     }
@@ -2940,7 +2958,7 @@ void CMapRenderChunk::FlushMultiPass() {
                     s_meshTaken[n] = 1;
                     CMapRenderChunkLayer* chunkLayer = &cap.chunk->m_layers[layer];
                     GxTerrainDraw draw = {};
-                    FillTerrainDraw(draw, cap);
+                    FillTerrainDraw(draw, cap, eye0, eye1);
 
                     if (bindless) {
                         CGxTex* color = TextureGetGxTex(chunkLayer->m_texture, 0, nullptr);
