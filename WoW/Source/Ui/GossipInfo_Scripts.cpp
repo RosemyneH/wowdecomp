@@ -69,11 +69,24 @@ static int32_t Script_GetGossipText(lua_State* L) {
 static int32_t Script_GetGossipOptions(lua_State* L) {
     int32_t count = 0;
 
-    for (GossipOption* option = CGGossipInfo::m_options; option < reinterpret_cast<GossipOption*>(CGGossipInfo::m_gossipText); option++) {
-        if (option && option->m_index >= 0) {
+    // The original binary iterated m_options up to &m_gossipText because the two
+    // statics happened to be adjacent. That layout is not guaranteed by other
+    // toolchains (and never holds for 64-bit pointers), so bound by the array size.
+    constexpr size_t kNumOptions = sizeof(CGGossipInfo::m_options) / sizeof(CGGossipInfo::m_options[0]);
+
+    for (size_t i = 0; i < kNumOptions; i++) {
+        const GossipOption* option = &CGGossipInfo::m_options[i];
+
+        if (option->m_index >= 0) {
             lua_checkstack(L, 2);
             lua_pushstring(L, option->m_text);
-            lua_pushstring(L, s_gossipTypes[option->m_type]);
+
+            if (option->m_type >= 0 && option->m_type < static_cast<int32_t>(sizeof(s_gossipTypes) / sizeof(s_gossipTypes[0]))) {
+                lua_pushstring(L, s_gossipTypes[option->m_type]);
+            } else {
+                lua_pushstring(L, "gossip");
+            }
+
             count++;
         }
     }
