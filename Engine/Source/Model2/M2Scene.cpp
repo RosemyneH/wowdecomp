@@ -1869,6 +1869,42 @@ static void SkinRange(Job::Range range, void* user) {
     }
 }
 
+// ʕ •ᴥ•ʔ✿ Vulkan blends these in Ffp.vert. Writing the skinned PNT here is unused work ✿ ʕ •ᴥ•ʔ
+static int32_t SkinGpuCovers(const M2Element* element) {
+    if (!g_theGxDevicePtr || !g_theGxDevicePtr->GpuSkinSupported() || !element->m_batch || !element->m_skinSection || !element->m_model || !element->m_model->m_shared || !element->m_model->m_shared->m_data) {
+        return 0;
+    }
+
+    if (element->m_batch->m_flags & 0x40) {
+        return 0;
+    }
+
+    M2Data* data = element->m_model->m_shared->m_data;
+    M2SkinSection* section = element->m_skinSection;
+    uint32_t boneCount = data->m_bones.m_count;
+
+    if (!boneCount || boneCount > 256 || !section->m_vertexCount || static_cast<uint32_t>(section->m_vertexStart) + section->m_vertexCount > data->m_vertices.m_count) {
+        return 0;
+    }
+
+    if (element->m_type == 0) {
+        return !(element->m_flags & 4) && !(element->m_batch->m_shader & 0x4000);
+    }
+
+    if (element->m_type != 2) {
+        return 0;
+    }
+
+    CM2Shared* shared = element->m_model->m_shared;
+
+    if (!shared->m_cache || !shared->m_skinData || (shared->m_cache->m_flags & 8) || section->m_boneCount <= 1 || section->m_boneInfluences < 1 || section->m_boneInfluences > 4 || !section->m_indexCount) {
+        return 0;
+    }
+
+    uint32_t sectionIndex = static_cast<uint32_t>(section - shared->m_skinSections);
+    return sectionIndex < shared->m_skinData->m_skinSections.m_count;
+}
+
 void M2SkinPrepare(CM2Scene* scene) {
     Job::Wait();
     s_skinReady = 0;
@@ -1897,6 +1933,10 @@ void M2SkinPrepare(CM2Scene* scene) {
         }
 
         if (element->m_batch->m_flags & 0x40) {
+            continue;
+        }
+
+        if (SkinGpuCovers(element)) {
             continue;
         }
 
