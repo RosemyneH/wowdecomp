@@ -1130,6 +1130,7 @@ void CGxDeviceVulkan::IBuildUniforms(VkDrawUniforms& uniforms) {
     uniforms.misc[0] = pointSize > 1.0f && this->m_vk.m_features.largePoints ? pointSize : 1.0f;
     uniforms.misc[1] = static_cast<float>(this->m_gpuDrawMode);
     uniforms.misc[2] = this->m_skinThisDraw ? 1.0f : 0.0f;
+    uniforms.misc[3] = this->m_skinThisDraw ? static_cast<float>(this->m_skinInfluences) : 0.0f;
 }
 
 void CGxDeviceVulkan::IRsSendToHw(EGxRenderState which) {
@@ -1157,7 +1158,14 @@ VkPipeline CGxDeviceVulkan::IPipeline(const VkPipelineKey& key) {
     VkVertexInputAttributeDescription attribs[7];
 
     for (uint32_t i = 0; i < 7; i++) {
-        VkFormat format = i == 6 ? VK_FORMAT_R8G8B8A8_UINT : s_gxAttribToVkFormat[key.attribType[i]];
+        VkFormat format = s_gxAttribToVkFormat[key.attribType[i]];
+
+        if (i == 5) {
+            format = VK_FORMAT_R8G8B8A8_UNORM;
+        } else if (i == 6) {
+            // ʕ •ᴥ•ʔ✿ Type 1 in s_gxAttribToVkFormat is unorm. Bone indices are raw ids ✿ ʕ •ᴥ•ʔ
+            format = VK_FORMAT_R8G8B8A8_UINT;
+        }
         attribs[i] = { i, key.attribBinding[i], format, key.attribOffset[i] };
     }
 
@@ -1273,7 +1281,7 @@ VkSampler CGxDeviceVulkan::ISampler(const CGxTexFlags& flags) {
 }
 
 int32_t CGxDeviceVulkan::GpuSkinSupported() const {
-    return this->m_context != 0;
+    return 1;
 }
 
 int32_t CGxDeviceVulkan::GpuSkinBind(const C44Matrix* bones, uint32_t boneCount) {
@@ -1283,6 +1291,7 @@ int32_t CGxDeviceVulkan::GpuSkinBind(const C44Matrix* bones, uint32_t boneCount)
         return 0;
     }
 
+    this->m_vk.PrepareFrame();
     VkFrame& frame = this->m_vk.Frame();
 
     if (!frame.bones.mapped) {
@@ -1316,6 +1325,10 @@ int32_t CGxDeviceVulkan::GpuSkinBind(const C44Matrix* bones, uint32_t boneCount)
 
 void CGxDeviceVulkan::GpuSkinMesh(int32_t bindPose) {
     this->m_bindPoseMesh = bindPose;
+}
+
+void CGxDeviceVulkan::GpuSkinInfluences(uint32_t count) {
+    this->m_skinInfluences = count;
 }
 
 int32_t CGxDeviceVulkan::GpuSkinMesh() const {
@@ -1536,6 +1549,7 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
         || this->m_uniformMasterEnables != this->m_appMasterEnables
         || this->m_uniformGpuDrawMode != this->m_gpuDrawMode
         || this->m_uniformSkin != this->m_skinThisDraw
+        || this->m_uniformInfluences != static_cast<int32_t>(this->m_skinInfluences)
         || this->m_uniformDisableTex != disableTex;
 
     if (!rebuildUniforms && memcmp(this->m_lights, this->m_uniformLights, sizeof(this->m_lights))) {
@@ -1583,6 +1597,7 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
         this->m_uniformMasterEnables = this->m_appMasterEnables;
         this->m_uniformGpuDrawMode = this->m_gpuDrawMode;
         this->m_uniformSkin = this->m_skinThisDraw;
+        this->m_uniformInfluences = static_cast<int32_t>(this->m_skinInfluences);
         this->m_uniformDisableTex = disableTex;
         memcpy(this->m_uniformLights, this->m_lights, sizeof(this->m_lights));
         // ʕ •ᴥ•ʔ✿ Dirty means changed since the last landed build. Tex stacks are cleared in IXformTex ✿ ʕ •ᴥ•ʔ
@@ -1590,6 +1605,8 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
         this->m_xforms[GxXform_View].m_dirty = 0;
         this->m_xforms[GxXform_Projection].m_dirty = 0;
     }
+
+    uint32_t boneOffset = this->m_skinThisDraw ? static_cast<uint32_t>(this->m_skinOffsetThis) : 0;
 
     if (pipeline != this->m_boundPipeline) {
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
@@ -1650,7 +1667,6 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
     }
 
     uint32_t dynamicOffset = static_cast<uint32_t>(this->m_uniformOffset);
-    uint32_t boneOffset = this->m_skinThisDraw ? static_cast<uint32_t>(this->m_skinOffsetThis) : 0;
     uint32_t dynamicOffsets[2] = { dynamicOffset, boneOffset };
 
     // ʕ •ᴥ•ʔ✿ Command-buffer state. A new set, a recreated set, or a new dynamic offset still binds ✿ ʕ •ᴥ•ʔ

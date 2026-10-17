@@ -493,6 +493,7 @@ void CM2SceneRender::DrawBatch() {
         int32_t gpuSkin = 0;
 
         if (g_theGxDevicePtr->GpuSkinMesh() && !(this->m_curBatch->m_flags & 0x40) && !(this->m_curBatch->m_shader & 0x4000) && !(this->m_curElement->m_flags & 4)) {
+            g_theGxDevicePtr->GpuSkinInfluences(this->m_curSkinSection->m_boneInfluences);
             gpuSkin = g_theGxDevicePtr->GpuSkinBind(this->m_curModel->m_boneMatrices, this->m_curModel->m_shared->m_data->m_bones.m_count);
         }
 
@@ -794,6 +795,7 @@ static uint32_t DrawSkinnedDoodads(M2Data* data, CM2Shared* shared, M2SkinSectio
     g_theGxDevicePtr->BufUnlock(ib, 0);
     ib->m_hasData = 1;
     GxRsSet(GxRs_NormalizeNormals, 1);
+    g_theGxDevicePtr->GpuSkinInfluences(section->m_boneInfluences);
 
     uint32_t drawn = 0;
 

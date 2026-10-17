@@ -92,25 +92,31 @@ void main() {
     vec3 position = inPosition;
     vec3 normal = inNormal;
 
-    // ʕ •ᴥ•ʔ✿ Bind-pose M2. Weights are unorm, indices are the skeleton slot ✿ ʕ •ᴥ•ʔ
-    if (u.misc.z != 0.0) {
-        vec3 skinned = vec3(0.0);
-        vec3 skinnedNormal = vec3(0.0);
+    // ʕ •ᴥ•ʔ✿ One influence ignores weights. Later slots stop at the first zero, matching TransformVertices_* ✿ ʕ •ᴥ•ʔ
+    if (u.misc[2] != 0.0) {
+        int influences = int(u.misc[3] + 0.5);
 
-        for (int influence = 0; influence < 4; influence++) {
-            float weight = inWeights[influence];
+        if (influences == 1) {
+            mat4 bone = skin.bones[inIndices.x];
+            position = (vec4(inPosition, 1.0) * bone).xyz;
+            normal = (vec4(inNormal, 0.0) * bone).xyz;
+        } else {
+            mat4 bone0 = skin.bones[inIndices.x];
+            position = (vec4(inPosition, 1.0) * bone0).xyz * inWeights.x;
+            normal = (vec4(inNormal, 0.0) * bone0).xyz * inWeights.x;
 
-            if (weight == 0.0) {
-                continue;
+            for (int influence = 1; influence < 4; influence++) {
+                float weight = inWeights[influence];
+
+                if (weight == 0.0) {
+                    break;
+                }
+
+                mat4 bone = skin.bones[inIndices[influence]];
+                position += (vec4(inPosition, 1.0) * bone).xyz * weight;
+                normal += (vec4(inNormal, 0.0) * bone).xyz * weight;
             }
-
-            mat4 bone = skin.bones[inIndices[influence]];
-            skinned += (vec4(inPosition, 1.0) * bone).xyz * weight;
-            skinnedNormal += (vec4(inNormal, 0.0) * bone).xyz * weight;
         }
-
-        position = skinned;
-        normal = skinnedNormal;
     }
 
     vec4 worldPos = vec4(position, 1.0) * worldMat;

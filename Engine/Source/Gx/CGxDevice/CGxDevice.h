@@ -217,11 +217,12 @@ class CGxDevice {
     virtual void XformSetProjection(const C44Matrix& matrix);
     virtual void XformSetView(const C44Matrix& matrix);
     virtual void Draw(CGxBatch* batch, int32_t count);
+    virtual int32_t GpuSkinBind(const C44Matrix* bones, uint32_t boneCount);
+    virtual int32_t GpuSkinSupported() const;
     virtual void DrawInstanced(CGxBatch* batch, const C44Matrix* worlds, uint32_t count);
-    virtual int32_t GpuSkinSupported() const { return 0; }
-    virtual int32_t GpuSkinBind(const C44Matrix* bones, uint32_t boneCount) { (void)bones; (void)boneCount; return 0; }
     virtual void GpuSkinMesh(int32_t bindPose) { (void)bindPose; }
     virtual int32_t GpuSkinMesh() const { return 0; }
+    virtual void GpuSkinInfluences(uint32_t count) { (void)count; }
     virtual int32_t DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t count);
     virtual int32_t TerrainBindless() { return 0; }
     virtual uint32_t TerrainTextureSlot(CGxTex*) { return ~0u; }

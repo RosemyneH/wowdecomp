@@ -124,6 +124,14 @@ void CGxDevice::SceneClear(uint32_t mask, CImVector color) {
 void CGxDevice::Draw(CGxBatch* batch, int32_t count) {
 }
 
+int32_t CGxDevice::GpuSkinBind(const C44Matrix*, uint32_t) {
+    return 0;
+}
+
+int32_t CGxDevice::GpuSkinSupported() const {
+    return 0;
+}
+
 void CGxDevice::DrawInstanced(CGxBatch* batch, const C44Matrix* worlds, uint32_t count) {
     if (!batch || !worlds) {
         return;

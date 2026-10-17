@@ -141,6 +141,8 @@ class CGxDeviceVulkan : public CGxDevice {
     int32_t m_skinActive = 0;
     int32_t m_skinThisDraw = 0;
     int32_t m_bindPoseMesh = 0;
+    uint32_t m_skinInfluences = 0;
+    int32_t m_uniformInfluences = -1;
     VkDeviceSize m_skinOffset = 0;
     VkDeviceSize m_skinOffsetThis = 0;
     uint32_t m_boundBoneOffset = 0xFFFFFFFFu;
@@ -186,11 +188,12 @@ class CGxDeviceVulkan : public CGxDevice {
     virtual void SceneClear(uint32_t mask, CImVector color);
     virtual void XformSetProjection(const C44Matrix& matrix);
     virtual void Draw(CGxBatch* batch, int32_t count);
-    virtual void DrawInstanced(CGxBatch* batch, const C44Matrix* worlds, uint32_t count);
-    virtual int32_t GpuSkinSupported() const;
     virtual int32_t GpuSkinBind(const C44Matrix* bones, uint32_t boneCount);
+    virtual int32_t GpuSkinSupported() const;
+    virtual void DrawInstanced(CGxBatch* batch, const C44Matrix* worlds, uint32_t count);
     virtual void GpuSkinMesh(int32_t bindPose);
     virtual int32_t GpuSkinMesh() const;
+    virtual void GpuSkinInfluences(uint32_t count);
     virtual int32_t DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t count);
     virtual int32_t TerrainBindless();
     virtual uint32_t TerrainTextureSlot(CGxTex* tex);
