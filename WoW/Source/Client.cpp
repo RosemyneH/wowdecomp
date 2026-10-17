@@ -1541,6 +1541,19 @@ static void OpenArchives() {
     ProfileClose(profile);
     ClientServices::InitLoginServerCVars(1, locale);
     LoadMopaqFileSigningData(locale);
+
+#if defined(__ANDROID__)
+    static const char* androidPrefetch[] = {
+        "Fonts\\FRIZQT__.TTF",
+        "Fonts\\MORPHEUS.TTF",
+        "Fonts\\skurri.ttf",
+        "Fonts\\blei00d.ttf",
+    };
+
+    for (uint32_t i = 0; i < sizeof(androidPrefetch) / sizeof(androidPrefetch[0]); i++) {
+        SFile::MakeFileLocal(androidPrefetch[i], 64, true);
+    }
+#endif
 }
 // VERIFY: 18427c91 manual
 // OFFSET: 0x004064A0

@@ -8,6 +8,7 @@
 #include <ucontext.h>
 #endif
 #if defined(__ANDROID__)
+#include <curl/curl.h>
 #include <pthread.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -84,6 +85,54 @@ static void WriteFile(const char* path, const char* text) {
     fclose(file);
 }
 
+#if defined(__ANDROID__)
+
+static size_t AndroidCurlWrite(void* contents, size_t size, size_t count, void* user) {
+    FILE* file = static_cast<FILE*>(user);
+    return fwrite(contents, size, count, file);
+}
+
+static void AndroidPrefetchSignatureFile(const char* cdnHost) {
+    struct stat info {};
+    if (stat("signaturefile", &info) == 0 && info.st_size > 1024) {
+        return;
+    }
+
+    char url[128];
+    snprintf(url, sizeof(url), "http://%s:1119/signaturefile", cdnHost);
+
+    FILE* out = fopen("signaturefile.part", "wb");
+    if (!out) {
+        return;
+    }
+
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        fclose(out);
+        return;
+    }
+
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, AndroidCurlWrite);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, out);
+
+    CURLcode result = curl_easy_perform(curl);
+    long code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+    curl_easy_cleanup(curl);
+    fclose(out);
+
+    if (result != CURLE_OK || code != 200) {
+        unlink("signaturefile.part");
+        return;
+    }
+
+    rename("signaturefile.part", "signaturefile");
+}
+
+#endif
+
 static void AndroidPrepareGameRoot() {
     const char* root = SDL_GetAndroidExternalStoragePath();
     if (!root || !root[0]) {
@@ -123,6 +172,8 @@ static void AndroidPrepareGameRoot() {
         "https://github.com/brian8544/streamingclient-3.3.5\n"
         "Server module (GPL-2.0): https://github.com/brian8544/mod-streamingclient\n"
         "Copyright brian8544. Sources live in ThirdParty/streamingclient/ of the wowdecomp tree.\n");
+
+    AndroidPrefetchSignatureFile(cdnHost);
 }
 
 static void* AndroidClientThread(void*) {

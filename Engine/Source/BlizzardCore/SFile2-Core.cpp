@@ -1027,6 +1027,21 @@ bool System_SFile2::FindFile(const char* name, char* path, uint32_t size, uint32
         return OldFindFile(name, path, size, flags, type);
     }
 
+    // ʕ •ᴥ•ʔ✿ Streaming serves signaturefile at CDN root before patch-3 finishes; prefer a loose copy ✿ ʕ •ᴥ•ʔ
+    if (Blizzard::String::EqualI(name, "signaturefile")) {
+        char loose[512];
+        Blizzard::String::Copy(loose, SFile::m_basePath, sizeof(loose));
+        Blizzard::String::Append(loose, "signaturefile", sizeof(loose));
+
+        Blizzard::File::StreamRecord* stream = nullptr;
+        if (Blizzard::File::Open(loose, 0x1005, stream)) {
+            Blizzard::File::Close(stream);
+            Blizzard::String::Copy(path, loose, size);
+            *type = SFILE_PLAIN;
+            return true;
+        }
+    }
+
     if (flags & 3) {
         bool found = false;
         Blizzard::Lock::MutexEnter(s_fileHashLock.m_mutex);

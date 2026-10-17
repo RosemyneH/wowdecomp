@@ -16,6 +16,17 @@ wowdecomp_prepare_cdn() {
     WOWDECOMP_GAME_DATA="$(readlink -f "$data")"
     export WOWDECOMP_CDN_NGINX_CONF="$root/Tools/local-server/docker/nginx.conf"
     export WOWDECOMP_CDN_SIGNATURE="$root/Tools/local-server/docker/signaturefile"
+
+    if [[ ! -s "$WOWDECOMP_CDN_SIGNATURE" ]] && [[ -f "$data/patch-3.MPQ" ]]; then
+        local patch3="$data/patch-3.MPQ"
+        if command -v uv >/dev/null 2>&1; then
+            uv run --with mpyq python -c "import mpyq; open('$WOWDECOMP_CDN_SIGNATURE','wb').write(mpyq.MPQArchive('$patch3').read_file('signaturefile'))" 2>/dev/null \
+                || echo "Could not extract signaturefile from $patch3 (uv/mpyq)." >&2
+        else
+            echo "CDN signaturefile is empty; install uv or copy signaturefile from patch-3.MPQ." >&2
+        fi
+    fi
+
     COMPOSE_EXTRA=(-f "$root/Tools/local-server/docker/streaming.yml")
 }
 
