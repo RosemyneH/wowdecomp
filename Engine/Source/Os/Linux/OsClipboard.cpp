@@ -1,5 +1,5 @@
 #include <cstdint>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "Engine/Source/Os/OsClipboard.h"
 #include "Engine/Source/Storm/H/storm.h"
 
@@ -33,5 +33,5 @@ void OsClipboardFreeString(char* string) {
 }
 
 int32_t IOsClipboardPutString(const char* string, void* window) {
-    return SDL_SetClipboardText(string) == 0;
+    return SDL_SetClipboardText(string);
 }

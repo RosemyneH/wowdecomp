@@ -1,7 +1,6 @@
 #include <cstdint>
-#include <dlfcn.h>
-#include <SDL.h>
-#include <SDL_vulkan.h>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_vulkan.h>
 #include "Engine/Source/Os/Gui.h"
 #include "Engine/Source/Os/Input.h"
 #include "Engine/Source/Os/Linux/SdlDisplay.h"
@@ -125,7 +124,7 @@ void OsGuiSetGxWindow(void* window) {
 }
 
 uint32_t OsGuiGetWindowFlags() {
-    return SDL_WINDOW_ALLOW_HIGHDPI;
+    return SDL_WINDOW_HIGH_PIXEL_DENSITY;
 }
 
 float OsGuiGetPixelScale(void* window) {
@@ -139,7 +138,7 @@ float OsGuiGetPixelScale(void* window) {
     int32_t pixelHeight = 0;
 
     SDL_GetWindowSize(static_cast<SDL_Window*>(window), &pointWidth, &pointHeight);
-    SDL_Vulkan_GetDrawableSize(static_cast<SDL_Window*>(window), &pixelWidth, &pixelHeight);
+    SDL_GetWindowSizeInPixels(static_cast<SDL_Window*>(window), &pixelWidth, &pixelHeight);
 
     if (pointWidth <= 0 || pointHeight <= 0) {
         return 1.0f;
@@ -151,8 +150,8 @@ float OsGuiGetPixelScale(void* window) {
     return scaleX > scaleY ? scaleX : scaleY;
 }
 
-static int GxWindowEventWatch(void* userdata, SDL_Event* event) {
-    if (event->type != SDL_WINDOWEVENT || !s_GxWindowProc || SDL_GetWindowFromID(event->window.windowID) != s_GxProcWindow) {
+static bool GxWindowEventWatch(void* userdata, SDL_Event* event) {
+    if (event->type < SDL_EVENT_WINDOW_FIRST || event->type > SDL_EVENT_WINDOW_LAST || !s_GxWindowProc || SDL_GetWindowFromID(event->window.windowID) != s_GxProcWindow) {
         return 0;
     }
 
@@ -160,31 +159,33 @@ static int GxWindowEventWatch(void* userdata, SDL_Event* event) {
     int32_t height;
     OsGuiGetDrawableSize(s_GxProcWindow, &width, &height);
 
-    switch (event->window.event) {
-        case SDL_WINDOWEVENT_SIZE_CHANGED:
-        case SDL_WINDOWEVENT_RESTORED:
-        case SDL_WINDOWEVENT_MAXIMIZED:
-        case SDL_WINDOWEVENT_SHOWN:
-        case SDL_WINDOWEVENT_EXPOSED:
+    switch (event->type) {
+        case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+        case SDL_EVENT_WINDOW_RESIZED:
+        case SDL_EVENT_WINDOW_RESTORED:
+        case SDL_EVENT_WINDOW_MAXIMIZED:
+        case SDL_EVENT_WINDOW_SHOWN:
+        case SDL_EVENT_WINDOW_EXPOSED:
             s_gxVisibleSent = GxWindowVisible(s_GxProcWindow);
             s_GxWindowProc(s_GxWindowParam, s_gxVisibleSent ? OS_GUI_WM_SIZE : OS_GUI_WM_MINIMIZE, width, height);
             break;
 
-        case SDL_WINDOWEVENT_MINIMIZED:
-        case SDL_WINDOWEVENT_HIDDEN:
+        case SDL_EVENT_WINDOW_MINIMIZED:
+        case SDL_EVENT_WINDOW_HIDDEN:
+        case SDL_EVENT_WINDOW_OCCLUDED:
             s_gxVisibleSent = 0;
             s_GxWindowProc(s_GxWindowParam, OS_GUI_WM_MINIMIZE, width, height);
             break;
 
-        case SDL_WINDOWEVENT_DISPLAY_CHANGED:
+        case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
             s_GxWindowProc(s_GxWindowParam, OS_GUI_WM_DISPLAYCHANGE, width, height);
             break;
 
-        case SDL_WINDOWEVENT_FOCUS_GAINED:
+        case SDL_EVENT_WINDOW_FOCUS_GAINED:
             s_GxWindowProc(s_GxWindowParam, OS_GUI_WM_SETFOCUS, width, height);
             break;
 
-        case SDL_WINDOWEVENT_FOCUS_LOST:
+        case SDL_EVENT_WINDOW_FOCUS_LOST:
             s_GxWindowProc(s_GxWindowParam, OS_GUI_WM_KILLFOCUS, width, height);
             break;
 
@@ -195,30 +196,10 @@ static int GxWindowEventWatch(void* userdata, SDL_Event* event) {
     return 0;
 }
 
-// ʕ ◕ᴥ◕ ʔ✿ SDL3 keeps an occluded flag that sdl2-compat never surfaces as an event ✿ ʕ ◕ᴥ◕ ʔ
-using Sdl3GetWindowFlags = uint64_t (*)(SDL_Window*);
-static Sdl3GetWindowFlags s_sdl3GetWindowFlags = nullptr;
-static int32_t s_sdl3Probed = 0;
-
-static void* OpenLoadedSdl3() {
-    return dlopen("libSDL3.so.0", RTLD_NOLOAD | RTLD_LAZY);
-}
-
-static int32_t GxWindowOccluded(SDL_Window* window) {
-    if (!window) return 0;
-    if (!s_sdl3GetWindowFlags && !s_sdl3Probed) {
-        void* lib = OpenLoadedSdl3();
-        if (lib) s_sdl3GetWindowFlags = reinterpret_cast<Sdl3GetWindowFlags>(dlsym(lib, "SDL_GetWindowFlags"));
-        if (s_sdl3GetWindowFlags || SDL_WasInit(SDL_INIT_VIDEO)) s_sdl3Probed = 1;
-    }
-    // ʕ •ᴥ•ʔ✿ Bit 0x4 is SDL_WINDOW_OCCLUDED in SDL3 and SDL_WINDOW_SHOWN in SDL2 ✿ ʕ •ᴥ•ʔ
-    return s_sdl3GetWindowFlags && (s_sdl3GetWindowFlags(window) & 0x4) != 0;
-}
-
 static int32_t GxWindowVisible(SDL_Window* window) {
     if (!window) return 0;
-    Uint32 flags = SDL_GetWindowFlags(window);
-    if ((flags & SDL_WINDOW_MINIMIZED) || (flags & SDL_WINDOW_HIDDEN) || GxWindowOccluded(window)) return 0;
+    SDL_WindowFlags flags = SDL_GetWindowFlags(window);
+    if ((flags & SDL_WINDOW_MINIMIZED) || (flags & SDL_WINDOW_HIDDEN) || (flags & SDL_WINDOW_OCCLUDED)) return 0;
     int32_t width, height;
     OsGuiGetDrawableSize(window, &width, &height);
     return width > 0 && height > 0;
@@ -237,7 +218,7 @@ void OsGuiPollGxWindowState() {
 void OsGuiSetGxWindowProc(void* window, OsGuiWindowProc proc, void* param) {
     s_gxVisibleSent = 1;
     if (s_GxWindowProc) {
-        SDL_DelEventWatch(GxWindowEventWatch, nullptr);
+        SDL_RemoveEventWatch(GxWindowEventWatch, nullptr);
     }
 
     s_GxProcWindow = static_cast<SDL_Window*>(window);
@@ -255,18 +236,22 @@ void* OsGuiCreateGxWindow(const char* title, int32_t width, int32_t height, int3
     }
 
     SdlUseWayland();
-    if (SDL_InitSubSystem(SDL_INIT_VIDEO)) {
+    if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) {
         return nullptr;
     }
 
-    uint32_t flags = SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | OsGuiGetWindowFlags();
+    SDL_WindowFlags flags = SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | OsGuiGetWindowFlags();
 
     if (fullscreen) {
-        flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+        flags |= SDL_WINDOW_FULLSCREEN;
     }
 
-    int32_t display = SdlPrimaryDisplay();
-    return SDL_CreateWindow(title ? title : "", SDL_WINDOWPOS_CENTERED_DISPLAY(display), SDL_WINDOWPOS_CENTERED_DISPLAY(display), width, height, flags);
+    SDL_Window* window = SDL_CreateWindow(title ? title : "", width, height, flags);
+    if (window) {
+        SDL_DisplayID display = SdlPrimaryDisplay();
+        SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED_DISPLAY(display), SDL_WINDOWPOS_CENTERED_DISPLAY(display));
+    }
+    return window;
 }
 
 void OsGuiDestroyGxWindow(void* window) {
@@ -276,7 +261,7 @@ void OsGuiDestroyGxWindow(void* window) {
 
     if (window == s_GxProcWindow) {
         if (s_GxWindowProc) {
-            SDL_DelEventWatch(GxWindowEventWatch, nullptr);
+            SDL_RemoveEventWatch(GxWindowEventWatch, nullptr);
         }
         s_GxProcWindow = nullptr;
         s_GxWindowProc = nullptr;
@@ -292,7 +277,7 @@ void OsGuiGetDrawableSize(void* window, int32_t* width, int32_t* height) {
     int pixelHeight = 0;
 
     if (window) {
-        SDL_Vulkan_GetDrawableSize(static_cast<SDL_Window*>(window), &pixelWidth, &pixelHeight);
+        SDL_GetWindowSizeInPixels(static_cast<SDL_Window*>(window), &pixelWidth, &pixelHeight);
     }
 
     *width = pixelWidth;
@@ -300,19 +285,26 @@ void OsGuiGetDrawableSize(void* window, int32_t* width, int32_t* height) {
 }
 
 int32_t OsGuiGetVulkanInstanceExtensions(void* window, uint32_t* count, const char** names) {
-    unsigned int extensionCount = *count;
-
-    if (!SDL_Vulkan_GetInstanceExtensions(static_cast<SDL_Window*>(window), &extensionCount, names)) {
+    (void)window;
+    Uint32 extensionCount = 0;
+    const char* const* listed = SDL_Vulkan_GetInstanceExtensions(&extensionCount);
+    if (!listed) {
         return 0;
     }
 
-    *count = extensionCount;
+    if (names) {
+        uint32_t copy = extensionCount < *count ? extensionCount : *count;
+        for (uint32_t i = 0; i < copy; i++) {
+            names[i] = listed[i];
+        }
+    }
 
+    *count = extensionCount;
     return 1;
 }
 
 int32_t OsGuiCreateVulkanSurface(void* window, void* instance, void* surface) {
-    return SDL_Vulkan_CreateSurface(static_cast<SDL_Window*>(window), static_cast<VkInstance>(instance), static_cast<VkSurfaceKHR*>(surface)) == SDL_TRUE;
+    return SDL_Vulkan_CreateSurface(static_cast<SDL_Window*>(window), static_cast<VkInstance>(instance), nullptr, static_cast<VkSurfaceKHR*>(surface));
 }
 
 int32_t OsGuiMessageBox(void* parentWindow, int32_t style, const char* message, const char* title) {
@@ -361,7 +353,7 @@ int32_t OsGuiMessageBox(void* parentWindow, int32_t style, const char* message, 
     data.buttons = buttons;
 
     int pressed;
-    if (SDL_ShowMessageBox(&data, &pressed) || pressed < 0) {
+    if (!SDL_ShowMessageBox(&data, &pressed) || pressed < 0) {
         return RESULT_CANCEL;
     }
 
@@ -373,13 +365,13 @@ int32_t OsGuiIsModifierKeyDown(int32_t key) {
 
     switch (key) {
         case 0:
-            return (mod & KMOD_CTRL) != 0;
+            return (mod & SDL_KMOD_CTRL) != 0;
 
         case 1:
-            return (mod & KMOD_SHIFT) != 0;
+            return (mod & SDL_KMOD_SHIFT) != 0;
 
         case 2:
-            return (mod & KMOD_ALT) != 0;
+            return (mod & SDL_KMOD_ALT) != 0;
 
         default:
             return 0;

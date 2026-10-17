@@ -1,5 +1,5 @@
 #include <cstdint>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "Engine/Source/Event/Types.h"
 #include "Engine/Source/Os/Gui.h"
 #include "Engine/Source/Os/Input.h"
@@ -204,8 +204,8 @@ static int32_t ConvertKeyCode(SDL_Keycode code, KEY* key) {
         default: break;
     }
 
-    if (code >= SDLK_a && code <= SDLK_z) {
-        *key = static_cast<KEY>(code - SDLK_a + 'A');
+    if (code >= SDLK_A && code <= SDLK_Z) {
+        *key = static_cast<KEY>(code - SDLK_A + 'A');
         return 1;
     }
 
@@ -265,7 +265,7 @@ static int32_t ConvertKeyToKeyCode(KEY key, SDL_Keycode* code) {
     }
 
     if (key >= KEY_A && key <= KEY_Z) {
-        *code = SDLK_a + (key - KEY_A);
+        *code = SDLK_A + (key - KEY_A);
         return 1;
     }
 
@@ -348,14 +348,14 @@ int32_t OsInputIsKeyDown(KEY key) {
     }
 
     int count;
-    const uint8_t* state = SDL_GetKeyboardState(&count);
-    SDL_Scancode scancode = SDL_GetScancodeFromKey(code);
+    const bool* state = SDL_GetKeyboardState(&count);
+    SDL_Scancode scancode = SDL_GetScancodeFromKey(code, nullptr);
 
     return scancode > SDL_SCANCODE_UNKNOWN && scancode < count && state[scancode];
 }
 
 int32_t OsInputIsMouseButtonDown(MOUSEBUTTON button) {
-    uint32_t state = SDL_GetMouseState(nullptr, nullptr);
+    SDL_MouseButtonFlags state = SDL_GetMouseState(nullptr, nullptr);
 
     switch (button) {
         case MOUSE_BUTTON_LEFT:
@@ -384,11 +384,15 @@ void OsInputInitialize() {
     SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
     SDL_InitSubSystem(SDL_INIT_EVENTS);
-    SDL_StartTextInput();
+    if (SDL_Window* window = GxWindow()) {
+        SDL_StartTextInput(window);
+    }
 }
 
 void OsInputDestroy() {
-    SDL_StopTextInput();
+    if (SDL_Window* window = GxWindow()) {
+        SDL_StopTextInput(window);
+    }
     // ʕ •ᴥ•ʔ✿ ConsoleDeviceDestroy still calls SDL_DestroyWindow after this ✿ ʕ •ᴥ•ʔ
     if (OsGuiGetWindow(0)) {
         s_quitEventsOnWindowDestroy = 1;
@@ -413,7 +417,7 @@ static void HandleMouseButton(const SDL_MouseButtonEvent& event, OSINPUT id) {
 
     if (id == OS_INPUT_MOUSE_DOWN) {
         if (!s_osButtonState) {
-            SDL_CaptureMouse(SDL_TRUE);
+            SDL_CaptureMouse(true);
         }
 
         s_osButtonState |= button;
@@ -421,7 +425,7 @@ static void HandleMouseButton(const SDL_MouseButtonEvent& event, OSINPUT id) {
         s_osButtonState &= ~button;
 
         if (!s_osButtonState) {
-            SDL_CaptureMouse(SDL_FALSE);
+            SDL_CaptureMouse(false);
         }
     }
 
@@ -440,7 +444,7 @@ static void HandleMouseButton(const SDL_MouseButtonEvent& event, OSINPUT id) {
 
 // ʕ ◕ᴥ◕ ʔ✿ Vulkan draws its own cursor; hide the OS arrow only while the pointer is inside a focused window ✿ ʕ ◕ᴥ◕ ʔ
 static void ApplyOsCursor(SDL_Window* window) {
-    Uint32 flags = window ? SDL_GetWindowFlags(window) : 0;
+    SDL_WindowFlags flags = window ? SDL_GetWindowFlags(window) : 0;
     int32_t focused = (flags & SDL_WINDOW_INPUT_FOCUS) != 0;
     int32_t over = (flags & SDL_WINDOW_MOUSE_FOCUS) != 0;
     int32_t hide = focused && (over || s_osMouseMode == OS_MOUSE_MODE_RELATIVE);
@@ -450,29 +454,33 @@ static void ApplyOsCursor(SDL_Window* window) {
     }
 
     s_cursorHidden = hide;
-    SDL_ShowCursor(hide ? SDL_DISABLE : SDL_ENABLE);
+    if (hide) {
+        SDL_HideCursor();
+    } else {
+        SDL_ShowCursor();
+    }
 }
 
 static void HandleWindowEvent(const SDL_WindowEvent& event) {
-    switch (event.event) {
-        case SDL_WINDOWEVENT_SIZE_CHANGED:
-        case SDL_WINDOWEVENT_DISPLAY_CHANGED:
-        case SDL_WINDOWEVENT_RESIZED:
-        case SDL_WINDOWEVENT_RESTORED:
-        case SDL_WINDOWEVENT_SHOWN:
-        case SDL_WINDOWEVENT_EXPOSED:
+    switch (event.type) {
+        case SDL_EVENT_WINDOW_RESIZED:
+        case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+        case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
+        case SDL_EVENT_WINDOW_RESTORED:
+        case SDL_EVENT_WINDOW_SHOWN:
+        case SDL_EVENT_WINDOW_EXPOSED:
             s_windowSize = 1;
             break;
 
-        case SDL_WINDOWEVENT_FOCUS_GAINED:
-        case SDL_WINDOWEVENT_FOCUS_LOST:
-            s_appActive = event.event == SDL_WINDOWEVENT_FOCUS_GAINED;
+        case SDL_EVENT_WINDOW_FOCUS_GAINED:
+        case SDL_EVENT_WINDOW_FOCUS_LOST:
+            s_appActive = event.type == SDL_EVENT_WINDOW_FOCUS_GAINED;
             s_osButtonState = 0;
-            if (!s_appActive) SDL_CaptureMouse(SDL_FALSE);
+            if (!s_appActive) SDL_CaptureMouse(false);
             OsQueuePut(OS_INPUT_FOCUS, s_appActive, 0, 0, 0);
             break;
 
-        case SDL_WINDOWEVENT_CLOSE:
+        case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
             OsQueuePut(OS_INPUT_CLOSE, 0, 0, 0, 0);
             break;
 
@@ -529,7 +537,7 @@ int32_t OsInputGet(OSINPUT* id, int32_t* param0, int32_t* param1, int32_t* param
                 return 0;
             }
 
-            if (event.type == SDL_QUIT) {
+            if (event.type == SDL_EVENT_QUIT) {
                 *id = OS_INPUT_SHUTDOWN;
                 return 1;
             }
@@ -555,10 +563,10 @@ void OsInputSetMouseMode(OS_MOUSE_MODE mode) {
 
     if (mode == OS_MOUSE_MODE_RELATIVE) {
         s_osMouseMode = mode;
-        SDL_SetRelativeMouseMode(SDL_TRUE);
+        SDL_SetWindowRelativeMouseMode(GxWindow(), true);
     } else if (s_osMouseMode == OS_MOUSE_MODE_RELATIVE) {
         s_osMouseMode = OS_MOUSE_MODE_NORMAL;
-        SDL_SetRelativeMouseMode(SDL_FALSE);
+        SDL_SetWindowRelativeMouseMode(GxWindow(), false);
         RestoreMouse();
     }
 
@@ -579,12 +587,12 @@ void OsInputGetMousePosition(int32_t* x, int32_t* y) {
         mouseX = s_mousePos.x;
         mouseY = s_mousePos.y;
     } else {
-        int pointX;
-        int pointY;
+        float pointX = 0.0f;
+        float pointY = 0.0f;
         SDL_GetMouseState(&pointX, &pointY);
 
-        mouseX = pointX;
-        mouseY = pointY;
+        mouseX = static_cast<int32_t>(pointX);
+        mouseY = static_cast<int32_t>(pointY);
         ScalePoint(&mouseX, &mouseY, 1);
         SaveMouse(mouseX, mouseY);
     }
@@ -635,23 +643,24 @@ int32_t OsGetDefaultWindowRect(tagRECT* rect) {
 intptr_t OsWindowProc(void* window, uint32_t message, uintptr_t wparam, intptr_t lparam) {
     const SDL_Event& event = *reinterpret_cast<const SDL_Event*>(lparam);
 
-    switch (message) {
-        case SDL_WINDOWEVENT:
-            HandleWindowEvent(event.window);
-            break;
+    if (message >= SDL_EVENT_WINDOW_FIRST && message <= SDL_EVENT_WINDOW_LAST) {
+        HandleWindowEvent(event.window);
+        return 0;
+    }
 
-        case SDL_KEYMAPCHANGED:
+    switch (message) {
+        case SDL_EVENT_KEYMAP_CHANGED:
             OsQueuePut(OS_INPUT_IME, 0, 0, 0, 0);
             break;
 
-        case SDL_TEXTINPUT:
+        case SDL_EVENT_TEXT_INPUT:
             QueueText(event.text.text);
             break;
 
-        case SDL_KEYDOWN:
-        case SDL_KEYUP: {
-            int32_t sym = (int32_t)event.key.keysym.sym;
-            switch (event.key.keysym.sym) {
+        case SDL_EVENT_KEY_DOWN:
+        case SDL_EVENT_KEY_UP: {
+            int32_t sym = (int32_t)event.key.key;
+            switch (event.key.key) {
                 case SDLK_RETURN: case SDLK_KP_ENTER: sym = 0xff0d; break;
                 case SDLK_ESCAPE: sym = 0xff1b; break;
                 case SDLK_BACKSPACE: sym = 0xff08; break;
@@ -667,21 +676,21 @@ intptr_t OsWindowProc(void* window, uint32_t message, uintptr_t wparam, intptr_t
                 case SDLK_PAGEDOWN: sym = 0xff56; break;
                 default: break;
             }
-            if (WaylandEmbedTakeKey(sym, message == SDL_KEYDOWN)) break;
+            if (WaylandEmbedTakeKey(sym, message == SDL_EVENT_KEY_DOWN)) break;
             KEY key;
-            if (ConvertKeyCode(event.key.keysym.sym, &key)) {
-                OsQueuePut(message == SDL_KEYDOWN ? OS_INPUT_KEY_DOWN : OS_INPUT_KEY_UP, key, 1, 0, 0);
+            if (ConvertKeyCode(event.key.key, &key)) {
+                OsQueuePut(message == SDL_EVENT_KEY_DOWN ? OS_INPUT_KEY_DOWN : OS_INPUT_KEY_UP, key, 1, 0, 0);
             }
             break;
         }
 
-        case SDL_MOUSEMOTION: {
-            int32_t x = event.motion.x;
-            int32_t y = event.motion.y;
+        case SDL_EVENT_MOUSE_MOTION: {
+            int32_t x = static_cast<int32_t>(event.motion.x);
+            int32_t y = static_cast<int32_t>(event.motion.y);
 
             if (s_osMouseMode != OS_MOUSE_MODE_NORMAL) {
-                x = event.motion.xrel;
-                y = event.motion.yrel;
+                x = static_cast<int32_t>(event.motion.xrel);
+                y = static_cast<int32_t>(event.motion.yrel);
                 ScalePoint(&x, &y, 1, 1);
 
                 if (x || y) {
@@ -695,21 +704,22 @@ intptr_t OsWindowProc(void* window, uint32_t message, uintptr_t wparam, intptr_t
             break;
         }
 
-        case SDL_MOUSEBUTTONDOWN:
+        case SDL_EVENT_MOUSE_BUTTON_DOWN:
             WaylandEmbedClearFocus();
             HandleMouseButton(event.button, OS_INPUT_MOUSE_DOWN);
             break;
 
-        case SDL_MOUSEBUTTONUP:
+        case SDL_EVENT_MOUSE_BUTTON_UP:
             HandleMouseButton(event.button, OS_INPUT_MOUSE_UP);
             break;
 
-        case SDL_MOUSEWHEEL: {
+        case SDL_EVENT_MOUSE_WHEEL: {
             int32_t x;
             int32_t y;
             OsInputGetMousePosition(&x, &y);
 
-            int32_t delta = event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -event.wheel.y : event.wheel.y;
+            int32_t delta = event.wheel.integer_y;
+            if (event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED) delta = -delta;
             OsQueuePut(OS_INPUT_MOUSE_WHEEL, static_cast<int16_t>(delta * 120), x, y, 0);
             break;
         }

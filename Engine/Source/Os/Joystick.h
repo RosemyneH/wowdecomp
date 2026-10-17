@@ -13,6 +13,17 @@ void OsJoystickMapSlider(uint32_t index, int32_t axis);
 void OsJoystickMapStick(uint32_t index, int32_t stick, int32_t xAxis, int32_t yAxis);
 uint32_t OsJoystickOpen(uint32_t index);
 void OsJoystickSetMouseMode(uint32_t index, int32_t enable);
+
+#if defined(WOWDECOMP_LINUX)
+void OsGamepadCamera(float* x, float* y);
+int32_t OsGamepadCursorMode();
+#else
+inline void OsGamepadCamera(float* x, float* y) {
+    if (x) *x = 0.0f;
+    if (y) *y = 0.0f;
+}
+inline int32_t OsGamepadCursorMode() { return 0; }
+#endif
 void OsPollJoysticks(int32_t active);
 
 #endif

@@ -23,12 +23,17 @@ if(WIN32)
 elseif(WOWDECOMP_UNIX)
     target_link_libraries(Os
         PUBLIC
-            SDL2::SDL2
             Threads::Threads
             ${CMAKE_DL_LIBS}
     )
 
-    target_compile_definitions(Os PUBLIC WOWDECOMP_SDL2=1)
+    if (WOWDECOMP_LINUX)
+        target_link_libraries(Os PUBLIC SDL3::SDL3)
+        target_compile_definitions(Os PUBLIC WOWDECOMP_SDL3=1)
+    else ()
+        target_link_libraries(Os PUBLIC SDL2::SDL2)
+        target_compile_definitions(Os PUBLIC WOWDECOMP_SDL2=1)
+    endif ()
 
     if (WOWDECOMP_LINUX)
         find_package(PkgConfig REQUIRED)

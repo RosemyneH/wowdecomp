@@ -91,7 +91,7 @@ The total leaves out 658 functions that IDA identifies as compiler library code 
 
 ### Linux
 
-- SDL2 (Wayland video driver), OpenAL (ALSA), libcurl, pthreads
+- SDL3 (Wayland video driver and gamepads), OpenAL (ALSA), libcurl, pthreads
 - Vulkan loader and drivers (or Mesa); headers are vendored via `ThirdParty/Vulkan-Headers` and volk
 - Optional: system Wasmtime for WASM addons (see `cmake/Wasmtime.cmake`); otherwise addons may be compiled out
 
@@ -140,7 +140,7 @@ cmake --build build/win32 --config Release --target WowClient --parallel
 
 Matches CI (`linux-x64` workflow). This builds **only the game client**. It does not compile the wasm addon packages, the addon test host, or stage anything under `Interface/WasmAddOns`.
 
-Packages: `ninja-build`, `g++`, `libsdl2-dev`, `libwayland-dev`, `libcurl4-openssl-dev`, `libasound2-dev`, `libvulkan-dev`, `libxvidcore-dev`.
+Packages: `ninja-build`, `g++`, `libsdl3-dev`, `libwayland-dev`, `libcurl4-openssl-dev`, `libasound2-dev`, `libvulkan-dev`, `libxvidcore-dev`. `libsdl3-dev` is in Ubuntu 25.04 and later (CI uses 26.04). macOS stays on SDL2.
 
 ```bash
 cmake -S . -B build/linux -G Ninja \

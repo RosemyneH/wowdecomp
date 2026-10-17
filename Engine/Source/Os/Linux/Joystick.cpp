@@ -1,7 +1,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "Engine/Source/Os/Input.h"
 #include "Engine/Source/Os/Joystick.h"
 #include "Engine/Source/Os/TimeManager.h"
@@ -41,6 +41,9 @@ struct LnxJoystickState {
 struct LnxJoystick {
     int32_t m_deviceIndex;
     SDL_Joystick* m_device;
+    SDL_Gamepad* m_pad;
+    int32_t m_cursor;
+    uint8_t m_held[24];
     uint32_t m_axisMask;
     LnxJoystickStick m_sticks[4];
     bool m_stickAxis[8];
@@ -90,7 +93,7 @@ void OsJoystickMapStick(uint32_t index, int32_t stick, int32_t xAxis, int32_t yA
 
 static bool AnyJoystickOpen() {
     for (uint32_t i = 0; i < s_joysticks.Count(); i++) {
-        if (s_joysticks[i].m_device) {
+        if (s_joysticks[i].m_device || s_joysticks[i].m_pad) {
             return true;
         }
     }
@@ -98,17 +101,31 @@ static bool AnyJoystickOpen() {
     return false;
 }
 
-static bool ReplugAlreadyPickedUp() {
-    int32_t live = SDL_NumJoysticks();
+static int32_t LiveDeviceCount() {
+    int32_t padCount = 0;
+    int32_t joyCount = 0;
+    SDL_JoystickID* pads = SDL_GetGamepads(&padCount);
+    SDL_JoystickID* joys = SDL_GetJoysticks(&joyCount);
+    int32_t live = padCount;
+    for (int32_t i = 0; joys && i < joyCount; i++) {
+        int32_t seen = 0;
+        for (int32_t p = 0; pads && p < padCount; p++) if (joys[i] == pads[p]) seen = 1;
+        if (!seen) live++;
+    }
+    SDL_free(pads);
+    SDL_free(joys);
+    return live;
+}
 
-    if (live < 0 || static_cast<uint32_t>(live) != s_joysticks.Count()) {
+static bool ReplugAlreadyPickedUp() {
+    if (LiveDeviceCount() != static_cast<int32_t>(s_joysticks.Count())) {
         return false;
     }
 
     for (uint32_t i = 0; i < s_joysticks.Count(); i++) {
         const LnxJoystick* joystick = &s_joysticks[i];
 
-        if (joystick->m_device || joystick->m_deviceIndex != static_cast<int32_t>(i) || joystick->m_axisMask) {
+        if (joystick->m_device || joystick->m_pad || joystick->m_axisMask) {
             return false;
         }
 
@@ -147,28 +164,39 @@ uint32_t OsJoystickCount() {
     DropJoystickListIfIdle();
 
     if (!s_initialized) {
-        if (SDL_InitSubSystem(SDL_INIT_JOYSTICK)) {
+        if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
             return 0;
         }
 
         s_initialized = 1;
         s_listId++;
 
-        SDL_JoystickEventState(SDL_IGNORE);
+        SDL_SetJoystickEventsEnabled(false);
 
-        int32_t count = SDL_NumJoysticks();
+        int32_t padCount = 0;
+        SDL_JoystickID* pads = SDL_GetGamepads(&padCount);
+        int32_t joyCount = 0;
+        SDL_JoystickID* joys = SDL_GetJoysticks(&joyCount);
 
-        for (int32_t i = 0; i < count; i++) {
+        auto add = [&](SDL_JoystickID id) {
             LnxJoystick* joystick = s_joysticks.New();
             memset(joystick, 0, sizeof(LnxJoystick));
-            joystick->m_deviceIndex = i;
+            joystick->m_deviceIndex = static_cast<int32_t>(id);
             joystick->m_mouseMode = s_defaultMouseMode;
-
             for (int32_t stick = 0; stick < 4; stick++) {
                 joystick->m_sticks[stick].m_xAxis = -1;
                 joystick->m_sticks[stick].m_yAxis = -1;
             }
+        };
+
+        for (int32_t i = 0; pads && i < padCount; i++) add(pads[i]);
+        for (int32_t i = 0; joys && i < joyCount; i++) {
+            int32_t seen = 0;
+            for (int32_t p = 0; pads && p < padCount; p++) if (joys[i] == pads[p]) seen = 1;
+            if (!seen) add(joys[i]);
         }
+        SDL_free(pads);
+        SDL_free(joys);
     }
 
     return s_joysticks.Count();
@@ -181,15 +209,20 @@ uint32_t OsJoystickOpen(uint32_t index) {
 
     LnxJoystick* joystick = &s_joysticks[index];
 
-    if (!joystick->m_device) {
-        joystick->m_device = SDL_JoystickOpen(joystick->m_deviceIndex);
-
-        if (!joystick->m_device) {
+    if (!joystick->m_device && !joystick->m_pad) {
+        SDL_JoystickID id = static_cast<SDL_JoystickID>(joystick->m_deviceIndex);
+        if (SDL_IsGamepad(id)) {
+            joystick->m_pad = SDL_OpenGamepad(id);
+            joystick->m_mouseMode.m_enabled = 0;
+        } else {
+            joystick->m_device = SDL_OpenJoystick(id);
+        }
+        if (!joystick->m_device && !joystick->m_pad) {
             return 0xFFFFFFFF;
         }
     }
 
-    int32_t axes = SDL_JoystickNumAxes(joystick->m_device);
+    int32_t axes = joystick->m_pad ? 6 : SDL_GetNumJoystickAxes(joystick->m_device);
     if (axes < 0) {
         axes = 0;
     }
@@ -210,8 +243,12 @@ void OsJoystickClose(uint32_t index) {
 
     LnxJoystick* joystick = &s_joysticks[index];
 
+    if (joystick->m_pad) {
+        SDL_CloseGamepad(joystick->m_pad);
+        joystick->m_pad = nullptr;
+    }
     if (joystick->m_device) {
-        SDL_JoystickClose(joystick->m_device);
+        SDL_CloseJoystick(joystick->m_device);
         joystick->m_device = nullptr;
     }
 }
@@ -223,11 +260,11 @@ char* OsJoystickGetName(uint32_t index, char* buffer, uint32_t size) {
 
     LnxJoystick* joystick = &s_joysticks[index];
 
-    if (!joystick->m_device) {
+    if (!joystick->m_device && !joystick->m_pad) {
         return nullptr;
     }
 
-    const char* name = SDL_JoystickName(joystick->m_device);
+    const char* name = joystick->m_pad ? SDL_GetGamepadName(joystick->m_pad) : SDL_GetJoystickName(joystick->m_device);
     SStrCopy(buffer, name ? name : "", size);
 
     return buffer;
@@ -364,34 +401,130 @@ static uint32_t HatToPov(uint32_t directions) {
 }
 
 static void ReadState(LnxJoystick* joystick, LnxJoystickState* state) {
+    if (joystick->m_pad) {
+        static const SDL_GamepadAxis kAxes[] = {
+            SDL_GAMEPAD_AXIS_LEFTX, SDL_GAMEPAD_AXIS_LEFTY, SDL_GAMEPAD_AXIS_RIGHTX, SDL_GAMEPAD_AXIS_RIGHTY,
+            SDL_GAMEPAD_AXIS_LEFT_TRIGGER, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER,
+        };
+        for (int32_t axis = 0; axis < 8; axis++) {
+            state->m_axes[axis] = axis < 6 ? SDL_GetGamepadAxis(joystick->m_pad, kAxes[axis]) : 0;
+        }
+        for (int32_t button = 0; button < 32; button++) {
+            state->m_buttons[button] = button < SDL_GAMEPAD_BUTTON_COUNT && SDL_GetGamepadButton(joystick->m_pad, static_cast<SDL_GamepadButton>(button));
+        }
+        for (int32_t hat = 0; hat < 4; hat++) state->m_pov[hat] = 0xFFFFFFFF;
+        return;
+    }
+
     SDL_Joystick* device = joystick->m_device;
 
     for (int32_t axis = 0; axis < 8; axis++) {
-        state->m_axes[axis] = joystick->m_axisMask & (1 << axis) ? SDL_JoystickGetAxis(device, axis) : 0;
+        state->m_axes[axis] = joystick->m_axisMask & (1 << axis) ? SDL_GetJoystickAxis(device, axis) : 0;
     }
 
-    int32_t buttons = SDL_JoystickNumButtons(device);
+    int32_t buttons = SDL_GetNumJoystickButtons(device);
 
     for (int32_t button = 0; button < 32; button++) {
-        state->m_buttons[button] = button < buttons ? SDL_JoystickGetButton(device, button) : 0;
+        state->m_buttons[button] = button < buttons ? SDL_GetJoystickButton(device, button) : 0;
     }
 
-    int32_t hats = SDL_JoystickNumHats(device);
+    int32_t hats = SDL_GetNumJoystickHats(device);
 
     for (int32_t hat = 0; hat < 4; hat++) {
-        state->m_pov[hat] = hat < hats ? HatToPov(SDL_JoystickGetHat(device, hat)) : 0xFFFFFFFF;
+        state->m_pov[hat] = hat < hats ? HatToPov(SDL_GetJoystickHat(device, hat)) : 0xFFFFFFFF;
     }
+}
+
+static float g_lookX;
+static float g_lookY;
+static int32_t g_cursor;
+
+static float Stick(SDL_Gamepad* pad, SDL_GamepadAxis axis) {
+    float value = SDL_GetGamepadAxis(pad, axis) / 32767.0f;
+    return value < 0.18f && value > -0.18f ? 0.0f : value;
+}
+
+static void HoldKey(LnxJoystick* joystick, int slot, KEY key, int down) {
+    if (down == joystick->m_held[slot]) return;
+    joystick->m_held[slot] = static_cast<uint8_t>(down);
+    OsQueuePut(down ? OS_INPUT_KEY_DOWN : OS_INPUT_KEY_UP, key, 1, 0, 0);
+}
+
+static void EdgeKey(LnxJoystick* joystick, int slot, int down, KEY key) {
+    if (down == joystick->m_held[slot]) return;
+    joystick->m_held[slot] = static_cast<uint8_t>(down);
+    if (!down) return;
+    OsQueuePut(OS_INPUT_KEY_DOWN, key, 1, 0, 0);
+    OsQueuePut(OS_INPUT_KEY_UP, key, 1, 0, 0);
+}
+
+// ʕ •ᴥ•ʔ✿ Xbox layout, the same places retail uses: move, camera, cursor, jump, cancel, target ✿ ʕ •ᴥ•ʔ
+static void ApplyRetail(LnxJoystick* joystick) {
+    SDL_Gamepad* pad = joystick->m_pad;
+    float lx = Stick(pad, SDL_GAMEPAD_AXIS_LEFTX);
+    float ly = Stick(pad, SDL_GAMEPAD_AXIS_LEFTY);
+    float rx = Stick(pad, SDL_GAMEPAD_AXIS_RIGHTX);
+    float ry = Stick(pad, SDL_GAMEPAD_AXIS_RIGHTY);
+    HoldKey(joystick, 0, KEY_W, ly < 0);
+    HoldKey(joystick, 1, KEY_S, ly > 0);
+    HoldKey(joystick, 2, KEY_Q, lx < 0);
+    HoldKey(joystick, 3, KEY_E, lx > 0);
+
+    int stick = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_RIGHT_STICK);
+    if (stick && !joystick->m_held[4]) joystick->m_cursor = !joystick->m_cursor;
+    joystick->m_held[4] = static_cast<uint8_t>(stick);
+    g_cursor = joystick->m_cursor;
+
+    int south = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_SOUTH);
+    if (joystick->m_cursor) {
+        g_lookX = 0.0f;
+        g_lookY = 0.0f;
+        if (rx || ry) {
+            int32_t x = 0;
+            int32_t y = 0;
+            OsInputGetMousePosition(&x, &y);
+            OsInputSetMousePosition(x + static_cast<int32_t>(rx * 16.0f), y + static_cast<int32_t>(ry * 16.0f));
+        }
+        if (south != joystick->m_held[5]) {
+            int32_t x = 0;
+            int32_t y = 0;
+            OsInputGetMousePosition(&x, &y);
+            OsQueuePut(south ? OS_INPUT_MOUSE_DOWN : OS_INPUT_MOUSE_UP, MOUSE_BUTTON_LEFT, x, y, 0);
+        }
+        joystick->m_held[5] = static_cast<uint8_t>(south);
+    } else {
+        g_lookX = rx;
+        g_lookY = ry;
+        HoldKey(joystick, 5, KEY_SPACE, south);
+    }
+
+    HoldKey(joystick, 6, KEY_ESCAPE, SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_EAST));
+    EdgeKey(joystick, 7, SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER), KEY_TAB);
+    if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER) && !joystick->m_held[8]) {
+        OsQueuePut(OS_INPUT_KEY_DOWN, KEY_LSHIFT, 1, 0, 0);
+        OsQueuePut(OS_INPUT_KEY_DOWN, KEY_TAB, 1, 0, 0);
+        OsQueuePut(OS_INPUT_KEY_UP, KEY_TAB, 1, 0, 0);
+        OsQueuePut(OS_INPUT_KEY_UP, KEY_LSHIFT, 1, 0, 0);
+    }
+    joystick->m_held[8] = static_cast<uint8_t>(SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER));
+    EdgeKey(joystick, 11, SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_BACK), KEY_M);
+    EdgeKey(joystick, 12, SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_START), KEY_ESCAPE);
+    EdgeKey(joystick, 13, SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_LEFT_STICK), KEY_NUMLOCK);
+    EdgeKey(joystick, 14, SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_UP), KEY_C);
+    EdgeKey(joystick, 15, SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN), KEY_B);
+    EdgeKey(joystick, 16, SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_LEFT), KEY_P);
+    EdgeKey(joystick, 17, SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT), KEY_L);
 }
 
 // OFFSET: 0x00870B80
 static void PollJoystick(uint32_t index, int32_t active) {
     LnxJoystick* joystick = &s_joysticks[index];
 
-    if (!joystick->m_device) {
+    if (!joystick->m_device && !joystick->m_pad) {
         return;
     }
 
-    if (!SDL_JoystickGetAttached(joystick->m_device)) {
+    if (joystick->m_pad ? !SDL_GamepadConnected(joystick->m_pad) : !SDL_JoystickConnected(joystick->m_device)) {
         OsJoystickClose(index);
         return;
     }
@@ -405,7 +538,7 @@ static void PollJoystick(uint32_t index, int32_t active) {
     int32_t* previousAxes = joystick->m_axes[previous];
     int32_t* axes = joystick->m_axes[current];
 
-    if (active && SDL_JoystickGetAttached(joystick->m_device)) {
+    if (active && (joystick->m_pad || joystick->m_device)) {
         ReadState(joystick, state);
     } else {
         ResetState(state);
@@ -473,7 +606,7 @@ static void PollJoystick(uint32_t index, int32_t active) {
 
     LnxJoystickMouseMode* mouseMode = &joystick->m_mouseMode;
 
-    if (mouseMode->m_enabled && joystick->m_sticks[0].m_xAxis >= 0) {
+    if (!joystick->m_pad && mouseMode->m_enabled && joystick->m_sticks[0].m_xAxis >= 0) {
         uint32_t now = OsGetAsyncTimeMs();
 
         if (mouseMode->m_lastTime) {
@@ -558,6 +691,8 @@ static void PollJoystick(uint32_t index, int32_t active) {
         }
     }
 
+    if (joystick->m_pad && active) ApplyRetail(joystick);
+
     for (int32_t i = 0; i < 4; i++) {
         uint32_t pov = state->m_pov[i];
 
@@ -579,11 +714,21 @@ void OsPollJoysticks(int32_t active) {
         return;
     }
 
-    SDL_JoystickUpdate();
+    SDL_UpdateJoysticks();
+    SDL_UpdateGamepads();
 
     for (uint32_t i = 0; i < s_joysticks.Count(); i++) {
         PollJoystick(i, active);
     }
 
     DropJoystickListIfIdle();
+}
+
+void OsGamepadCamera(float* x, float* y) {
+    if (x) *x = g_cursor ? 0.0f : g_lookX;
+    if (y) *y = g_cursor ? 0.0f : g_lookY;
+}
+
+int32_t OsGamepadCursorMode() {
+    return g_cursor;
 }

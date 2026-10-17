@@ -1,13 +1,13 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
 #include "Engine/Source/Os/Linux/SdlDisplay.h"
 
 static int32_t InitVideo() {
     SdlUseWayland();
-    return SDL_WasInit(SDL_INIT_VIDEO) || SDL_InitSubSystem(SDL_INIT_VIDEO) == 0;
+    return SDL_WasInit(SDL_INIT_VIDEO) || SDL_InitSubSystem(SDL_INIT_VIDEO);
 }
 
 static uint32_t ReadSysfsHex(const char* path) {
@@ -68,16 +68,19 @@ int32_t CGxDevice::DeviceAdapterInfer(uint16_t& deviceID) {
 }
 
 int32_t CGxDevice::AdapterDesktopMode(CGxMonitorMode& mode) {
-    SDL_DisplayMode displayMode;
-
-    if (!InitVideo() || SDL_GetDesktopDisplayMode(SdlPrimaryDisplay(), &displayMode) != 0) {
+    if (!InitVideo()) {
         return 0;
     }
 
-    mode.m_size.x = displayMode.w;
-    mode.m_size.y = displayMode.h;
-    mode.m_refreshRate = displayMode.refresh_rate;
-    mode.m_bpp = SdlModeBpp(displayMode.format);
+    const SDL_DisplayMode* displayMode = SDL_GetDesktopDisplayMode(SdlPrimaryDisplay());
+    if (!displayMode) {
+        return 0;
+    }
+
+    mode.m_size.x = displayMode->w;
+    mode.m_size.y = displayMode->h;
+    mode.m_refreshRate = displayMode->refresh_rate;
+    mode.m_bpp = SdlModeBpp(displayMode->format);
 
     return 1;
 }
@@ -89,23 +92,20 @@ int32_t CGxDevice::AdapterMonitorModes(TSGrowableArray<CGxMonitorMode>& modes) {
         return 0;
     }
 
-    int32_t display = SdlPrimaryDisplay();
-    int32_t count = SDL_GetNumDisplayModes(display);
-    for (int32_t i = 0; i < count; i++) {
-        SDL_DisplayMode displayMode;
-        if (SDL_GetDisplayMode(display, i, &displayMode) != 0) {
-            continue;
-        }
-
-        uint32_t bpp = SdlModeBpp(displayMode.format);
-        if (displayMode.w >= 640 && displayMode.h >= 480 && bpp >= 16) {
+    int32_t count = 0;
+    SDL_DisplayMode** listed = SDL_GetFullscreenDisplayModes(SdlPrimaryDisplay(), &count);
+    for (int32_t i = 0; listed && i < count; i++) {
+        const SDL_DisplayMode* displayMode = listed[i];
+        uint32_t bpp = SdlModeBpp(displayMode->format);
+        if (displayMode->w >= 640 && displayMode->h >= 480 && bpp >= 16) {
             CGxMonitorMode* mode = modes.New();
-            mode->m_size.x = displayMode.w;
-            mode->m_size.y = displayMode.h;
+            mode->m_size.x = displayMode->w;
+            mode->m_size.y = displayMode->h;
             mode->m_bpp = bpp;
-            mode->m_refreshRate = displayMode.refresh_rate;
+            mode->m_refreshRate = displayMode->refresh_rate;
         }
     }
+    SDL_free(listed);
 
     qsort(modes.Ptr(), modes.Count(), sizeof(CGxMonitorMode), CGxMonitorModeSort);
 

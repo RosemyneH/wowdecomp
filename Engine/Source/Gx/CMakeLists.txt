@@ -48,7 +48,9 @@ if (WOWDECOMP_ENABLE_VULKAN)
     )
 endif ()
 
-if (WOWDECOMP_UNIX)
+if (WOWDECOMP_LINUX)
+    target_link_libraries(Gx PUBLIC SDL3::SDL3)
+elseif (WOWDECOMP_UNIX)
     target_link_libraries(Gx PUBLIC SDL2::SDL2)
 endif ()
 

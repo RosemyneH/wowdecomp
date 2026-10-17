@@ -99,7 +99,7 @@ CGInputControl::CGInputControl() : m_flags(0), m_lookStartTime(0), m_pendingDefa
 // VERIFY: 67293d46 manual
 // OFFSET: 0x005FD2C0
 void InputControlInitialize() {
-    CVar::Register("Joystick", "enable joystick control", 0, "0", JoystickCallback, 5, false, nullptr, false);
+    CVar::Register("Joystick", "enable joystick control", 0, "1", JoystickCallback, 5, false, nullptr, false);
     s_cvCinematicJoystick = CVar::Register("CinematicJoystick", "enable cinematic joystick control", 0, "0", nullptr, 5, false, nullptr, false);
     CGInputControl::s_inputControl = new (SMemAlloc(sizeof(CGInputControl), __FILE__, __LINE__, 0)) CGInputControl();
     s_cvEnableWowMouse = CVar::Register("enableWowMouse", "Enable Steelseries World of Warcraft Mouse", 1, "0", WowMouseCVarCallback, 5, false, nullptr, false);
@@ -620,14 +620,19 @@ void CGInputControl::OnUpdate(float elapsed) {
         return;
     }
 
-    if (GetJoystick() != 0xFFFFFFFF && (this->m_flags & 0x6000000)) {
+    float lookX = this->m_joystickLookX;
+    float lookY = this->m_joystickLookY;
+    OsGamepadCamera(&lookX, &lookY);
+    int32_t padLook = lookX != 0.0f || lookY != 0.0f;
+
+    if (GetJoystick() != 0xFFFFFFFF && (padLook || (this->m_flags & 0x6000000))) {
         CGCamera* camera = CGWorldFrame::GetActiveCamera();
 
         if (camera) {
             // STATIC: 0x00C24964
             static C2Vector s_joystickLookScale = C2Vector(800.0f, 600.0f);
 
-            camera->UpdateFreeLookFacing(this->m_joystickLookX * s_joystickLookScale.x * elapsed, this->m_joystickLookY * s_joystickLookScale.y * elapsed, nullptr);
+            camera->UpdateFreeLookFacing((padLook ? lookX : this->m_joystickLookX) * s_joystickLookScale.x * elapsed, (padLook ? lookY : this->m_joystickLookY) * s_joystickLookScale.y * elapsed, nullptr);
 
             if (this->CanSyncFreeLookFacing(mover)) {
                 camera->SyncFreeLookFacing();
