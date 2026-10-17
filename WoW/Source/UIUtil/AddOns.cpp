@@ -1414,17 +1414,166 @@ static int32_t EnumAddOnsDisk(OS_FILE_DATA& data, void* param) {
     return 0;
 }
 
-static void TomlValue(const char* text, const char* key, char* out, size_t outLen) {
+static bool TomlLine(const char* line, const char* key, const char** value) {
+    while (*line == ' ' || *line == '\t') line++;
+    size_t keyLen = strlen(key);
+    if (strncmp(line, key, keyLen) != 0) return false;
+    line += keyLen;
+    while (*line == ' ' || *line == '\t') line++;
+    if (*line != '=') return false;
+    line++;
+    while (*line == ' ' || *line == '\t') line++;
+    *value = line;
+    return true;
+}
+
+static void TomlQuoted(const char* text, const char* key, char* out, size_t outLen) {
     out[0] = '\0';
-    const char* hit = strstr(text, key);
-    if (!hit) return;
-    const char* quote = strchr(hit, '"');
-    if (!quote) return;
-    quote++;
-    const char* end = strchr(quote, '"');
-    if (!end || (size_t)(end - quote) >= outLen) return;
-    memcpy(out, quote, (size_t)(end - quote));
-    out[end - quote] = '\0';
+    const char* cursor = text;
+    while (*cursor) {
+        const char* value = nullptr;
+        if (TomlLine(cursor, key, &value)) {
+            if (*value != '"') return;
+            value++;
+            const char* end = strchr(value, '"');
+            if (!end || (size_t)(end - value) >= outLen) return;
+            memcpy(out, value, (size_t)(end - value));
+            out[end - value] = '\0';
+            return;
+        }
+        while (*cursor && *cursor != '\n') cursor++;
+        if (*cursor == '\n') cursor++;
+    }
+}
+
+static void TomlTrueKeys(const char* text, const char* section, char* out, size_t outLen) {
+    out[0] = '\0';
+    bool inside = false;
+    size_t sectionLen = strlen(section);
+    const char* cursor = text;
+    while (*cursor) {
+        const char* line = cursor;
+        while (*line == ' ' || *line == '\t') line++;
+        if (*line == '[') {
+            inside = strncmp(line, section, sectionLen) == 0 && line[sectionLen] == ']';
+        } else if (inside && *line && *line != '#' && *line != '\r' && *line != '\n') {
+            const char* eq = strchr(line, '=');
+            const char* eol = strchr(line, '\n');
+            if (eq && (!eol || eq < eol)) {
+                const char* keyEnd = eq;
+                while (keyEnd > line && (keyEnd[-1] == ' ' || keyEnd[-1] == '\t')) keyEnd--;
+                const char* val = eq + 1;
+                while (*val == ' ' || *val == '\t') val++;
+                if (strncmp(val, "true", 4) == 0 && (val[4] == '\0' || val[4] == ' ' || val[4] == '\t' || val[4] == '\r' || val[4] == '\n' || val[4] == '#')) {
+                    size_t used = strlen(out);
+                    size_t keyLen = (size_t)(keyEnd - line);
+                    size_t need = keyLen + (used ? 2 : 0);
+                    if (used + need + 1 < outLen) {
+                        if (used) {
+                            out[used++] = ',';
+                            out[used++] = ' ';
+                        }
+                        memcpy(out + used, line, keyLen);
+                        out[used + keyLen] = '\0';
+                    }
+                }
+            }
+        }
+        while (*cursor && *cursor != '\n') cursor++;
+        if (*cursor == '\n') cursor++;
+    }
+}
+
+static void AppendSentence(char* dest, size_t cap, const char* sentence) {
+    if (cap < 2) return;
+    size_t len = strlen(dest);
+    if (len >= cap - 1) return;
+    if (len && len + 2 < cap) {
+        char last = dest[len - 1];
+        if (last != '.' && last != '!' && last != '?') dest[len++] = '.';
+        dest[len++] = ' ';
+        dest[len] = '\0';
+    }
+    SStrCopy(dest + strlen(dest), sentence, cap - strlen(dest));
+}
+
+// ʕ •ᴥ•ʔ✿ The addon list shows Notes as the description. A wasm package has no TOC notes unless it also ships one ✿ ʕ •ᴥ•ʔ
+static void AppendDetail(char* dest, size_t cap, const char* piece) {
+    size_t len = strlen(dest);
+    if (!piece || !piece[0] || len + 3 >= cap) return;
+    if (len) {
+        dest[len++] = ',';
+        dest[len++] = ' ';
+        dest[len] = '\0';
+    }
+    SStrCopy(dest + len, piece, cap - len);
+}
+
+static void ApplyWasmDescription(UIADDON* addon, const char* text) {
+    char id[128];
+    char displayName[256];
+    char author[128];
+    char version[64];
+    char api[32];
+    char perms[512];
+    TomlQuoted(text, "id", id, sizeof(id));
+    TomlQuoted(text, "name", displayName, sizeof(displayName));
+    TomlQuoted(text, "author", author, sizeof(author));
+    TomlQuoted(text, "version", version, sizeof(version));
+    TomlQuoted(text, "api_version", api, sizeof(api));
+    TomlTrueKeys(text, "[permissions", perms, sizeof(perms));
+
+    UIADDON::METADATA* title = addon->m_metadata.Ptr("Title");
+    if (displayName[0] && (!title || !title->m_value || !SStrCmpI(title->m_value, addon->m_key.m_str, STORM_MAX_STR))) {
+        addon->SetMetadata("Title", displayName);
+    }
+    bool hadVersion = addon->m_metadata.Ptr("Version") != nullptr;
+    bool hadAuthor = addon->m_metadata.Ptr("Author") != nullptr;
+    if (version[0] && !hadVersion) addon->SetMetadata("Version", version);
+    if (author[0] && !hadAuthor) addon->SetMetadata("Author", author);
+
+    char detail[768];
+    if (id[0]) SStrPrintf(detail, sizeof(detail), "WASM addon %s", id);
+    else SStrCopy(detail, "WASM addon", sizeof(detail));
+    if (version[0] && !hadVersion) {
+        char piece[96];
+        SStrPrintf(piece, sizeof(piece), "version %s", version);
+        AppendDetail(detail, sizeof(detail), piece);
+    }
+    if (api[0]) {
+        char piece[64];
+        SStrPrintf(piece, sizeof(piece), "API %s", api);
+        AppendDetail(detail, sizeof(detail), piece);
+    }
+    if (author[0] && !hadAuthor) {
+        char piece[160];
+        SStrPrintf(piece, sizeof(piece), "by %s", author);
+        AppendDetail(detail, sizeof(detail), piece);
+    }
+
+    char sentence[1024];
+    if (perms[0]) SStrPrintf(sentence, sizeof(sentence), "%s. Permissions: %s.", detail, perms);
+    else SStrPrintf(sentence, sizeof(sentence), "%s.", detail);
+
+    char notes[1024];
+    notes[0] = '\0';
+    UIADDON::METADATA* existing = addon->m_metadata.Ptr("Notes");
+    if (existing && existing->m_value && existing->m_value[0] && !strstr(existing->m_value, "WASM addon")) {
+        SStrCopy(notes, existing->m_value, sizeof(notes));
+    }
+    AppendSentence(notes, sizeof(notes), sentence);
+    addon->SetMetadata("Notes", notes);
+}
+
+static bool ReadWasmToml(const char* name, std::string& text) {
+    char path[260];
+    SStrPrintf(path, sizeof(path), "Interface\\WasmAddOns\\%s\\addon.toml", name);
+    void* data = nullptr;
+    uint32_t size = 0;
+    if (!SFile::ReadFile(nullptr, path, &data, &size, 1, 1, nullptr) || !data || !size) return false;
+    text.assign(static_cast<const char*>(data), size);
+    SFile::Unload(data);
+    return true;
 }
 
 static void RegisterWasmPackage(const char* name) {
@@ -1433,18 +1582,10 @@ static void RegisterWasmPackage(const char* name) {
     UIADDON* addon = s_addons.New(name, 0, 0);
     addon->m_interfaceVersion = 30300;
     addon->SetMetadata("Title", name);
-    char path[260];
-    SStrPrintf(path, sizeof(path), "Interface\\WasmAddOns\\%s\\addon.toml", name);
-    void* data = nullptr;
-    uint32_t size = 0;
-    if (!SFile::ReadFile(nullptr, path, &data, &size, 1, 1, nullptr) || !data) return;
-    std::string text(static_cast<const char*>(data), size);
-    SFile::Unload(data);
-    char value[256];
-    TomlValue(text.c_str(), "name =", value, sizeof(value));
-    if (value[0]) addon->SetMetadata("Title", value);
-    TomlValue(text.c_str(), "version =", value, sizeof(value));
-    if (value[0]) addon->SetMetadata("Version", value);
+    addon->SetMetadata("Notes", "WASM addon.");
+    std::string text;
+    if (!ReadWasmToml(name, text)) return;
+    ApplyWasmDescription(addon, text.c_str());
 }
 
 static bool LooseFile(const char* path) {
@@ -1470,6 +1611,9 @@ static int32_t EnumWasmPackages(OS_FILE_DATA& data, void* param) {
     if (LooseFile(path)) {
         s_addonFileRoot[data.fileName] = "Interface\\WasmAddOns";
         LoadAddOnInfo(data.fileName);
+        UIADDON* addon = s_addons.Ptr(data.fileName);
+        std::string text;
+        if (addon && ReadWasmToml(data.fileName, text)) ApplyWasmDescription(addon, text.c_str());
         return 0;
     }
     SStrPrintf(path, sizeof(path), "Interface\\WasmAddOns\\%s\\addon.toml", data.fileName);

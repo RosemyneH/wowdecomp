@@ -25,7 +25,7 @@ MyAddon/
 └── LICENSE        # optional; addon.sig is detected but not verified yet
 ```
 
-Copy the folder into `Interface/WasmAddOns/` in the client directory. The host also accepts a top-level `WasmAddOns/` if `Interface/WasmAddOns` is absent. Each package is also an entry in the addon list: `DisableAddOn`, the character screen checkbox, and `AddOns.txt` stop it the same way they stop any other addon.
+Copy the folder into `Interface/WasmAddOns/` in the client directory. The host also accepts a top-level `WasmAddOns/` if `Interface/WasmAddOns` is absent. Each package is also an entry in the addon list: `DisableAddOn`, the character screen checkbox, and `AddOns.txt` stop it the same way they stop any other addon. The description on that entry says it is a WASM addon and includes the id, version, API version, author, and the permissions declared in `addon.toml`. A package that also has a TOC keeps its own notes, with that sentence added after them.
 
 ```toml
 [addon]
