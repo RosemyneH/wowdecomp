@@ -755,12 +755,11 @@ VkDescriptorPool VkContext::CreateDescriptorPool() {
     VkDescriptorPoolSize poolSizes[] = {
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, DescriptorSetsPerFrame },
         { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, DescriptorSetsPerFrame * 2 },
-        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, DescriptorSetsPerFrame },
-        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, DescriptorSetsPerFrame },
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, DescriptorSetsPerFrame * 2 },
     };
     VkDescriptorPoolCreateInfo info = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
     info.maxSets = DescriptorSetsPerFrame;
-    info.poolSizeCount = 4;
+    info.poolSizeCount = 3;
     info.pPoolSizes = poolSizes;
     VkDescriptorPool pool = VK_NULL_HANDLE;
     if (vkCreateDescriptorPool(this->m_device, &info, nullptr, &pool) != VK_SUCCESS) {

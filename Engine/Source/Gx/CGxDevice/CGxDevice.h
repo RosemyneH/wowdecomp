@@ -218,6 +218,7 @@ class CGxDevice {
     virtual void XformSetView(const C44Matrix& matrix);
     virtual void Draw(CGxBatch* batch, int32_t count);
     virtual int32_t GpuSkinBind(const C44Matrix* bones, uint32_t boneCount);
+    virtual int32_t GpuSkinBindInstances(const C44Matrix* const* bones, uint32_t instances, uint32_t boneCount) { (void)bones; (void)instances; (void)boneCount; return 0; }
     virtual int32_t GpuSkinSupported() const;
     virtual void DrawInstanced(CGxBatch* batch, const C44Matrix* worlds, uint32_t count);
     virtual void GpuSkinMesh(int32_t bindPose) { (void)bindPose; }

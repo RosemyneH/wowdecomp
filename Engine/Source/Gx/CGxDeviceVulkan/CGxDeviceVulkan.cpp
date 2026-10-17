@@ -286,7 +286,7 @@ int32_t CGxDeviceVulkan::ICreateDeviceObjects() {
         { 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
         { 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
         { 3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr },
-        { 4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr },
+        { 4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr },
     };
 
     VkDescriptorSetLayoutCreateInfo setInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
@@ -298,9 +298,16 @@ int32_t CGxDeviceVulkan::ICreateDeviceObjects() {
         return 0;
     }
 
+    VkPushConstantRange push = {};
+    push.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    push.offset = 0;
+    push.size = 12;
+
     VkPipelineLayoutCreateInfo layoutInfo = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
     layoutInfo.setLayoutCount = 1;
     layoutInfo.pSetLayouts = &setLayout;
+    layoutInfo.pushConstantRangeCount = 1;
+    layoutInfo.pPushConstantRanges = &push;
 
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
     if (vkCreatePipelineLayout(device, &layoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
@@ -369,6 +376,8 @@ int32_t CGxDeviceVulkan::ICreateDeviceObjects() {
                 VkPipelineLayoutCreateInfo terrainLayout = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
                 terrainLayout.setLayoutCount = 2;
                 terrainLayout.pSetLayouts = sets;
+                terrainLayout.pushConstantRangeCount = 1;
+                terrainLayout.pPushConstantRanges = &push;
 
                 if (vkCreatePipelineLayout(device, &terrainLayout, nullptr, &this->m_terrainPipelineLayout) == VK_SUCCESS) {
                     this->m_bindless = 1;
@@ -609,6 +618,9 @@ void CGxDeviceVulkan::IInvalidateCmdState() {
     this->m_boundSet = VK_NULL_HANDLE;
     this->m_boundDynamicOffset = 0xFFFFFFFFu;
     this->m_boundBoneOffset = 0xFFFFFFFFu;
+    this->m_pushBase = 0xFFFFFFFFu;
+    this->m_pushInfluences = 0xFFFFFFFFu;
+    this->m_pushStride = 0xFFFFFFFFu;
     memset(this->m_setViews, 0, sizeof(this->m_setViews));
     memset(this->m_setSamplers, 0, sizeof(this->m_setSamplers));
     memset(this->m_boundBuffers, 0, sizeof(this->m_boundBuffers));
@@ -1295,8 +1307,46 @@ int32_t CGxDeviceVulkan::GpuSkinSupported() const {
     return 1;
 }
 
+static int32_t ReserveBonePalettes(VkContext& vk, VkFrame& frame, uint32_t count, VkDeviceSize& cursor, VkDeviceSize& slot) {
+    if (!frame.bones.mapped || !count) {
+        return 0;
+    }
+
+    VkDeviceSize align = vk.m_properties.limits.minStorageBufferOffsetAlignment;
+
+    if (align < 1) {
+        align = 1;
+    }
+
+    VkDeviceSize visible = frame.bones.size;
+    VkDeviceSize limit = vk.m_properties.limits.maxStorageBufferRange;
+
+    if (limit && visible > limit) {
+        visible = limit;
+    }
+
+    slot = (256 * sizeof(C44Matrix) + align - 1) / align * align;
+    cursor = (frame.boneCursor + align - 1) / align * align;
+
+    if (cursor + slot * count > visible) {
+        return 0;
+    }
+
+    return 1;
+}
+
+static void WriteBonePalette(uint8_t* dst, const C44Matrix* bones, uint32_t boneCount) {
+    memcpy(dst, bones, boneCount * sizeof(C44Matrix));
+
+    if (boneCount < 256) {
+        memset(dst + boneCount * sizeof(C44Matrix), 0, (256 - boneCount) * sizeof(C44Matrix));
+    }
+}
+
 int32_t CGxDeviceVulkan::GpuSkinBind(const C44Matrix* bones, uint32_t boneCount) {
     this->m_skinActive = 0;
+    this->m_skinStride = 0;
+    this->m_drawInstances = 0;
 
     if (!bones || !boneCount || boneCount > 256 || !this->m_context) {
         return 0;
@@ -1304,32 +1354,52 @@ int32_t CGxDeviceVulkan::GpuSkinBind(const C44Matrix* bones, uint32_t boneCount)
 
     this->m_vk.PrepareFrame();
     VkFrame& frame = this->m_vk.Frame();
+    VkDeviceSize cursor = 0;
+    VkDeviceSize slot = 0;
 
-    if (!frame.bones.mapped) {
+    if (!ReserveBonePalettes(this->m_vk, frame, 1, cursor, slot)) {
         return 0;
     }
 
-    VkDeviceSize align = this->m_vk.m_properties.limits.minStorageBufferOffsetAlignment;
-
-    if (align < 1) {
-        align = 1;
-    }
-
-    VkDeviceSize slot = (256 * sizeof(C44Matrix) + align - 1) / align * align;
-    VkDeviceSize cursor = (frame.boneCursor + align - 1) / align * align;
-
-    if (cursor + slot > frame.bones.size) {
-        return 0;
-    }
-
-    memcpy(frame.bones.mapped + cursor, bones, boneCount * sizeof(C44Matrix));
-
-    if (boneCount < 256) {
-        memset(frame.bones.mapped + cursor + boneCount * sizeof(C44Matrix), 0, (256 - boneCount) * sizeof(C44Matrix));
-    }
-
+    WriteBonePalette(frame.bones.mapped + cursor, bones, boneCount);
     frame.boneCursor = cursor + slot;
     this->m_skinOffset = cursor;
+    this->m_skinMatrixBase = static_cast<uint32_t>(cursor / sizeof(C44Matrix));
+    this->m_skinActive = 1;
+    return 1;
+}
+
+int32_t CGxDeviceVulkan::GpuSkinBindInstances(const C44Matrix* const* bones, uint32_t instances, uint32_t boneCount) {
+    this->m_skinActive = 0;
+    this->m_skinStride = 0;
+    this->m_drawInstances = 0;
+
+    if (!bones || !instances || !boneCount || boneCount > 256 || !this->m_context) {
+        return 0;
+    }
+
+    this->m_vk.PrepareFrame();
+    VkFrame& frame = this->m_vk.Frame();
+    VkDeviceSize cursor = 0;
+    VkDeviceSize slot = 0;
+
+    if (!ReserveBonePalettes(this->m_vk, frame, instances, cursor, slot)) {
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < instances; ++i) {
+        if (!bones[i]) {
+            return 0;
+        }
+
+        WriteBonePalette(frame.bones.mapped + cursor + slot * i, bones[i], boneCount);
+    }
+
+    frame.boneCursor = cursor + slot * instances;
+    this->m_skinOffset = cursor;
+    this->m_skinMatrixBase = static_cast<uint32_t>(cursor / sizeof(C44Matrix));
+    this->m_skinStride = static_cast<uint32_t>(slot / sizeof(C44Matrix));
+    this->m_drawInstances = instances;
     this->m_skinActive = 1;
     return 1;
 }
@@ -1364,6 +1434,8 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
 
     this->m_skinThisDraw = this->m_skinActive;
     this->m_skinOffsetThis = this->m_skinOffset;
+    this->m_skinMatrixBaseThis = this->m_skinMatrixBase;
+    this->m_skinStrideThis = this->m_skinStride;
     this->m_skinActive = 0;
 
     // ʕ •ᴥ•ʔ✿ Copies are illegal inside a render pass. End it, upload, and the next begin loads color and depth ✿ ʕ •ᴥ•ʔ
@@ -1617,8 +1689,6 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
         this->m_xforms[GxXform_Projection].m_dirty = 0;
     }
 
-    uint32_t boneOffset = this->m_skinThisDraw ? static_cast<uint32_t>(this->m_skinOffsetThis) : 0;
-
     if (pipeline != this->m_boundPipeline) {
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
         this->m_boundPipeline = pipeline;
@@ -1654,7 +1724,14 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
             writes[i].descriptorCount = 1;
         }
 
-        VkDescriptorBufferInfo boneInfo = { frame.bones.buffer, 0, 256 * sizeof(C44Matrix) };
+        VkDeviceSize boneRange = frame.bones.size;
+        VkDeviceSize boneLimit = this->m_vk.m_properties.limits.maxStorageBufferRange;
+
+        if (boneLimit && boneRange > boneLimit) {
+            boneRange = boneLimit;
+        }
+
+        VkDescriptorBufferInfo boneInfo = { frame.bones.buffer, 0, boneRange };
         writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
         writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         writes[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -1663,7 +1740,7 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
         writes[4].dstSet = set;
         writes[4].dstBinding = 4;
         writes[4].descriptorCount = 1;
-        writes[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+        writes[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         writes[0].pBufferInfo = &bufferInfo;
         writes[1].pImageInfo = &imageInfo[0];
         writes[2].pImageInfo = &imageInfo[1];
@@ -1678,9 +1755,8 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
     }
 
     uint32_t dynamicOffset = static_cast<uint32_t>(this->m_uniformOffset);
-    uint32_t dynamicOffsets[2] = { dynamicOffset, boneOffset };
 
-    // ʕ •ᴥ•ʔ✿ Command-buffer state. A new set, a recreated set, or a new dynamic offset still binds ✿ ʕ •ᴥ•ʔ
+    // ʕ •ᴥ•ʔ✿ The bone ring stays bound. A push constant picks the palette, so a new skeleton does not rebind the set ✿ ʕ •ᴥ•ʔ
     if (key.bindless) {
         VkDescriptorSet terrainSet = this->m_terrainSets[this->m_vk.m_frameIndex];
 
@@ -1688,14 +1764,25 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
             return;
         }
 
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->m_terrainPipelineLayout, 0, 1, &this->m_boundSet, 2, dynamicOffsets);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->m_terrainPipelineLayout, 0, 1, &this->m_boundSet, 1, &dynamicOffset);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->m_terrainPipelineLayout, 1, 1, &terrainSet, 0, nullptr);
         this->m_boundDynamicOffset = dynamicOffset;
-        this->m_boundBoneOffset = boneOffset;
-    } else if (setChanged || dynamicOffset != this->m_boundDynamicOffset || boneOffset != this->m_boundBoneOffset) {
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->m_pipelineLayout, 0, 1, &this->m_boundSet, 2, dynamicOffsets);
+    } else if (setChanged || dynamicOffset != this->m_boundDynamicOffset) {
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->m_pipelineLayout, 0, 1, &this->m_boundSet, 1, &dynamicOffset);
         this->m_boundDynamicOffset = dynamicOffset;
-        this->m_boundBoneOffset = boneOffset;
+    }
+
+    uint32_t pushBase = this->m_skinThisDraw ? this->m_skinMatrixBaseThis : 0;
+    uint32_t pushInfluences = this->m_skinThisDraw ? this->m_skinInfluences : 0;
+    uint32_t pushStride = this->m_skinThisDraw ? this->m_skinStrideThis : 0;
+
+    if (pushBase != this->m_pushBase || pushInfluences != this->m_pushInfluences || pushStride != this->m_pushStride) {
+        uint32_t push[3] = { pushBase, pushInfluences, pushStride };
+        VkPipelineLayout pushLayout = key.bindless ? this->m_terrainPipelineLayout : this->m_pipelineLayout;
+        vkCmdPushConstants(cmd, pushLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push), push);
+        this->m_pushBase = pushBase;
+        this->m_pushInfluences = pushInfluences;
+        this->m_pushStride = pushStride;
     }
 
     if (memcmp(buffers, this->m_boundBuffers, sizeof(VkBuffer) * bindingCount) || memcmp(offsets, this->m_boundOffsets, sizeof(VkDeviceSize) * bindingCount)) {

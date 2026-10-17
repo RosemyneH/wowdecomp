@@ -794,34 +794,38 @@ static uint32_t DrawSkinnedDoodads(M2Data* data, CM2Shared* shared, M2SkinSectio
 
     g_theGxDevicePtr->BufUnlock(ib, 0);
     ib->m_hasData = 1;
-    GxRsSet(GxRs_NormalizeNormals, 1);
-    g_theGxDevicePtr->GpuSkinInfluences(section->m_boneInfluences);
-
-    uint32_t drawn = 0;
+    static std::vector<const C44Matrix*> palettes;
+    palettes.clear();
+    palettes.reserve(total);
 
     for (uint32_t n = 0; n < total; ++n) {
         CM2Model* model = elements[indices[n]].m_model;
 
-        if (!model || !model->m_boneMatrices || !g_theGxDevicePtr->GpuSkinBind(model->m_boneMatrices, boneCount)) {
-            g_theGxDevicePtr->GpuSkinBind(nullptr, 0);
+        if (!model || !model->m_boneMatrices) {
             break;
         }
 
-        GxPrimVertexPtr(verts, GxVBF_PBNT2);
-        g_theGxDevicePtr->PrimIndexPtr(ib);
-
-        CGxBatch batch;
-        batch.m_primType = GxPrim_Triangles;
-        batch.m_start = 0;
-        batch.m_count = section->m_indexCount;
-        batch.m_minIndex = 0;
-        batch.m_maxIndex = static_cast<uint16_t>(section->m_vertexCount - 1);
-        g_theGxDevicePtr->Draw(&batch, 1);
-        drawn++;
+        palettes.push_back(model->m_boneMatrices);
     }
 
+    if (palettes.empty() || !g_theGxDevicePtr->GpuSkinBindInstances(palettes.data(), static_cast<uint32_t>(palettes.size()), boneCount)) {
+        return 0;
+    }
+
+    GxRsSet(GxRs_NormalizeNormals, 1);
+    g_theGxDevicePtr->GpuSkinInfluences(section->m_boneInfluences);
+    GxPrimVertexPtr(verts, GxVBF_PBNT2);
+    g_theGxDevicePtr->PrimIndexPtr(ib);
+
+    CGxBatch batch;
+    batch.m_primType = GxPrim_Triangles;
+    batch.m_start = 0;
+    batch.m_count = section->m_indexCount;
+    batch.m_minIndex = 0;
+    batch.m_maxIndex = static_cast<uint16_t>(section->m_vertexCount - 1);
+    g_theGxDevicePtr->Draw(&batch, 1);
     g_theGxDevicePtr->GpuSkinMesh(0);
-    return drawn;
+    return static_cast<uint32_t>(palettes.size());
 }
 
 // VERIFY: 2ff5e9df manual

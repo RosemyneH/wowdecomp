@@ -36,6 +36,12 @@ layout(std430, set = 0, binding = 4, row_major) readonly buffer BonePalette {
     mat4 bones[];
 } skin;
 
+layout(push_constant) uniform SkinPush {
+    uint base;
+    uint influences;
+    uint stride;
+} pc;
+
 vec3 StageTexCoord(int stage, vec3 viewPos, vec3 viewNormal, mat4 texMatrix) {
     int gen = u.stageTexGen[stage];
     vec4 src;
@@ -92,16 +98,17 @@ void main() {
     vec3 position = inPosition;
     vec3 normal = inNormal;
 
-    // ʕ •ᴥ•ʔ✿ One influence ignores weights. Later slots stop at the first zero, matching TransformVertices_* ✿ ʕ •ᴥ•ʔ
+    // ʕ •ᴥ•ʔ✿ Palette base is a push constant. One draw can cover many copies via gl_InstanceIndex ✿ ʕ •ᴥ•ʔ
     if (u.misc[2] != 0.0) {
-        int influences = int(u.misc[3] + 0.5);
+        uint palette = pc.base + gl_InstanceIndex * pc.stride;
+        int influences = int(pc.influences);
 
         if (influences == 1) {
-            mat4 bone = skin.bones[inIndices.x];
+            mat4 bone = skin.bones[palette + inIndices.x];
             position = (vec4(inPosition, 1.0) * bone).xyz;
             normal = (vec4(inNormal, 0.0) * bone).xyz;
         } else {
-            mat4 bone0 = skin.bones[inIndices.x];
+            mat4 bone0 = skin.bones[palette + inIndices.x];
             position = (vec4(inPosition, 1.0) * bone0).xyz * inWeights.x;
             normal = (vec4(inNormal, 0.0) * bone0).xyz * inWeights.x;
 
@@ -112,7 +119,7 @@ void main() {
                     break;
                 }
 
-                mat4 bone = skin.bones[inIndices[influence]];
+                mat4 bone = skin.bones[palette + inIndices[influence]];
                 position += (vec4(inPosition, 1.0) * bone).xyz * weight;
                 normal += (vec4(inNormal, 0.0) * bone).xyz * weight;
             }

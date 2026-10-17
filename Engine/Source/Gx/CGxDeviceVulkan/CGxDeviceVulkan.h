@@ -145,6 +145,13 @@ class CGxDeviceVulkan : public CGxDevice {
     int32_t m_uniformInfluences = -1;
     VkDeviceSize m_skinOffset = 0;
     VkDeviceSize m_skinOffsetThis = 0;
+    uint32_t m_skinMatrixBase = 0;
+    uint32_t m_skinMatrixBaseThis = 0;
+    uint32_t m_skinStride = 0;
+    uint32_t m_skinStrideThis = 0;
+    uint32_t m_pushBase = 0xFFFFFFFFu;
+    uint32_t m_pushInfluences = 0xFFFFFFFFu;
+    uint32_t m_pushStride = 0xFFFFFFFFu;
     uint32_t m_boundBoneOffset = 0xFFFFFFFFu;
     CGxApiLight m_uniformLights[4] = {};
     VkPipeline m_boundPipeline = VK_NULL_HANDLE;
@@ -189,6 +196,7 @@ class CGxDeviceVulkan : public CGxDevice {
     virtual void XformSetProjection(const C44Matrix& matrix);
     virtual void Draw(CGxBatch* batch, int32_t count);
     virtual int32_t GpuSkinBind(const C44Matrix* bones, uint32_t boneCount);
+    virtual int32_t GpuSkinBindInstances(const C44Matrix* const* bones, uint32_t instances, uint32_t boneCount);
     virtual int32_t GpuSkinSupported() const;
     virtual void DrawInstanced(CGxBatch* batch, const C44Matrix* worlds, uint32_t count);
     virtual void GpuSkinMesh(int32_t bindPose);
