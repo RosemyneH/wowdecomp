@@ -72,7 +72,8 @@ UPDATE acore_auth.realmlist SET address='127.0.0.1', localAddress='127.0.0.1', p
 
 echo "Waiting for worldserver..."
 deadline=$((SECONDS + 900))
-until "${DOCKER[@]}" compose logs ac-worldserver 2>/dev/null | grep -qi "world initialized"; do
+# grep -q + pipefail treats SIGPIPE from compose as failure; read without -q
+until "${DOCKER[@]}" compose logs --tail 200 ac-worldserver 2>/dev/null | grep -i "world initialized" >/dev/null; do
     if (( SECONDS > deadline )); then
         echo "worldserver did not finish starting." >&2
         "${DOCKER[@]}" compose logs --tail 40 ac-worldserver >&2 || true
