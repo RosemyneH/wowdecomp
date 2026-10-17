@@ -423,6 +423,13 @@ static TerrainFit FitTerrain() {
         radius = 1023;
     }
 
+    // ʕ •ᴥ•ʔ✿ Extended view is 50km. That disk is a million ADT slots. The WDL draws past retail farclip ✿ ʕ •ᴥ•ʔ
+    constexpr int32_t kDetailRadius = 39;
+
+    if (radius > kDetailRadius) {
+        radius = kDetailRadius;
+    }
+
     uint64_t heap = g_theGxDevicePtr ? g_theGxDevicePtr->ResidentHeapBytes() : 0;
 
     if (!heap) {
