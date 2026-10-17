@@ -138,6 +138,10 @@ link_scope() {
     cp -f "$ROOT/Addons/Lua/WasmInspector/WasmInspector.toc" \
         "$ROOT/Addons/Lua/WasmInspector/WasmInspector.lua" \
         "$PLAY_DIR/Interface/AddOns/WasmInspector/"
+    mkdir -p "$PLAY_DIR/Interface/AddOns/WowdecompDesk"
+    cp -f "$ROOT/Addons/Lua/WowdecompDesk/WowdecompDesk.toc" \
+        "$ROOT/Addons/Lua/WowdecompDesk/WowdecompDesk.lua" \
+        "$PLAY_DIR/Interface/AddOns/WowdecompDesk/"
     stage_wasm_game_addons "$wasm_root"
     echo "Dev scope: $PLAY_DIR"
     echo "WasmAddOns -> $wasm_root ($(find "$wasm_root" -mindepth 1 -maxdepth 1 -type l -o -mindepth 1 -maxdepth 1 -type d | wc -l) entries)"
@@ -236,7 +240,21 @@ run_tests() {
     "$BUILD_DIR/bin/wasm_addon_host" "$ROOT/Addons/Wasm/dist/hello-world" --event PLAYER_LOGIN --inspector
 }
 
+ensure_wow_disk() {
+    local toc="$PLAY_DIR/Interface/WasmAddOns/ElvUI/ElvUI.toc"
+    if [[ -r "$toc" ]]; then
+        return
+    fi
+    if [[ -b /dev/nvme0n1p1 ]]; then
+        udisksctl mount -b /dev/nvme0n1p1 >/dev/null 2>&1 || true
+    fi
+    if [[ ! -r "$toc" ]]; then
+        echo "ElvUI is symlinked to /run/media/emma/WOW/Repos/ElvUI_Outlawcraft and that disk is not mounted." >&2
+    fi
+}
+
 launch_client() {
+    ensure_wow_disk
     if [[ ! -x "$PLAY_DIR/WowClient64" ]]; then
         echo "Missing $PLAY_DIR/WowClient64 — run: $0 build" >&2
         exit 1
@@ -274,6 +292,7 @@ launch_release() {
         echo "Missing $PLAY_DIR/Data — run: $0 scope" >&2
         exit 1
     fi
+    ensure_wow_disk
     enable_release_msdf
     WOWDECOMP_SERVER_BACKEND=docker "$ROOT/Tools/local-server/start.sh"
     # ʕ •ᴥ•ʔ✿ Release play is the fps path. Leave the zone sampler off unless asked ✿ ʕ •ᴥ•ʔ

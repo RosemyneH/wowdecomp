@@ -24,7 +24,16 @@ The game opens a private Wayland socket, `wowdecomp-N`, and the program connects
 
 Chromium is started with `--ozone-platform=wayland` and `--disable-gpu`, so the page is a shared-memory buffer the frame can show. Keyboard input goes to the frame after you click it, and stops going to the game until you click away. The pointer follows the cursor over the page.
 
-Linux is the host that has this. Other builds return an error from `WaylandFrame_Open`. Lua can call the same function without a WASM package:
+Linux is the host that has this. Other builds return an error from `WaylandFrame_Open`. The `WowdecompDesk` addon adds chat commands:
+
+| Command | What it does |
+|---|---|
+| `/chrome` | YouTube, 960×540 |
+| `/chrome example.com 800 500` | That page. A bare host gets `https://` |
+| `/app foot` | That Wayland program, looked up on `PATH` |
+| `/ping` | Toggle the ping readout and print KB/s |
+
+The first world ping is about 30 seconds after you enter the world. Until a pong comes back the readout stays `ping --`. Lua can call the same function without the addon:
 
 ```lua
 WaylandFrame_Open("https://www.youtube.com", 640, 400)

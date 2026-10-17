@@ -1941,6 +1941,11 @@ void CSimpleFrame::StopAnimating() {
 
 // VERIFY: 8b0118ef manual
 // OFFSET: 0x00491A70
+static int32_t FramePointerOk(const void* pointer) {
+    uintptr_t value = reinterpret_cast<uintptr_t>(pointer);
+    return value > 0x10000 && (value & (sizeof(void*) - 1)) == 0;
+}
+
 void CSimpleFrame::AnimActivated(CSimpleAnimGroup* group, int32_t first, int32_t hasAlpha) {
     if (first && (!this->m_playingAnimGroups || !this->m_playingAnimGroups->Head())) {
         this->StoreAnimPosition();
@@ -1952,10 +1957,12 @@ void CSimpleFrame::AnimActivated(CSimpleAnimGroup* group, int32_t first, int32_t
     }
 
     for (SIMPLEFRAMENODE* node = this->m_children.Head(); node; node = this->m_children.Next(node)) {
+        if (!FramePointerOk(node) || !FramePointerOk(node->m_frame)) break;
         node->m_frame->AnimActivated(group, first, hasAlpha);
     }
 
     for (CSimpleRegion* region = this->m_regions.Head(); region; region = this->m_regions.Next(region)) {
+        if (!FramePointerOk(region)) break;
         region->AnimActivated(group, first, hasAlpha);
     }
 }
