@@ -583,11 +583,11 @@ static int32_t Script_PetRename(lua_State* L) {
     }
 
     if (!name || !*name) {
-        CGGameUI::DisplayNameError(2);
+        CGGameUI::DisplayNameError(NAME_NO_NAME);
         return 0;
     }
 
-    int32_t error = ValidatePetName(s_locale, name, true, true, true, true, 0);
+    VALIDATE_NAME_RESULT error = ValidatePetName(s_locale, name, true, true, true, true, 0);
 
     if (error) {
         CGGameUI::DisplayNameError(error);

@@ -201,6 +201,14 @@ enum EVENTID {
     EVENT_ID_IME = 34,
     EVENT_ID_SIZE = 35,
     EVENTIDS = 36,
+
+    // Unused 0.5.3 names/values; not mapped to the current 3.3.5 placeholder IDs.
+    // EVENT_ID_CAPTURECHANGED = 0,
+    // EVENT_ID_CLOSE = 3,
+    // EVENT_ID_CONSOLE_INPUT = 23,
+    // EVENT_ID_ENGINENET = 24,
+    // EVENT_ID_BATTLENET = 25,
+    // EVENT_ID_WOW_Q_IDLE = 26,
 };
 
 typedef int32_t (*EVENTHANDLERFUNC)(const void* data, void* param);

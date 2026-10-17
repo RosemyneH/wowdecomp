@@ -191,7 +191,7 @@ void CSimpleMessageFrame::AddPendingMessage(const char* text, const CImVector& c
     uint32_t lines = static_cast<uint32_t>(floor(height / node->m_string->GetFontHeight(true) + 0.5));
 
     if (lines > 1 && this->m_rows > lines) {
-        uint32_t top = this->m_insertMode == 0;
+        uint32_t top = this->m_insertMode == INSERT_AT_TOP;
         uint32_t count = lines - 1;
 
         do {
@@ -217,7 +217,7 @@ CSimpleMessageFrame::CSimpleMessageFrame(CSimpleFrame* parent) : CSimpleFrame(pa
     this->m_font = new (SMemAlloc(sizeof(CSimpleFontedFrameFont), __FILE__, __LINE__, 0)) CSimpleFontedFrameFont(this);
     this->m_timeVisible = 10.0f;
     this->m_fading = 1;
-    this->m_insertMode = 1;
+    this->m_insertMode = INSERT_AT_BOTTOM;
     this->m_fadeDuration = 3.0f;
 }
 
@@ -315,7 +315,7 @@ void CSimpleMessageFrame::UpdateRect() {
     uint32_t i;
     int32_t step;
 
-    if (this->m_insertMode) {
+    if (this->m_insertMode != INSERT_AT_TOP) {
         i = this->m_rows - 1;
         step = -1;
     } else {
@@ -417,7 +417,7 @@ void CSimpleMessageFrame::FontUpdated(CSimpleFontedFrameFont* font, int32_t flag
 
 // VERIFY: ad40c94c auto
 // OFFSET: 0x00968CB0
-void CSimpleMessageFrame::SetInsertMode(int32_t mode) {
+void CSimpleMessageFrame::SetInsertMode(SimpleMessageFrameInsertMode mode) {
     this->m_insertMode = mode;
     this->UpdateRect();
 }
@@ -487,9 +487,9 @@ void CSimpleMessageFrame::LoadXML(XMLNode* node, CStatus* status) {
 
     if (insertMode && *insertMode) {
         if (!SStrCmpI(insertMode, "BOTTOM", STORM_MAX_STR)) {
-            this->m_insertMode = 1;
+            this->m_insertMode = INSERT_AT_BOTTOM;
         } else {
-            this->m_insertMode = 0;
+            this->m_insertMode = INSERT_AT_TOP;
         }
 
         this->UpdateRect();

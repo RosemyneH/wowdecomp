@@ -179,11 +179,11 @@ void CGUnit_C::PlayVictimRound(const ATTACKROUNDINFO& info) {
         SI2::PlaySoundKit("(DONOTRENAME)AbsorbGetHit", &position, nullptr, nullptr);
     } else if (info.m_hitInfo & 0x2) {
         if (info.m_hitInfo & 0x20000) {
-            this->PlayUnitSound(9, 0);
+            this->PlayUnitSound(UNITSOUNDTYPE_INJURYCRUSHINGBLOW, 0);
         } else if (info.m_hitInfo & 0x200) {
-            this->PlayUnitSound(3, 0);
+            this->PlayUnitSound(UNITSOUNDTYPE_INJURYCRITICAL, 0);
         } else if (!(info.m_hitInfo & 0x10)) {
-            this->PlayUnitSound(2, 0);
+            this->PlayUnitSound(UNITSOUNDTYPE_INJURY, 0);
         }
     }
 }

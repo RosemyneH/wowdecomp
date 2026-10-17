@@ -313,7 +313,7 @@ static void ReportFile(FILE* file, const char* name, const char* stockMd5 = null
     fprintf(file, "  %s\n", lookup.c_str());
 
     char path[260];
-    uint32_t type = 0;
+    SFILE_TYPE type = SFILE_PLAIN;
     System_SFile::ARCHIVEREC* winner = nullptr;
 
     if (!System_SFile2::FindFile(lookup.c_str(), path, sizeof(path), 0, &type, &winner)) {
@@ -336,7 +336,7 @@ static void ReportFile(FILE* file, const char* name, const char* stockMd5 = null
         state = usedMd5 == stockMd5 ? "  stock" : "  MODIFIED";
     }
 
-    if (type == 0) {
+    if (type == SFILE_PLAIN) {
         fprintf(file, "    used: LOOSE FILE %s  md5 %s%s\n", path, usedMd5.c_str(), state);
     } else {
         fprintf(file, "    used: %s  md5 %s%s\n", winner ? winner->m_name : "(archive)", usedMd5.c_str(), state);

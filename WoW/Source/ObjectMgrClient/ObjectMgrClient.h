@@ -16,7 +16,10 @@ class CGPlayer_C;
 class CHashKeyGUID;
 class CMovementGlobals;
 class RealmConnection;
-enum HANDLER_PRIORITY : int32_t;
+enum HANDLER_PRIORITY : int32_t {
+    HANDLER_PRIORITY_NORMAL = 0,
+    HANDLER_PRIORITY_HIGH = 1,
+};
 
 typedef int32_t (*MIRRORHANDLERFUNC)(WOWGUID guid, uint32_t fieldOffset, uint32_t fieldSize, const void* oldValue, void* param);
 typedef int32_t (*OBJECTENUMFUNC)(WOWGUID guid, void* param);

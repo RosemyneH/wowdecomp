@@ -132,7 +132,7 @@ bool CGRuneInfo::HasRunesForSpell(int32_t spellId, int32_t* needed) {
         return true;
     }
 
-    if (spell.m_powerType != 5) {
+    if (spell.m_powerType != POWER_TYPE_RUNES) {
         return true;
     }
 

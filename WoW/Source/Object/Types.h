@@ -4,6 +4,18 @@
 #include <cstddef>
 #include <cstdint>
 
+enum POWER_TYPE : int32_t {
+    POWER_TYPE_HEALTH = -2,
+    POWER_TYPE_MANA = 0,
+    POWER_TYPE_RAGE = 1,
+    POWER_TYPE_FOCUS = 2,
+    POWER_TYPE_ENERGY = 3,
+    POWER_TYPE_HAPPINESS = 4,
+    POWER_TYPE_RUNES = 5,
+    POWER_TYPE_RUNIC_POWER = 6,
+    NUM_POWER_TYPES = 7,
+};
+
 enum MoveEventId {
     MOVEEVENT_START_FORWARD = 0,
     MOVEEVENT_START_BACKWARD = 1,

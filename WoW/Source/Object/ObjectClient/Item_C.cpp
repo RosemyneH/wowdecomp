@@ -242,12 +242,12 @@ void CGItem_C::ConfirmBindOnUse() {
 // VERIFY: 6840b2f7 auto
 // OFFSET: 0x00709440
 void CGItem_C::Initialize() {
-    ClntObjMgrSetTypeMirrorHandler(ID_ITEM, offsetof(CGItemData, m_itemFieldStackCount), sizeof(uint32_t), OnUpdateStackCount, nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
-    ClntObjMgrSetTypeMirrorHandler(ID_ITEM, offsetof(CGItemData, m_itemFieldSpellCharges), sizeof(CGItemData::m_itemFieldSpellCharges), OnUpdateSpellCharges, nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
-    ClntObjMgrSetTypeMirrorHandler(ID_ITEM, offsetof(CGItemData, m_itemFieldEnchantment), sizeof(CGItemData::m_itemFieldEnchantment), OnUpdateEnchantments, nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
-    ClntObjMgrSetTypeMirrorHandler(ID_OBJECT, offsetof(CGObjectData, m_entryID), sizeof(uint32_t), OnUpdateItemID, nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
-    ClntObjMgrSetTypeMirrorHandler(ID_ITEM, offsetof(CGItemData, m_itemFieldFlags), sizeof(uint16_t), OnUpdateDynamicFlags, nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
-    ClntObjMgrSetTypeMirrorHandler(ID_ITEM, offsetof(CGItemData, m_itemFieldDurability), sizeof(uint32_t), OnUpdateDurability, nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
+    ClntObjMgrSetTypeMirrorHandler(ID_ITEM, offsetof(CGItemData, m_itemFieldStackCount), sizeof(uint32_t), OnUpdateStackCount, nullptr, HANDLER_PRIORITY_NORMAL, 0);
+    ClntObjMgrSetTypeMirrorHandler(ID_ITEM, offsetof(CGItemData, m_itemFieldSpellCharges), sizeof(CGItemData::m_itemFieldSpellCharges), OnUpdateSpellCharges, nullptr, HANDLER_PRIORITY_NORMAL, 0);
+    ClntObjMgrSetTypeMirrorHandler(ID_ITEM, offsetof(CGItemData, m_itemFieldEnchantment), sizeof(CGItemData::m_itemFieldEnchantment), OnUpdateEnchantments, nullptr, HANDLER_PRIORITY_NORMAL, 0);
+    ClntObjMgrSetTypeMirrorHandler(ID_OBJECT, offsetof(CGObjectData, m_entryID), sizeof(uint32_t), OnUpdateItemID, nullptr, HANDLER_PRIORITY_NORMAL, 0);
+    ClntObjMgrSetTypeMirrorHandler(ID_ITEM, offsetof(CGItemData, m_itemFieldFlags), sizeof(uint16_t), OnUpdateDynamicFlags, nullptr, HANDLER_PRIORITY_NORMAL, 0);
+    ClntObjMgrSetTypeMirrorHandler(ID_ITEM, offsetof(CGItemData, m_itemFieldDurability), sizeof(uint32_t), OnUpdateDurability, nullptr, HANDLER_PRIORITY_NORMAL, 0);
 }
 
 // VERIFY: 90fb2c28 auto

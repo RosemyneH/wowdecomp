@@ -7,6 +7,7 @@
 #include "Engine/Source/SoundEngine/SoundEngine.h"
 #include "Engine/Source/Storm/H/stpl.h"
 #include "Engine/Source/Tempest/C3Vector.h"
+#include "WoW/Source/SoundInterface/Types.h"
 
 class CGUnit_C;
 class CGUnitVirtualItem;
@@ -163,7 +164,7 @@ class SI2 {
     static int32_t PlayFoleySound(int32_t materialId, const C3Vector* position, int32_t self);
     static void PlayFootstepSound(int32_t footstepId, const C3Vector* position, int32_t terrainType, int32_t splash, int32_t loud, CGUnit_C* unit);
     static void PlayHitSound(const CGUnitVirtualItem* weapon, int32_t impactType, int32_t crit, const C3Vector* position, int32_t self);
-    static void PlayItemSound(int32_t type, int32_t displayId);
+    static void PlayItemSound(ITEMSOUNDTYPE type, int32_t displayId);
     static int32_t PlayMissedSound(bool oneHand, const C3Vector* position, int32_t self);
     static void PlayParrySound(const CGUnitVirtualItem* weapon, const CGUnitVirtualItem* defender, int32_t crit, const C3Vector* position, int32_t self);
     static int32_t PlaySheatheSound(const CGUnitVirtualItem* item, int32_t sheathe, const C3Vector* position, int32_t self);
@@ -252,6 +253,6 @@ class SI2 {
 };
 
 class CGItem_C;
-int32_t SndInterfacePlayItemSound(int32_t type, CGItem_C* item);
+int32_t SndInterfacePlayItemSound(ITEMSOUNDTYPE type, CGItem_C* item);
 
 #endif

@@ -745,7 +745,7 @@ bool CGTradeInfo::AddPlayerItem(WOWGUID item, WOWGUID container, uint8_t slot) {
 
     CGTradeInfo::SetPlayerItem(index, item, container, slot);
     CGGameUI::LockItem(item);
-    SndInterfacePlayItemSound(1, object);
+    SndInterfacePlayItemSound(ITEMSOUND_DROP, object);
     return true;
 }
 

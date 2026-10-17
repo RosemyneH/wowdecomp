@@ -373,7 +373,7 @@ void CGUnit_C::UpdateMissileTrajectoryTargeting() {
         mode = 1;
         active = true;
         s_trajectoryMode = 1;
-    } else if ((flags & 0x2000000) && (pitchNextFrame || (input->m_flags & 0xC00))) {
+    } else if ((flags & 0x2000000) && (pitchNextFrame || (input->m_flags & INPUT_PITCH_PLAYER_MASK))) {
         mode = 2;
         active = true;
         s_trajectoryMode = 2;

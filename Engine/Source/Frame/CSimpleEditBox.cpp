@@ -1985,7 +1985,7 @@ void CSimpleEditBox::CreateCandidatesFrame() {
     CLayoutFrame* relative = this->m_clauseHighlight ? static_cast<CLayoutFrame*>(this->m_clauseHighlight) : static_cast<CLayoutFrame*>(this->m_highlightTextures[0]);
     this->m_candidatesFrame->SetPoint(FRAMEPOINT_BOTTOMLEFT, relative, FRAMEPOINT_TOPLEFT, 0.0f, 0.0f, 1);
     this->m_candidatesFrame->m_fading = 0;
-    this->m_candidatesFrame->SetInsertMode(0);
+    this->m_candidatesFrame->SetInsertMode(INSERT_AT_TOP);
 
     CSimpleTexture* background = nullptr;
     data = CSimpleTexture::s_allocator.GetData(0, RAW_TYPE_NAME(CSimpleTexture), SLOG_OBJECT);

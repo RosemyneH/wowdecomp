@@ -2314,10 +2314,10 @@ int32_t CGMinimapFrame::ObjectEnumProc(WOWGUID guid, void* param) {
                             type = 4 - (faction != player->GetPVPFactionIndex());
                         }
                     } else {
-                        int32_t reaction = unit->UnitReaction(player);
+                        UNIT_REACTION reaction = unit->UnitReaction(player);
 
-                        if (reaction < 4) {
-                            type = (reaction > 1) + 5;
+                        if (reaction < UNIT_REACTION_FRIENDLY) {
+                            type = (reaction > UNIT_REACTION_HOSTILE) + 5;
                         } else {
                             type = 7;
                         }
@@ -3190,7 +3190,7 @@ void CGMinimapFrame::MinimapTextureCallback(EGxTexCommand command, uint32_t widt
         alpha = 0xFF;
     }
 
-    GxSceneClear(1, CImVector(0, 0, 0, alpha));
+    GxSceneClear(GxBufferBit_Color, CImVector(0, 0, 0, alpha));
     CImVector color(0xFF, 0xFF, 0xFF, alpha);
     CGMinimapFrame::RenderInsideTexture(&color);
     GxRsSet(GxRs_ScissorTest, 0);

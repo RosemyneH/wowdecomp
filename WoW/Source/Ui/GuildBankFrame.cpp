@@ -611,7 +611,7 @@ void CGGuildBankInfo::QueryGuildBankText(uint8_t tab) {
 void CGGuildBankInfo::SetTabInfo(uint8_t tab, const char* name, const char* icon) {
     char scrubbed[64];
     ScrubString(name, scrubbed, 16, sizeof(scrubbed), 1);
-    int32_t error = ValidateGuildBankTabName(s_locale, scrubbed);
+    VALIDATE_NAME_RESULT error = ValidateGuildBankTabName(s_locale, scrubbed);
 
     if (error) {
         CGGameUI::DisplayNameError(error);
@@ -728,7 +728,7 @@ int32_t Packet_SMSG_GUILD_BANK_LIST(void* param, NETMESSAGE msgId, uint32_t time
     int32_t cursorId = 0;
     int32_t cursorSlot = 0;
 
-    if (CGGameUI::m_cursorItemType == 11) {
+    if (CGGameUI::m_cursorItemType == UICURSOR_GUILDBANK_ITEM) {
         CGGameUI::GetCursorVirtualItem(cursorId, cursorSlot);
     }
 
@@ -768,7 +768,7 @@ int32_t Packet_SMSG_GUILD_BANK_LIST(void* param, NETMESSAGE msgId, uint32_t time
 
         msg->Get(reinterpret_cast<uint32_t&>(CGGuildBankInfo::m_tabSlots[tab].m_data[slotIndex].m_count));
         msg->Get(CGGuildBankInfo::m_tabSlots[tab].m_data[slotIndex].m_enchantId);
-        msg->Get(CGGuildBankInfo::m_tabSlots[tab].m_data[slotIndex].m_spellCharges);
+        msg->Get(reinterpret_cast<uint8_t&>(CGGuildBankInfo::m_tabSlots[tab].m_data[slotIndex].m_spellCharges));
         uint8_t numEnchants;
         msg->Get(numEnchants);
         slot = &CGGuildBankInfo::m_tabSlots[tab].m_data[slotIndex];

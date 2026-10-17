@@ -74,12 +74,12 @@ bool Blizzard::Streaming::ScanDirectoryForManifest(const Blizzard::File::Process
     char* fullPath = Blizzard::String::Duplicate(path);
 
     if (*extension) {
-        int32_t type = 0;
+        SFILE_TYPE type = SFILE_PLAIN;
 
         if (Blizzard::String::EqualI(extension, ".bz")) {
-            type = 1;
+            type = SFILE_COMPRESSED;
         } else if (Blizzard::String::EqualI(extension, ".MPQ")) {
-            type = 2;
+            type = SFILE_PAQ;
         }
 
         if (type) {
@@ -101,7 +101,7 @@ bool Blizzard::Streaming::ScanDirectoryForManifest(const Blizzard::File::Process
     if (System_SFile2::s_fileHash.find(std::string(relative)) == System_SFile2::s_fileHash.end()) {
         System_SFile2::FileHashEntry entry;
         entry.m_path = fullPath;
-        entry.m_type = 0;
+        entry.m_type = SFILE_PLAIN;
         System_SFile2::s_fileHash.insert(System_SFile2::FileHash::value_type(std::string(relative), entry));
     }
 

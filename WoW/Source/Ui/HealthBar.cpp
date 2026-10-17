@@ -83,8 +83,8 @@ void CGSimpleHealthBar::InstallMirrorHandlers() {
         return;
     }
 
-    ClntObjMgrSetObjMirrorHandler(this->m_guid, ID_UNIT, offsetof(CGUnitData, m_unitFieldHealth), sizeof(uint32_t), SimpleHealthUpdateHandler, this, static_cast<HANDLER_PRIORITY>(0), 0);
-    ClntObjMgrSetObjMirrorHandler(this->m_guid, ID_UNIT, offsetof(CGUnitData, m_unitFieldMaxhealth), sizeof(uint32_t), SimpleHealthUpdateHandler, this, static_cast<HANDLER_PRIORITY>(0), 0);
+    ClntObjMgrSetObjMirrorHandler(this->m_guid, ID_UNIT, offsetof(CGUnitData, m_unitFieldHealth), sizeof(uint32_t), SimpleHealthUpdateHandler, this, HANDLER_PRIORITY_NORMAL, 0);
+    ClntObjMgrSetObjMirrorHandler(this->m_guid, ID_UNIT, offsetof(CGUnitData, m_unitFieldMaxhealth), sizeof(uint32_t), SimpleHealthUpdateHandler, this, HANDLER_PRIORITY_NORMAL, 0);
 }
 
 // VERIFY: 2cae92df auto

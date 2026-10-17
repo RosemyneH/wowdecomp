@@ -52,7 +52,7 @@ typedef MESSAGE_HANDLER_interface MESSAGE_HANDLER;
 class NetClient;
 
 struct NETEVENTQUEUENODE : public TSLinkedNode<NETEVENTQUEUENODE> {
-    /* 0008 */ uint32_t m_eventId;
+    /* 0008 */ EVENTID m_eventId;
     /* 000C */ uint32_t m_timeReceived;
     /* 0010 */ void* m_data;
     /* 0014 */ uint32_t m_dataSize;

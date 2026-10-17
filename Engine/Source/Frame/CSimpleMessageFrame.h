@@ -7,6 +7,7 @@
 #include "Engine/Source/Base/RefCount.h"
 #include "Engine/Source/Frame/CSimpleFontedFrame.h"
 #include "Engine/Source/Frame/CSimpleFrame.h"
+#include "Engine/Source/Frame/Types.h"
 #include "Engine/Source/Storm/H/stpl.h"
 #include "Engine/Source/Tempest/CImVector.h"
 #include "Engine/Source/Tempest/CRect.h"
@@ -66,7 +67,7 @@ class CSimpleMessageFrame : public CSimpleFrame, public CSimpleFontedFrame {
     /* 02D0 */ int32_t m_fading;
     /* 02D4 */ float m_timeVisible;
     /* 02D8 */ float m_fadeDuration;
-    /* 02DC */ int32_t m_insertMode;
+    /* 02DC */ SimpleMessageFrameInsertMode m_insertMode;
     /* 02E0 */ TSGrowableArray<MessageData> m_pendingMessages;
     /* 02F0 */ TSGrowableArray<CSimpleMessageFrameLine> m_lines;
 
@@ -88,7 +89,7 @@ class CSimpleMessageFrame : public CSimpleFrame, public CSimpleFontedFrame {
     void HideLineNode(CSimpleMessageFrameLineNode* node);
     void ScrollMessages(uint32_t index);
     void SetFadeDuration(float duration);
-    void SetInsertMode(int32_t mode);
+    void SetInsertMode(SimpleMessageFrameInsertMode mode);
     void SetTimeVisible(float seconds);
     void ShowLineNode(CSimpleMessageFrameLineNode* node, float timeVisible, float fadeDuration);
     void UpdateRect();

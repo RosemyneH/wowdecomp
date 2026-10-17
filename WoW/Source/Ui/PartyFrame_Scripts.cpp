@@ -165,19 +165,19 @@ static int32_t Script_GetLootMethod(lua_State* L) {
     const char* method;
 
     switch (CGPartyInfo::m_lootMethod) {
-        case 0:
+        case LOOT_METHOD_FREEFORALL:
             method = "freeforall";
             break;
-        case 1:
+        case LOOT_METHOD_ROUNDROBIN:
             method = "roundrobin";
             break;
-        case 2:
+        case LOOT_METHOD_MASTERLOOTER:
             method = "master";
             break;
-        case 3:
+        case LOOT_METHOD_GROUP:
             method = "group";
             break;
-        case 4:
+        case LOOT_METHOD_NEEDBEFOREGREED:
             method = "needbeforegreed";
             break;
         default:
@@ -356,28 +356,28 @@ static int32_t Script_SetLootMethod(lua_State* L) {
     }
 
     const char* method = lua_tolstring(L, 1, nullptr);
-    uint32_t lootMethod;
+    LOOT_METHOD lootMethod;
 
     if (!SStrCmpI(method, "freeforall", STORM_MAX_STR)) {
-        lootMethod = 0;
+        lootMethod = LOOT_METHOD_FREEFORALL;
     } else if (!SStrCmpI(method, "roundrobin", STORM_MAX_STR)) {
-        lootMethod = 1;
+        lootMethod = LOOT_METHOD_ROUNDROBIN;
     } else if (!SStrCmpI(method, "master", STORM_MAX_STR)) {
-        lootMethod = 2;
+        lootMethod = LOOT_METHOD_MASTERLOOTER;
     } else if (!SStrCmpI(method, "group", STORM_MAX_STR)) {
-        lootMethod = 3;
+        lootMethod = LOOT_METHOD_GROUP;
     } else {
         if (SStrCmpI(method, "needbeforegreed", STORM_MAX_STR)) {
             luaL_error(L, "Invalid loot method");
             return 0;
         }
 
-        lootMethod = 4;
+        lootMethod = LOOT_METHOD_NEEDBEFOREGREED;
     }
 
     WOWGUID master = WOWGUID();
 
-    if (lootMethod == 2) {
+    if (lootMethod == LOOT_METHOD_MASTERLOOTER) {
         const char* name;
 
         if (!lua_isstring(L, 2) || !(name = lua_tolstring(L, 2, nullptr)) || !*name) {

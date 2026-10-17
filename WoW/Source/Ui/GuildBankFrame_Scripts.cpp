@@ -134,7 +134,7 @@ static int32_t Script_PickupGuildBankMoney(lua_State* L) {
     uint32_t amount = static_cast<uint32_t>(lua_tonumber(L, 1));
 
     if (amount && amount <= CGGuildBankInfo::m_money) {
-        CGGameUI::SetCursorMoney(amount, 12, SCRIPT_EVENT_GUILDBANK_UPDATE_MONEY);
+        CGGameUI::SetCursorMoney(amount, UICURSOR_GUILDBANK_MONEY, SCRIPT_EVENT_GUILDBANK_UPDATE_MONEY);
     }
 
     return 0;
@@ -394,7 +394,7 @@ static int32_t Script_PickupGuildBankItem(lua_State* L) {
     uint32_t containerSlot;
     CGGameUI::GetCursorItem(item, container, containerSlot);
 
-    if (CGGameUI::m_cursorItemType == 11) {
+    if (CGGameUI::m_cursorItemType == UICURSOR_GUILDBANK_ITEM) {
         CGGameUI::GetCursorVirtualItem(virtualId, virtualSlot);
     }
 
@@ -424,7 +424,7 @@ static int32_t Script_PickupGuildBankItem(lua_State* L) {
         uint32_t bankSlot = slot + 98 * tab;
 
         if (!CGGameUI::VirtualItemIsLocked(info->m_itemID, bankSlot, 0)) {
-            CGGameUI::SetCursorVirtualItem(info->m_itemID, rec->m_displayInfoID, bankSlot, 11, 0);
+            CGGameUI::SetCursorVirtualItem(info->m_itemID, rec->m_displayInfoID, bankSlot, UICURSOR_GUILDBANK_ITEM, 0);
             CGGameUI::LockVirtualItem(info->m_itemID, bankSlot, 0);
         }
     }
@@ -520,7 +520,7 @@ static int32_t Script_SplitGuildBankItem(lua_State* L) {
     int32_t virtualSlot = 0;
     uint32_t bankSlot = slot + 98 * tab;
 
-    if (CGGameUI::m_cursorItemType == 11) {
+    if (CGGameUI::m_cursorItemType == UICURSOR_GUILDBANK_ITEM) {
         CGGameUI::GetCursorVirtualItem(virtualId, virtualSlot);
     }
 
@@ -547,11 +547,11 @@ static int32_t Script_SplitGuildBankItem(lua_State* L) {
     Spell_C_StopTargeting();
 
     if (amount == stats->m_stackable) {
-        CGGameUI::SetCursorVirtualItem(info->m_itemID, stats->m_displayId, bankSlot, 11, 0);
+        CGGameUI::SetCursorVirtualItem(info->m_itemID, stats->m_displayId, bankSlot, UICURSOR_GUILDBANK_ITEM, 0);
         CGGameUI::LockVirtualItem(info->m_itemID, bankSlot, 0);
     }
 
-    CGGameUI::SetCursorVirtualItem(info->m_itemID, stats->m_displayId, bankSlot, 11, amount);
+    CGGameUI::SetCursorVirtualItem(info->m_itemID, stats->m_displayId, bankSlot, UICURSOR_GUILDBANK_ITEM, amount);
     CGGameUI::LockVirtualItem(info->m_itemID, bankSlot, 0);
     return 0;
 }

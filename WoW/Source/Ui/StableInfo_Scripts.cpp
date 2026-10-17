@@ -344,7 +344,7 @@ static int32_t Script_ClickStablePet(lua_State* L) {
     double number = lua_tonumber(L, 1);
     uint32_t index = static_cast<int32_t>(number) - 1;
 
-    if (CGGameUI::m_cursorItemType != 10) {
+    if (CGGameUI::m_cursorItemType != UICURSOR_PET) {
         CGStableInfo::SelectPet(static_cast<int32_t>(number) - 1);
         lua_pushnumber(L, 1.0);
         return 1;

@@ -220,7 +220,7 @@ static int32_t Script_ClickTradeButton(lua_State* L) {
             CGItem_C* object = static_cast<CGItem_C*>(ClntObjMgrObjectPtr(item, TYPEMASK_ITEM, __FILE__, __LINE__));
 
             if (object) {
-                SndInterfacePlayItemSound(1, object);
+                SndInterfacePlayItemSound(ITEMSOUND_DROP, object);
             }
         }
 

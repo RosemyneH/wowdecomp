@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include "WoW/Source/Object/Types.h"
 #include "WoW/Source/Object/WGUID.h"
 #include "Engine/Source/Tempest/C3Vector.h"
 
@@ -17,7 +18,7 @@ class CGUnit {
     static uint32_t MirrorIndexFromFieldIndex(uint32_t fieldIndex);
     static uint32_t DescriptorToMirrorOffset(uint32_t offset, uint32_t unused_a2, uint32_t unused_a3, uint32_t base);
     static int32_t TotalFields();
-    static float __stdcall GetPowerRegenBase(int32_t powerType, uint8_t inCombat);
+    static float __stdcall GetPowerRegenBase(POWER_TYPE powerType, uint8_t inCombat);
 
     /* 0000 */ CGUnitData* m_unit;
     /* 0004 */ void* m_unitMirror;
@@ -45,7 +46,7 @@ class CGUnit {
     int32_t IsJumping() const;
     int32_t CanMove() const;
     float GetFacing(float facing) const;
-    float GetPowerRegen(int32_t powerType, bool inCombat) const;
+    float GetPowerRegen(POWER_TYPE powerType, bool inCombat) const;
 };
 
 class CGUnitData {

@@ -41,6 +41,11 @@ enum CSimpleButtonState {
     NUM_BUTTONSTATES = 3,
 };
 
+enum SimpleMessageFrameInsertMode : int32_t {
+    INSERT_AT_TOP = 0,
+    INSERT_AT_BOTTOM = 1,
+};
+
 enum TextureImageMode {
     ImageMode_Normal = 0,
     ImageMode_Desaturate = 1,

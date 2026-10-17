@@ -93,7 +93,7 @@ uint8_t CGPartyInfo::m_playerLFGFlags;
 WOWGUID CGPartyInfo::m_realLeader;
 
 // STATIC: 0x00ACC6C8
-int32_t CGPartyInfo::m_lootMethod = 3;
+LOOT_METHOD CGPartyInfo::m_lootMethod = LOOT_METHOD_GROUP;
 
 // STATIC: 0x00BD1970
 WOWGUID CGPartyInfo::m_lootMaster;
@@ -277,30 +277,30 @@ static void LootMasterNameCallback(int32_t id, const WOWGUID& guid, void* param,
 
 // VERIFY: 7acb8197 auto
 // OFFSET: 0x0052BD90
-int32_t CGPartyInfo::SetLootMethod(int32_t method, WOWGUID master, int32_t threshold, int32_t force) {
+int32_t CGPartyInfo::SetLootMethod(LOOT_METHOD method, WOWGUID master, int32_t threshold, int32_t force) {
     int32_t changed = 0;
 
     if (force || CGPartyInfo::m_lootMethod != method) {
         CGPartyInfo::m_lootMethod = method;
 
         switch (method) {
-            case 0:
+            case LOOT_METHOD_FREEFORALL:
                 CGGameUI::DisplayError(ERR_SET_LOOT_FREEFORALL);
                 break;
 
-            case 1:
+            case LOOT_METHOD_ROUNDROBIN:
                 CGGameUI::DisplayError(ERR_SET_LOOT_ROUNDROBIN);
                 break;
 
-            case 2:
+            case LOOT_METHOD_MASTERLOOTER:
                 CGGameUI::DisplayError(ERR_SET_LOOT_MASTER);
                 break;
 
-            case 3:
+            case LOOT_METHOD_GROUP:
                 CGGameUI::DisplayError(ERR_SET_LOOT_GROUP);
                 break;
 
-            case 4:
+            case LOOT_METHOD_NEEDBEFOREGREED:
                 CGGameUI::DisplayError(ERR_SET_LOOT_NBG);
                 break;
 
@@ -314,7 +314,7 @@ int32_t CGPartyInfo::SetLootMethod(int32_t method, WOWGUID master, int32_t thres
     if (force || CGPartyInfo::m_lootMaster != master) {
         CGPartyInfo::m_lootMaster = master;
 
-        if (master && method == 2) {
+        if (master && method == LOOT_METHOD_MASTERLOOTER) {
             NameCache* name = g_nameDBCache.GetRecord(master.m_guid, master, LootMasterNameCallback, nullptr, false);
 
             if (name) {
@@ -563,7 +563,7 @@ void CGPartyInfo::InitializeGame() {
     CGPartyInfo::m_playerRole = 0;
     CGPartyInfo::m_realLeader.m_guid = 0;
     CGPartyInfo::m_realNumMembers = 0;
-    CGPartyInfo::m_lootMethod = 3;
+    CGPartyInfo::m_lootMethod = LOOT_METHOD_GROUP;
     CGPartyInfo::m_lootMaster.m_guid = 0;
     CGPartyInfo::m_lootThreshold = 2;
     CGPartyInfo::m_nextDifficultyChange = 0;
@@ -841,7 +841,7 @@ void CGPartyInfo::RemoveAll(int32_t a1) {
 // VERIFY: 8bd59f6a auto
 // OFFSET: 0x0052D8A0
 void CGPartyInfo::ResetLootMethod() {
-    CGPartyInfo::m_lootMethod = 3;
+    CGPartyInfo::m_lootMethod = LOOT_METHOD_GROUP;
     CGPartyInfo::m_lootMaster = WOWGUID();
     CGPartyInfo::m_lootThreshold = 2;
     CGPartyInfo::SetOptOutOfLoot(0);

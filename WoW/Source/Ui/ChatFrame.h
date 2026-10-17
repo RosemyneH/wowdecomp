@@ -7,6 +7,7 @@
 #include "Engine/Source/Tempest/CImVector.h"
 #include "WoW/Source/Net/Types.h"
 #include "WoW/Source/Object/WGUID.h"
+#include "WoW/Source/Object/ObjectClient/Types.h"
 #include "WoW/Source/WowSvcs/WowSvcsClient/AccountData.h"
 #include "WoW/Source/Ui/Types.h"
 
@@ -282,7 +283,7 @@ class CGChat {
     static void SaveChatSettings();
     static void ZoneUpdate();
     static void ProcessPendingChatQueue();
-    static void LogReactionChanged(int32_t faction, int32_t reaction);
+    static void LogReactionChanged(int32_t faction, UNIT_REACTION reaction);
     static void LogFactionChanged(int32_t faction, int32_t delta, int32_t generic, float bonus);
     static void EnterWorld();
     static void InitializeGame();

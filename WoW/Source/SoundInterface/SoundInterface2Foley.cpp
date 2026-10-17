@@ -93,9 +93,9 @@ int32_t SI2::IsTooCloseToExistingSoundKit(int32_t soundKitId, const C3Vector* po
 
 // VERIFY: 4d8f58a6 manual
 // OFFSET: 0x004D0020
-int32_t SndInterfacePlayItemSound(int32_t type, CGItem_C* item) {
+int32_t SndInterfacePlayItemSound(ITEMSOUNDTYPE type, CGItem_C* item) {
     if (item->m_item->m_itemFieldFlags & 0x8) {
-        if (type == 1) {
+        if (type == ITEMSOUND_DROP) {
             return SI2::PlaySoundKit("(DONOTRENAME)WrappedItemDrop", nullptr, nullptr, nullptr);
         }
 
@@ -113,7 +113,7 @@ int32_t SndInterfacePlayItemSound(int32_t type, CGItem_C* item) {
 
 // VERIFY: fc148494 manual
 // OFFSET: 0x004D0090
-void SI2::PlayItemSound(int32_t type, int32_t displayId) {
+void SI2::PlayItemSound(ITEMSOUNDTYPE type, int32_t displayId) {
     ItemDisplayInfoRec display;
 
     if (!g_itemDisplayInfoDB.GetRecord(displayId, &display)) {

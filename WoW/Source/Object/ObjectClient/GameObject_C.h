@@ -12,6 +12,7 @@
 #include "WoW/Source/Net/Types.h"
 #include "WoW/Source/Object/GameObject.h"
 #include "WoW/Source/Object/ObjectClient/Object_C.h"
+#include "WoW/Source/Object/ObjectClient/Types.h"
 #include "WoW/Source/Object/Passenger.h"
 #include "WoW/Source/SoundInterface/SoundInterface2.h"
 #include "WoW/Source/WorldClient/Map.h"
@@ -363,7 +364,7 @@ class CGGameObject_C : public CGObject_C, public CGGameObject {
     void PostInit(uint32_t time, const CClientObjCreate& create, bool reenable);
     void ResetDisplayState();
     void SetDisplayState(int32_t state);
-    int32_t ObjectReaction(const CGUnit_C* unit) const;
+    UNIT_REACTION ObjectReaction(const CGUnit_C* unit) const;
     LockRec* GetLockRec() const;
     bool IsValidTargetForSpell(const WOWGUID& item, int32_t spellId) const;
     int32_t CanChangeCursor() const;

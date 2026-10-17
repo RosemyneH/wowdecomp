@@ -26,6 +26,11 @@
 #include "Engine/Source/Tempest/CMath.h"
 #include "Engine/Source/Tempest/CRange.h"
 
+const float CParticleEmitter2::VEL_UPDATE_TIME = 0.033333335f;
+const float CParticleEmitter2::MIN_ZSOURCE = 0.001f;
+
+static const float s_maxTimeStep = 0.1f;
+
 // STATIC: 0x00B2D530
 static int32_t s_particleRenderEnable = 1;
 
@@ -332,7 +337,7 @@ void CParticleEmitter2::SetParticleStyle(int32_t head, int32_t tail, float tailL
 void CParticleEmitter2::SetZsource(float zsource) {
     this->m_params.m_zsource = zsource;
 
-    if (fabs(zsource) < 0.001f) {
+    if (fabs(zsource) < MIN_ZSOURCE) {
         this->m_params.m_zsource = 0.0f;
     }
 }
@@ -1037,14 +1042,14 @@ void CParticleEmitter2::UpdateXform(const C44Matrix& transform, const C3Vector& 
 void CParticleEmitter2::InternalUpdate(float deltaTime, int32_t child) {
     float time = 0.0f;
 
-    if (deltaTime < 0.0f || (time = deltaTime, deltaTime <= 0.1f)) {
+    if (deltaTime < 0.0f || (time = deltaTime, deltaTime <= s_maxTimeStep)) {
         this->m_burstOffset = this->m_followOffset;
         this->StepUpdate(time, child);
         return;
     }
 
     float steps = floor(time * 10.0f);
-    float remainder = deltaTime - steps * 0.1f;
+    float remainder = deltaTime - steps * s_maxTimeStep;
     float maxSteps = floor(this->m_params.m_life * 10.0f);
 
     if (maxSteps < steps) {
@@ -1057,7 +1062,7 @@ void CParticleEmitter2::InternalUpdate(float deltaTime, int32_t child) {
     this->m_burstOffset = C3Vector(this->m_followOffset.x * scale, this->m_followOffset.y * scale, scale * this->m_followOffset.z);
 
     for (; count; count--) {
-        this->StepUpdate(0.1f, child);
+        this->StepUpdate(s_maxTimeStep, child);
     }
 
     this->StepUpdate(remainder, child);
@@ -2164,7 +2169,7 @@ CParticleEmitter2::CParticleEmitter2() : m_random(0) {
     this->m_textureCellWidth = 1.0f;
     this->m_textureCellHeight = 1.0f;
     this->m_renderedParticles = 0;
-    this->m_emitterType = 0;
+    this->m_emitterType = PET_BASE_EMITTER;
     this->m_childEmitterCount = 4;
     this->m_model = nullptr;
     this->m_childModel = nullptr;
@@ -2508,7 +2513,7 @@ void CParticleEmitter2::Update(float deltaTime, const C44Matrix& transform, cons
     if (this->m_flags & 0x800) {
         this->m_ivelTimer = this->m_ivelTimer + deltaTime;
 
-        if (this->m_ivelTimer > 0.033333335f) {
+        if (this->m_ivelTimer > VEL_UPDATE_TIME) {
             float rate = this->m_ivelTimer * 29.999998f;
             this->m_ivelTimer = zero;
 
@@ -2765,7 +2770,7 @@ void CSortableParticleQueue::Push(float depth, CParticle2* particle) {
 CPlaneParticleEmitter::CPlaneParticleEmitter() {
     this->m_width = 0.0f;
     this->m_height = 0.0f;
-    this->m_emitterType = 1;
+    this->m_emitterType = PET_PLANE_EMITTER;
     this->m_latitude = 0.0f;
     this->m_longitude = 0.0f;
 }
@@ -2808,7 +2813,7 @@ void CPlaneParticleEmitter::SetLongitude(float longitude) {
 CSphereParticleEmitter::CSphereParticleEmitter() {
     this->m_minRadius = 0.0f;
     this->m_maxRadius = 0.0f;
-    this->m_emitterType = 2;
+    this->m_emitterType = PET_SPHERE_EMITTER;
     this->m_latitude = 0.0f;
     this->m_longitude = 0.0f;
 }
@@ -3134,7 +3139,7 @@ CSplineParticleEmitter::CSplineParticleEmitter() {
     this->m_start = 0.0f;
     this->m_end = 0.0f;
     this->m_latitude = 0.0f;
-    this->m_emitterType = 3;
+    this->m_emitterType = PET_SPLINE_EMITTER;
     this->m_longitude = 0.0f;
     this->m_emitAtEnd = 0;
     this->m_ratePerUnit = 0.0f;

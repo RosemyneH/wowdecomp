@@ -1232,8 +1232,8 @@ static int32_t Script_GetSpellInfo(lua_State* L) {
 
     uint32_t powerCost = Spell_C_GetPowerCost(&spell, caster);
     uint32_t powerCostPerSecond = Spell_C_GetPowerCostPerSecond(&spell, caster);
-    uint32_t cost = powerCost / Spell_C_GetPowerDisplayMod(spell.m_powerType);
-    int32_t costPerSecond = powerCostPerSecond / Spell_C_GetPowerDisplayMod(spell.m_powerType);
+    uint32_t cost = powerCost / Spell_C_GetPowerDisplayMod(static_cast<POWER_TYPE>(spell.m_powerType));
+    int32_t costPerSecond = powerCostPerSecond / Spell_C_GetPowerDisplayMod(static_cast<POWER_TYPE>(spell.m_powerType));
 
     if (costPerSecond <= 0) {
         lua_pushnumber(L, cost);

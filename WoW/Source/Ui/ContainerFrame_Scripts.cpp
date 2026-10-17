@@ -461,12 +461,12 @@ int32_t Script_PickupContainerItem(lua_State* L) {
 
     if (virtualId) {
         switch (CGGameUI::m_cursorItemType) {
-            case 6:
+            case UICURSOR_LOOT:
                 player->PutLootInSlot(bag->m_guid, slot, virtualSlot);
                 CGGameUI::ClearCursor(1, 1);
                 return 0;
 
-            case 5:
+            case UICURSOR_MERCHANT:
                 if (CGMerchantInfo::m_merchant) {
                     CGPlayer_C::BuyItemInSlot(CGMerchantInfo::m_merchant, CGMerchantInfo::GetItem(virtualSlot), 1, bag->m_guid, slot);
                     CGGameUI::ClearCursor(1, 1);
@@ -474,7 +474,7 @@ int32_t Script_PickupContainerItem(lua_State* L) {
 
                 return 0;
 
-            case 11: {
+            case UICURSOR_GUILDBANK_ITEM: {
                 if (!CGGuildBankInfo::m_banker) {
                     return 0;
                 }

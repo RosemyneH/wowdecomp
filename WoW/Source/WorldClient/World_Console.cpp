@@ -18,12 +18,12 @@ int32_t CWorld::ConsoleCommand_WaterRipples(const char* command, const char* arg
 // VERIFY: 05445309 auto
 // OFFSET: 0x0077F6B0
 int32_t CWorld::ConsoleCommand_WaterParticulates(const char* command, const char* arguments) {
-    if (CWorld::enables & 0x2000000) {
+    if (CWorld::enables & Enable_Particulates) {
         ConsoleWrite("Particulates disabled", DEFAULT_COLOR);
-        CWorld::enables &= ~0x2000000;
+        CWorld::enables &= ~Enable_Particulates;
     } else {
         ConsoleWrite("Particulates enabled", DEFAULT_COLOR);
-        CWorld::enables |= 0x2000000;
+        CWorld::enables |= Enable_Particulates;
     }
 
     return 1;
@@ -32,12 +32,12 @@ int32_t CWorld::ConsoleCommand_WaterParticulates(const char* command, const char
 // VERIFY: 6b7e55e5 auto
 // OFFSET: 0x0077F650
 int32_t CWorld::ConsoleCommand_ShowCull(const char* command, const char* arguments) {
-    if (CWorld::enables & 0x20) {
+    if (CWorld::enables & Enable_Culling) {
         ConsoleWrite("Terrain culling disabled.", DEFAULT_COLOR);
-        CWorld::enables &= ~0x20;
+        CWorld::enables &= ~Enable_Culling;
     } else {
         ConsoleWrite("Terrain culling enabled.", DEFAULT_COLOR);
-        CWorld::enables |= 0x20;
+        CWorld::enables |= Enable_Culling;
     }
 
     return 1;
@@ -46,12 +46,12 @@ int32_t CWorld::ConsoleCommand_ShowCull(const char* command, const char* argumen
 // VERIFY: 70dab189 auto
 // OFFSET: 0x0077F7E0
 int32_t CWorld::ConsoleCommand_ShowShadow(const char* command, const char* arguments) {
-    if (CWorld::enables & 0x40) {
+    if (CWorld::enables & Enable_Shadow) {
         ConsoleWrite("Terrain shadow disabled.", DEFAULT_COLOR);
-        CWorld::enables &= ~0x40;
+        CWorld::enables &= ~Enable_Shadow;
     } else {
         ConsoleWrite("Terrain shadow enabled.", DEFAULT_COLOR);
-        CWorld::enables |= 0x40;
+        CWorld::enables |= Enable_Shadow;
     }
 
     return 1;
@@ -75,12 +75,12 @@ int32_t CWorld::ConsoleCommand_ShowSimpleDoodads(const char* command, const char
 // VERIFY: e24c8564 auto
 // OFFSET: 0x0077F5B0
 int32_t CWorld::ConsoleCommand_ShowDetailDoodads(const char* command, const char* arguments) {
-    if (CWorld::enables & 0x100000) {
+    if (CWorld::enables & Enable_DetailDoodads) {
         ConsoleWrite("Detail doodads disabled.", DEFAULT_COLOR);
-        CWorld::enables &= ~0x100000;
+        CWorld::enables &= ~Enable_DetailDoodads;
     } else {
         ConsoleWrite("Detail doodads enabled.", DEFAULT_COLOR);
-        CWorld::enables |= 0x100000;
+        CWorld::enables |= Enable_DetailDoodads;
     }
 
     return 1;
@@ -89,12 +89,12 @@ int32_t CWorld::ConsoleCommand_ShowDetailDoodads(const char* command, const char
 // VERIFY: b924ea7d auto
 // OFFSET: 0x0077F820
 int32_t CWorld::ConsoleCommand_ShowLowDetail(const char* command, const char* arguments) {
-    if (CWorld::enables & 0x4000000) {
+    if (CWorld::enables & Enable_LowDetail) {
         ConsoleWrite("Terrain low detail disabled.", DEFAULT_COLOR);
-        CWorld::enables &= ~0x4000000;
+        CWorld::enables &= ~Enable_LowDetail;
     } else {
         ConsoleWrite("Terrain low detail enabled.", DEFAULT_COLOR);
-        CWorld::enables |= 0x4000000;
+        CWorld::enables |= Enable_LowDetail;
     }
 
     return 1;

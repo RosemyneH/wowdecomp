@@ -211,14 +211,14 @@ int32_t TaxiNodeCost(uint32_t index) {
         return 0;
     }
 
-    int32_t reaction = taxiUnit->UnitReaction(player);
+    UNIT_REACTION reaction = taxiUnit->UnitReaction(player);
     FactionTemplateRec* factionTemplate = g_factionTemplateDB.GetRecord(taxiUnit->m_unit->m_unitFieldFactiontemplate);
 
     if (factionTemplate && !CGUnit_C::FactionHasReputation(factionTemplate->m_faction)) {
-        reaction = 3;
+        reaction = UNIT_REACTION_NEUTRAL;
     }
 
-    if (reaction > 3) {
+    if (reaction > UNIT_REACTION_NEUTRAL) {
         return node.m_costs[reaction - 3];
     }
 

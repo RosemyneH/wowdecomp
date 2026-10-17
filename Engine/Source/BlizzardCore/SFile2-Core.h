@@ -15,6 +15,20 @@
 class IOMpqUnit;
 class SEvent;
 
+enum SARCHIVE_TYPE : uint32_t {
+    SARCHIVE_MPQ = 0,
+    SARCHIVE_ZIP = 1,
+};
+
+enum SFILE_TYPE : uint32_t {
+    SFILE_PLAIN = 0,
+    SFILE_COMPRESSED = 1,
+    SFILE_PAQ = 2,
+    SFILE_OLD_SFILE = 3,
+    SFILE_ZIP_FILE = 4,
+    SFILE_MEMORY = 5,
+};
+
 namespace System_SFile {
 
 class ARCHIVEREC;
@@ -27,7 +41,7 @@ struct SOVERLAPPED {
 };
 
 struct SArchive {
-    /* 0000 */ uint32_t m_type;
+    /* 0000 */ SARCHIVE_TYPE m_type;
     /* 0004 */ System_SFile::ARCHIVEREC* m_archive;
 };
 
@@ -50,7 +64,7 @@ struct SFileStreamingStatus {
 
 class SFileImpl {
     public:
-    /* 0000 */ uint32_t m_type;
+    /* 0000 */ SFILE_TYPE m_type;
     /* 0004 */ Blizzard::File::StreamRecord* m_stream;
     /* 0008 */ SArchive* m_archive;
     /* 000C */ char* m_name;
@@ -63,7 +77,7 @@ class SFileImpl {
     /* 0028 */ uint32_t unused_0028;
     /* 002C */ SFileLock* m_lock;
 
-    SFileImpl(uint32_t type);
+    SFileImpl(SFILE_TYPE type);
     ~SFileImpl();
 };
 
@@ -124,7 +138,7 @@ struct SFileFatalInfo {
 
 struct FileHashEntry {
     /* 0000 */ std::string m_path;
-    /* 001C */ int32_t m_type;
+    /* 001C */ SFILE_TYPE m_type;
 };
 
 struct FileHashCompare {
@@ -169,8 +183,8 @@ bool ShutdownSoundCache();
 uint32_t SoundCacheThread(void* param);
 bool VerifyAndCacheFile(const char* name);
 bool WriteSoundCacheFile(const char* name, const void* data, uint32_t size);
-bool FindFile(const char* name, char* path, uint32_t size, uint32_t flags, uint32_t* type, System_SFile::ARCHIVEREC** archive);
-bool OldFindFile(const char* name, char* path, uint32_t size, uint32_t flags, uint32_t* type);
+bool FindFile(const char* name, char* path, uint32_t size, uint32_t flags, SFILE_TYPE* type, System_SFile::ARCHIVEREC** archive);
+bool OldFindFile(const char* name, char* path, uint32_t size, uint32_t flags, SFILE_TYPE* type);
 bool QueueAsyncOpen(const char* name);
 bool ScanDirForFileSystemHash(const char* directory);
 

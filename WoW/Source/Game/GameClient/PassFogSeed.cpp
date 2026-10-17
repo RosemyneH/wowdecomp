@@ -72,7 +72,7 @@ void PassFogSeed::Execute() {
     FFX::SetupGx(this->m_output);
 
     if (s_deviceRestored) {
-        GxSceneClear(1, CImVector(0, 0, 0, 0));
+        GxSceneClear(GxBufferBit_Color, CImVector(0, 0, 0, 0));
         s_deviceRestored = 0;
     }
 

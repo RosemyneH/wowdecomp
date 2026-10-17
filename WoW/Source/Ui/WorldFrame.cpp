@@ -1718,7 +1718,7 @@ void CGWorldFrame::OnWorldRender() {
         black.g = 0x00;
         black.r = 0x00;
         black.a = 0xFF;
-        GxSceneClear(3, black);
+        GxSceneClear(GxBufferBit_Color | GxBufferBit_Depth, black);
     }
 
     if (CWorld::enables & 0x20000000) {

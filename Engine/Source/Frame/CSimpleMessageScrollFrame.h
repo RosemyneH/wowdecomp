@@ -9,6 +9,7 @@
 #include "Engine/Source/Frame/CSimpleFrame.h"
 #include "Engine/Source/Frame/CSimpleHyperlinkedFrame.h"
 #include "Engine/Source/Frame/CSimpleRender.h"
+#include "Engine/Source/Frame/Types.h"
 #include "Engine/Source/FrameScript/FrameScript_Object.h"
 #include "Engine/Source/Storm/H/stpl.h"
 #include "Engine/Source/Tempest/CImVector.h"
@@ -85,7 +86,7 @@ class CSimpleMessageScrollFrame : public CSimpleHyperlinkedFrame, public CSimple
     /* 032C */ TSExplicitList<CSimpleHyperlinkButton, offsetof(CSimpleHyperlinkButton, m_hyperlinkLink)> m_hyperlinks;
     /* 0338 */ int32_t m_hyperlinksDirty;
     /* 033C */ FrameScript_Object::ScriptIx m_onMessageScrollChanged;
-    /* 0344 */ int32_t m_insertMode;
+    /* 0344 */ SimpleMessageFrameInsertMode m_insertMode;
     /* 0348 */ bool m_hyperlinksEnabled;
 
     virtual ~CSimpleMessageScrollFrame();
@@ -119,7 +120,7 @@ class CSimpleMessageScrollFrame : public CSimpleHyperlinkedFrame, public CSimple
     void ScrollToTop();
     int32_t ScrollUp();
     void SetFadeDuration(float duration);
-    void SetInsertMode(int32_t mode);
+    void SetInsertMode(SimpleMessageFrameInsertMode mode);
     void SetMaxLines(int32_t maxLines);
     void SetScrollOffset(int32_t offset);
     void SetTimeVisible(float seconds);

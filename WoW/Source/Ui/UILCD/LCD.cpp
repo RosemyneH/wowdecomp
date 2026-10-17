@@ -1038,7 +1038,7 @@ void CGLCD::DisplaySpellStats() {
     int32_t manaRegen = 0;
 
     if (!CGLCD::m_player->m_unit->m_unitFieldBytes0[3]) {
-        float regen = CGLCD::m_player->GetPowerRegen(0, false);
+        float regen = CGLCD::m_player->GetPowerRegen(POWER_TYPE_MANA, false);
         manaRegen = static_cast<int32_t>(floor((regen + 0.001f) * 5.0f));
     }
 

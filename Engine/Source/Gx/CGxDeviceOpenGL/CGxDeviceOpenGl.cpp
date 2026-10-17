@@ -3875,11 +3875,11 @@ void CGxDeviceOpenGl::SceneClear(uint32_t mask, CImVector color) {
 
     GLbitfield bits = 0;
 
-    if (mask & 0x1) {
+    if (mask & GxBufferBit_Color) {
         bits = GL_COLOR_BUFFER_BIT;
     }
 
-    if (mask & 0x2) {
+    if (mask & GxBufferBit_Depth) {
         bits |= GL_DEPTH_BUFFER_BIT;
     }
 

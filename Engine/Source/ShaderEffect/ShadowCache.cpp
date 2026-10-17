@@ -770,24 +770,24 @@ void CShadowCache::ClearBandTextures() {
 
         if (CShadowCache::s_extDynShadow.m_textures[1]) {
             GxRenderTargetSet(GxBuffers_Depth, TextureGetGxTex(CShadowCache::s_extDynShadow.m_textures[1], 1, nullptr), 0);
-            GxSceneClear(3, clearColor);
+            GxSceneClear(GxBufferBit_Color | GxBufferBit_Depth, clearColor);
         }
 
         if (CShadowCache::s_intDynShadow) {
             GxRenderTargetSet(GxBuffers_Depth, TextureGetGxTex(CShadowCache::s_intDynShadow, 1, nullptr), 0);
-            GxSceneClear(3, clearColor);
+            GxSceneClear(GxBufferBit_Color | GxBufferBit_Depth, clearColor);
         }
     } else {
         GxRenderTargetSet(GxBuffers_Depth, nullptr, 0);
 
         if (CShadowCache::s_extDynShadow.m_textures[0]) {
             GxRenderTargetSet(GxBuffers_Color, TextureGetGxTex(CShadowCache::s_extDynShadow.m_textures[0], 1, nullptr), 0);
-            GxSceneClear(3, clearColor);
+            GxSceneClear(GxBufferBit_Color | GxBufferBit_Depth, clearColor);
         }
 
         if (CShadowCache::s_intDynShadow) {
             GxRenderTargetSet(GxBuffers_Color, TextureGetGxTex(CShadowCache::s_intDynShadow, 1, nullptr), 0);
-            GxSceneClear(3, clearColor);
+            GxSceneClear(GxBufferBit_Color | GxBufferBit_Depth, clearColor);
         }
     }
 
@@ -809,12 +809,12 @@ void CShadowCache::ClearBandTextures() {
 
         if (band.m_textures[0]) {
             GxRenderTargetSet(buffer, TextureGetGxTex(band.m_textures[0], 1, nullptr), 0);
-            GxSceneClear(3, clearColor);
+            GxSceneClear(GxBufferBit_Color | GxBufferBit_Depth, clearColor);
         }
 
         if (band.m_textures[1]) {
             GxRenderTargetSet(buffer, TextureGetGxTex(band.m_textures[1], 1, nullptr), 0);
-            GxSceneClear(3, clearColor);
+            GxSceneClear(GxBufferBit_Color | GxBufferBit_Depth, clearColor);
         }
     }
 

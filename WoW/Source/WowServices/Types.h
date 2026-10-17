@@ -4,6 +4,12 @@
 #include <cstddef>
 #include <cstdint>
 
+enum WC_SEND_RESULT : int32_t {
+    WC_SEND_SENT = 0,
+    WC_SEND_QUEUED = 1,
+    WC_SEND_ERROR = 2,
+};
+
 enum BN_EVENT_ID {
     BN_EVENT_CONNECTED = 1,
     BN_EVENT_CANT_CONNECT = 2,

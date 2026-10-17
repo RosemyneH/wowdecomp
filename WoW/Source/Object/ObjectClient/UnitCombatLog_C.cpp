@@ -759,11 +759,11 @@ uint32_t GetCombatLogFlags(const WOWGUID& guid) {
             CGPlayer_C* player = ClntObjMgrGetActivePlayerObj();
 
             if (player) {
-                int32_t reaction = unit->UnitReaction(player);
+                UNIT_REACTION reaction = unit->UnitReaction(player);
 
-                if (reaction >= 4) {
+                if (reaction >= UNIT_REACTION_FRIENDLY) {
                     flags |= 0x10;
-                } else if (reaction <= 1) {
+                } else if (reaction <= UNIT_REACTION_HOSTILE) {
                     flags |= 0x40;
                     hostile = true;
                 }
@@ -953,7 +953,7 @@ void UnitCombatLog(const ATTACKROUNDINFO& info) {
         CGUnit_C* attacker = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(info.m_attacker, TYPEMASK_UNIT, __FILE__, __LINE__));
 
         if (attacker) {
-            attacker->ModifyPredictedPower(1, info.m_rageGained);
+            attacker->ModifyPredictedPower(POWER_TYPE_RAGE, info.m_rageGained);
         }
     }
 
@@ -1853,7 +1853,7 @@ void UnitCombatLogEnergize(const WOWGUID& casterGuid, const WOWGUID& targetGuid,
     CGUnit_C* target = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(targetGuid, TYPEMASK_UNIT, __FILE__, __LINE__));
 
     if (target) {
-        target->ModifyPredictedPower(powerType, amount);
+        target->ModifyPredictedPower(static_cast<POWER_TYPE>(powerType), amount);
     }
 
     SpellRec spell;
@@ -2060,7 +2060,7 @@ void SendHealEvent(int32_t event, const WOWGUID& source, const WOWGUID& dest, co
 // VERIFY: f15c546c manual
 // OFFSET: 0x00750A90
 void SendEnergizeEvent(int32_t event, const WOWGUID& source, const WOWGUID& dest, const SpellRec* spell, int32_t powerType, int32_t amount, uint32_t timeOffset) {
-    int32_t value = amount / Spell_C_GetPowerDisplayMod(powerType);
+    int32_t value = amount / Spell_C_GetPowerDisplayMod(static_cast<POWER_TYPE>(powerType));
     CombatLogEntry* entry = GetCombatLogEntry(source, dest, event, spell);
     entry->m_infoFlags |= 0x40;
     entry->m_info.m_values[0] = value;
@@ -2068,14 +2068,14 @@ void SendEnergizeEvent(int32_t event, const WOWGUID& source, const WOWGUID& dest
     QueueCombatLogEntry(entry, timeOffset);
 
     if (s_combatTextActiveUnit == dest) {
-        FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%d%s", s_combatTextTypes[(event == 36) + 28], value, GetPowerString(powerType));
+        FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%d%s", s_combatTextTypes[(event == 36) + 28], value, GetPowerString(static_cast<POWER_TYPE>(powerType)));
     }
 }
 
 // VERIFY: a94001c7 manual
 // OFFSET: 0x00750B60
 void AddPowerDrainEntry(int32_t event, const WOWGUID& source, const WOWGUID& dest, const SpellRec* spell, int32_t amount, int32_t powerType, int32_t extra, uint32_t timeOffset) {
-    uint32_t mod = Spell_C_GetPowerDisplayMod(powerType);
+    uint32_t mod = Spell_C_GetPowerDisplayMod(static_cast<POWER_TYPE>(powerType));
     int32_t value = amount / mod;
     int32_t extraValue = extra / mod;
     CombatLogEntry* entry = GetCombatLogEntry(source, dest, event, spell);
@@ -2086,11 +2086,11 @@ void AddPowerDrainEntry(int32_t event, const WOWGUID& source, const WOWGUID& des
     QueueCombatLogEntry(entry, timeOffset);
 
     if (s_combatTextActiveUnit == dest && value) {
-        FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%d%s", s_combatTextTypes[28], -value, GetPowerString(powerType));
+        FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%d%s", s_combatTextTypes[28], -value, GetPowerString(static_cast<POWER_TYPE>(powerType)));
     }
 
     if (s_combatTextActiveUnit == source && extraValue) {
-        FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%d%s", s_combatTextTypes[(event == 38) + 28], extraValue, GetPowerString(powerType));
+        FrameScript_SignalEvent(SCRIPT_EVENT_COMBAT_TEXT_UPDATE, "%s%d%s", s_combatTextTypes[(event == 38) + 28], extraValue, GetPowerString(static_cast<POWER_TYPE>(powerType)));
     }
 }
 
@@ -2101,15 +2101,15 @@ void UnitCombatLogPowerDrain(const WOWGUID& casterGuid, const WOWGUID& targetGui
         return;
     }
 
-    if (powerType == 4) {
-        CGChat::LogPetHappinessDecrease(casterGuid, targetGuid, amount / Spell_C_GetPowerDisplayMod(4));
+    if (powerType == POWER_TYPE_HAPPINESS) {
+        CGChat::LogPetHappinessDecrease(casterGuid, targetGuid, amount / Spell_C_GetPowerDisplayMod(POWER_TYPE_HAPPINESS));
         return;
     }
 
     CGUnit_C* target = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(targetGuid, TYPEMASK_UNIT, __FILE__, __LINE__));
 
     if (target) {
-        target->ModifyPredictedPower(powerType, -static_cast<int32_t>(amount));
+        target->ModifyPredictedPower(static_cast<POWER_TYPE>(powerType), -static_cast<int32_t>(amount));
     }
 
     SpellRec spell;

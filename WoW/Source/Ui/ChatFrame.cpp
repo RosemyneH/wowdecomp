@@ -4042,7 +4042,7 @@ void CGChat::EnterWorld() {
 
 // VERIFY: bff5dc80 manual
 // OFFSET: 0x0050BA10
-void CGChat::LogReactionChanged(int32_t faction, int32_t reaction) {
+void CGChat::LogReactionChanged(int32_t faction, UNIT_REACTION reaction) {
     FactionRec* rec = g_factionDB.GetRecord(faction);
 
     if (!rec) {

@@ -18,7 +18,7 @@
 #include "WoW/Source/WorldClient/World.h"
 
 // STATIC: 0x00ADB5D8
-static const uint32_t s_unitSoundChance[14] = { 70, 100, 60, 100, 100, 40, 100, 100, 100, 100, 100, 100, 100, 0 };
+static const uint32_t s_unitSoundChance[NUM_UNITSOUNDTYPES] = { 70, 100, 60, 100, 100, 40, 100, 100, 100, 100, 100, 100, 100, 0 };
 
 // STATIC: 0x00CA12D0
 static CVar* s_cvFootstepSounds;
@@ -100,36 +100,36 @@ void UnitSoundShutdown() {
 
 // VERIFY: 7e015e11 auto
 // OFFSET: 0x007461E0
-int32_t GetSoundID(const CreatureSoundDataRec* soundData, uint32_t soundType) {
+int32_t GetSoundID(const CreatureSoundDataRec* soundData, UNITSOUNDTYPE soundType) {
     if (!soundData) {
         return 0;
     }
 
     switch (soundType) {
-        case 0:
+        case UNITSOUNDTYPE_EXERTION:
             return soundData->m_soundExertionID;
-        case 1:
+        case UNITSOUNDTYPE_EXERTIONCRITICAL:
             return soundData->m_soundExertionCriticalID;
-        case 2:
-        case 13:
+        case UNITSOUNDTYPE_INJURY:
+        case UNITSOUNDTYPE_INJURY_FALL:
             return soundData->m_soundInjuryID;
-        case 3:
+        case UNITSOUNDTYPE_INJURYCRITICAL:
             return soundData->m_soundInjuryCriticalID;
-        case 4:
+        case UNITSOUNDTYPE_STUN:
             return soundData->m_soundStunID;
-        case 5:
+        case UNITSOUNDTYPE_STAND:
             return soundData->m_soundStandID;
-        case 7:
+        case UNITSOUNDTYPE_WINGFLAP:
             return soundData->m_soundWingFlapID;
-        case 8:
+        case UNITSOUNDTYPE_ALERT:
             return soundData->m_soundAlertID;
-        case 9:
+        case UNITSOUNDTYPE_INJURYCRUSHINGBLOW:
             return soundData->m_soundInjuryCrushingBlowID;
-        case 10:
+        case UNITSOUNDTYPE_WINGGLIDE:
             return soundData->m_soundWingGlideID;
-        case 11:
+        case UNITSOUNDTYPE_JUMPSTART:
             return soundData->m_soundJumpStartID;
-        case 12:
+        case UNITSOUNDTYPE_JUMPEND:
             return soundData->m_soundJumpEndID;
         default:
             return 0;
@@ -138,8 +138,8 @@ int32_t GetSoundID(const CreatureSoundDataRec* soundData, uint32_t soundType) {
 
 // VERIFY: dab78e5a auto
 // OFFSET: 0x007464A0
-int32_t CheckUnitSoundTimer(uint32_t soundType) {
-    if (soundType == 5) {
+int32_t CheckUnitSoundTimer(UNITSOUNDTYPE soundType) {
+    if (soundType == UNITSOUNDTYPE_STAND) {
         if (static_cast<int32_t>(FrameTime::s_curTimeMs - s_lastStandSoundTime - 10000) < 0) {
             return 0;
         }
@@ -264,12 +264,12 @@ void CGUnit_C::HandleFootfallAnimEvent(const C3Vector& position) {
 
 // VERIFY: 63312a72 manual
 // OFFSET: 0x00747310
-void CGUnit_C::PlayUnitSound(uint32_t soundType, int32_t force) {
+void CGUnit_C::PlayUnitSound(UNITSOUNDTYPE soundType, int32_t force) {
     if (!force && static_cast<uint32_t>((static_cast<uint64_t>(CRandom::uint32_(g_rndSeed)) * 101) >> 32) > s_unitSoundChance[soundType]) {
         return;
     }
 
-    if (soundType == 5) {
+    if (soundType == UNITSOUNDTYPE_STAND) {
         if (static_cast<int32_t>(FrameTime::s_curTimeMs - s_lastStandSoundTime - 10000) < 0) {
             return;
         }
@@ -303,7 +303,7 @@ void CGUnit_C::PlayUnitSound(uint32_t soundType, int32_t force) {
         SE2SoundKitProperties properties;
         properties.ResetToDefaults();
 
-        if (soundType == 7) {
+        if (soundType == UNITSOUNDTYPE_WINGFLAP) {
             properties.m_maxAudibleBehavior = 0;
         }
 
@@ -345,7 +345,7 @@ bool CGUnit_C::GetWeaponSwingType(bool offhand, int32_t* swingType) const {
 // OFFSET: 0x007465E0
 void CGUnit_C::PlayStandSound() {
     if (this->m_obj->m_guid != ClntObjMgrGetActivePlayer()) {
-        this->PlayUnitSound(5, 0);
+        this->PlayUnitSound(UNITSOUNDTYPE_STAND, 0);
     }
 }
 
@@ -583,15 +583,15 @@ void CGUnit_C::CheckLoopSound() {
 
 // VERIFY: c9c84a2c manual
 // OFFSET: 0x00746B30
-int32_t CGUnit_C::GetUnitSoundKitIndex(uint32_t soundType) const {
+int32_t CGUnit_C::GetUnitSoundKitIndex(UNITSOUNDTYPE soundType) const {
     switch (soundType) {
-        case 0:
-        case 1:
+        case UNITSOUNDTYPE_EXERTION:
+        case UNITSOUNDTYPE_EXERTIONCRITICAL:
             return (this->m_creatureCacheEntry && (this->m_creatureCacheEntry->m_typeFlags & 0x20)) ? 15 : 9;
 
-        case 2:
-        case 3:
-        case 9:
+        case UNITSOUNDTYPE_INJURY:
+        case UNITSOUNDTYPE_INJURYCRITICAL:
+        case UNITSOUNDTYPE_INJURYCRUSHINGBLOW:
             return (this->m_creatureCacheEntry && (this->m_creatureCacheEntry->m_typeFlags & 0x20)) ? 16 : 11;
 
         default:

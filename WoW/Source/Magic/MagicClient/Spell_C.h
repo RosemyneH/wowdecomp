@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include "WoW/Source/Object/Types.h"
 #include "Engine/Source/Storm/H/stpl.h"
 #include "Engine/Source/Tempest/C3Vector.h"
 #include "WoW/Source/Magic/MagicClient/PendingSpellCastData.h"
@@ -347,7 +348,7 @@ void Spell_C_ModifyCooldown(int32_t spellId, uint32_t time, int32_t index, int32
 void Spell_C_DelayCooldown(int32_t index, int32_t spellId, int32_t delay);
 bool Spell_C_GetSpellCooldown(int32_t spellId, int32_t petSpell, uint32_t* duration, uint32_t* start, uint32_t* enable);
 bool Spell_C_IsActiveSpell(const SpellRec* spell, const CGUnit_C* unit);
-uint32_t Spell_C_GetPowerDisplayMod(uint32_t powerType);
-const char* GetPowerString(uint32_t powerType);
+uint32_t Spell_C_GetPowerDisplayMod(POWER_TYPE powerType);
+const char* GetPowerString(POWER_TYPE powerType);
 
 #endif

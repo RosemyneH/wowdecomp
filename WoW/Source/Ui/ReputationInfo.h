@@ -4,6 +4,7 @@
 #include <cstdint>
 #include "Engine/Source/Storm/H/stpl.h"
 #include "WoW/Source/Net/Types.h"
+#include "WoW/Source/Object/ObjectClient/Types.h"
 
 class CDataStore;
 
@@ -35,7 +36,7 @@ struct FactionHeader {
 
 struct ForcedReaction {
     /* 0000 */ int32_t m_factionId;
-    /* 0004 */ int32_t m_reaction;
+    /* 0004 */ UNIT_REACTION m_reaction;
 };
 
 struct FACTION : public TSHashObject<FACTION, HASHKEY_NONE> {
@@ -46,7 +47,7 @@ class CGReputationInfo {
     public:
     static TSGrowableArray<const FactionRec*>* GetFactionChildren(int32_t faction);
     static FactionStanding m_factionStandings[128];
-    static const int32_t m_reactionThresholds[9];
+    static const int32_t m_reactionThresholds[NUM_UNIT_REACTIONS + 1];
     static FactionHeader* m_headers[64];
     static uint32_t m_numHeaders;
     static uint32_t m_numFactions;
@@ -66,8 +67,8 @@ class CGReputationInfo {
     static bool IsFactionInactive(uint32_t index);
     static void InitializeGame();
     static void ShutdownGame();
-    static bool GetForcedReaction(int32_t faction, int32_t* reaction);
-    static int32_t GetFactionStandingReaction(int32_t faction);
+    static bool GetForcedReaction(int32_t faction, UNIT_REACTION* reaction);
+    static UNIT_REACTION GetFactionStandingReaction(int32_t faction);
     static bool IsAtWar(int32_t faction);
     static void SetAtWar(int32_t faction, bool atWar);
     static void SetWatchedFaction(int32_t faction);

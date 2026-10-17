@@ -84,7 +84,7 @@ static int32_t s_chunkCacheIndex;
 // VERIFY: 3e6cfe40 auto
 // OFFSET: 0x00547120
 void CGWorldMap::EnterWorld() {
-    ClntObjMgrSetObjMirrorHandler(ClntObjMgrGetActivePlayer(), ID_PLAYER, 0xDF4, 0x200, PlayerExploredZonesUpdateHandler, nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
+    ClntObjMgrSetObjMirrorHandler(ClntObjMgrGetActivePlayer(), ID_PLAYER, 0xDF4, 0x200, PlayerExploredZonesUpdateHandler, nullptr, HANDLER_PRIORITY_NORMAL, 0);
 }
 
 // VERIFY: ceb82748 auto

@@ -449,7 +449,7 @@ static int32_t Script_DeclineArenaTeam(lua_State* L) {
 // VERIFY: 3d89e6f6 auto
 // OFFSET: 0x00522950
 static int32_t Script_DropCursorMoney(lua_State* L) {
-    if (CGGameUI::m_cursorMoney && CGGameUI::m_hasControl && CGGameUI::m_cursorItemType == 2) {
+    if (CGGameUI::m_cursorMoney && CGGameUI::m_hasControl && CGGameUI::m_cursorItemType == UICURSOR_MONEY) {
         CGGameUI::ClearCursor(1, 1);
     }
 
@@ -480,7 +480,7 @@ static int32_t Script_Screenshot(lua_State* L) {
 // VERIFY: e7e4ff0d auto
 // OFFSET: 0x00515100
 static int32_t Script_CursorHasItem(lua_State* L) {
-    if (CGGameUI::m_cursorItemType == 1 || CGGameUI::m_cursorItemType == 9) {
+    if (CGGameUI::m_cursorItemType == UICURSOR_ITEM || CGGameUI::m_cursorItemType == UICURSOR_AMMO) {
         lua_pushnumber(L, 1.0);
         return 1;
     }
@@ -492,7 +492,7 @@ static int32_t Script_CursorHasItem(lua_State* L) {
 // VERIFY: e744d727 auto
 // OFFSET: 0x00515140
 static int32_t Script_CursorHasSpell(lua_State* L) {
-    if (CGGameUI::m_cursorItemType == 3) {
+    if (CGGameUI::m_cursorItemType == UICURSOR_SPELL) {
         lua_pushnumber(L, 1.0);
     } else {
         lua_pushnil(L);
@@ -504,7 +504,7 @@ static int32_t Script_CursorHasSpell(lua_State* L) {
 // VERIFY: b1fc85d9 auto
 // OFFSET: 0x00515180
 static int32_t Script_CursorHasMacro(lua_State* L) {
-    if (CGGameUI::m_cursorItemType == 8) {
+    if (CGGameUI::m_cursorItemType == UICURSOR_MACRO) {
         lua_pushnumber(L, 1.0);
     } else {
         lua_pushnil(L);
@@ -516,7 +516,7 @@ static int32_t Script_CursorHasMacro(lua_State* L) {
 // VERIFY: 2230e17f auto
 // OFFSET: 0x005151C0
 static int32_t Script_CursorHasMoney(lua_State* L) {
-    if (CGGameUI::m_cursorItemType == 2) {
+    if (CGGameUI::m_cursorItemType == UICURSOR_MONEY) {
         lua_pushnumber(L, 1.0);
     } else {
         lua_pushnil(L);
@@ -2917,7 +2917,7 @@ static int32_t Script_ResetCursor(lua_State* L) {
 // OFFSET: 0x00515200
 static int32_t Script_GetCursorInfo(lua_State* L) {
     switch (CGGameUI::m_cursorItemType) {
-        case 1: {
+        case UICURSOR_ITEM: {
             CGItem_C* item = static_cast<CGItem_C*>(ClntObjMgrObjectPtr(CGGameUI::GetCursorItem(), TYPEMASK_ITEM, __FILE__, __LINE__));
 
             if (!item) {
@@ -2930,12 +2930,12 @@ static int32_t Script_GetCursorInfo(lua_State* L) {
             return 3;
         }
 
-        case 2:
+        case UICURSOR_MONEY:
             lua_pushstring(L, "money");
             lua_pushnumber(L, CGGameUI::m_cursorMoney);
             return 2;
 
-        case 3: {
+        case UICURSOR_SPELL: {
             int32_t spellId = CGGameUI::m_cursorSpell;
             SpellRec spell;
             g_spellDB.GetRecord(spellId, &spell);
@@ -2975,14 +2975,14 @@ static int32_t Script_GetCursorInfo(lua_State* L) {
             return 3;
         }
 
-        case 5:
+        case UICURSOR_MERCHANT:
             lua_pushstring(L, "merchant");
             lua_pushnumber(L, CGGameUI::m_cursorVirtualSlot + 1);
             return 2;
 
-        case 7:
-        case 9:
-        case 11: {
+        case UICURSOR_ACTIONBAR:
+        case UICURSOR_AMMO:
+        case UICURSOR_GUILDBANK_ITEM: {
             int32_t itemId = CGGameUI::m_cursorVirtualID;
             WOWGUID none = WOWGUID();
             ItemStats_C* stats = g_itemDBCache.GetRecord(itemId, none, nullptr, nullptr, false);
@@ -2997,17 +2997,17 @@ static int32_t Script_GetCursorInfo(lua_State* L) {
             return 3;
         }
 
-        case 8:
+        case UICURSOR_MACRO:
             lua_pushstring(L, "macro");
             lua_pushnumber(L, CGUIMacros::GetMacroIndexByID(CGGameUI::m_cursorMacro) + 1);
             return 2;
 
-        case 12:
+        case UICURSOR_GUILDBANK_MONEY:
             lua_pushstring(L, "guildbankmoney");
             lua_pushnumber(L, CGGameUI::m_cursorMoney);
             return 2;
 
-        case 13: {
+        case UICURSOR_EQUIPMENT_SET: {
             const EQUIPMENT_SET* set = CGEquipmentManager::GetSetByID(CGGameUI::m_cursorEquipmentSet);
 
             if (!set) {
@@ -4858,7 +4858,7 @@ static int32_t Script_DropItemOnUnit(lua_State* L) {
         return 0;
     }
 
-    WOWGUID cursor = CGGameUI::m_cursorItemType == 1 ? CGGameUI::m_cursorItem : WOWGUID();
+    WOWGUID cursor = CGGameUI::m_cursorItemType == UICURSOR_ITEM ? CGGameUI::m_cursorItem : WOWGUID();
     CGItem_C* item = static_cast<CGItem_C*>(ClntObjMgrObjectPtr(cursor, TYPEMASK_ITEM, __FILE__, __LINE__));
 
     if (!item) {
@@ -5810,7 +5810,7 @@ static int32_t Script_PickupItem(lua_State* L) {
 
     ItemRec* rec = g_itemDB.GetRecord(itemId);
     int32_t displayId = rec ? rec->m_displayInfoID : 0;
-    CGGameUI::SetCursorVirtualItem(itemId, displayId, 0, 7, 0);
+    CGGameUI::SetCursorVirtualItem(itemId, displayId, 0, UICURSOR_ACTIONBAR, 0);
     return 0;
 }
 

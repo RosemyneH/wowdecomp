@@ -577,13 +577,13 @@ const char* ClientServices::GetErrorToken(int32_t errorCode) {
 // VERIFY: c031479f auto
 // OFFSET: 0x006B0F90
 int32_t ClientServices::CharacterValidateName(const char* name) {
-    return ValidateCharacterNameConst(s_locale, name, true, true, true, true, 0) + 87;
+    return static_cast<int32_t>(ValidateCharacterNameConst(s_locale, name, true, true, true, true, 0)) + CHAR_NAME_SUCCESS;
 }
 
 // VERIFY: ca1062a6 auto
 // OFFSET: 0x006B0FC0
 int32_t ClientServices::CharacterValidateDeclension(const char* name, const char* declension) {
-    return ValidateCharacterNameDeclension(s_locale, name, declension) + 87;
+    return static_cast<int32_t>(ValidateCharacterNameDeclension(s_locale, name, declension)) + CHAR_NAME_SUCCESS;
 }
 
 // VERIFY: ae977242 manual

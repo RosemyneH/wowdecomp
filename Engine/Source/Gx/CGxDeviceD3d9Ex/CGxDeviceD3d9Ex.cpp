@@ -3196,9 +3196,9 @@ void CGxDeviceD3d9Ex::SceneClear(uint32_t mask, CImVector color) {
         return;
     }
 
-    DWORD flags = (mask & 0x1) != 0;
+    DWORD flags = (mask & GxBufferBit_Color) != 0;
 
-    if (mask & 0x2) {
+    if (mask & GxBufferBit_Depth) {
         flags |= D3DCLEAR_ZBUFFER;
     }
 

@@ -173,7 +173,7 @@ void CWorldScene::Render(const C3Vector& cameraPos, float time) {
         clearColor.a = 0x00;
     }
 
-    GxSceneClear(3, clearColor);
+    GxSceneClear(GxBufferBit_Color | GxBufferBit_Depth, clearColor);
     CWorldScene::s_unk_B2EB68.Render();
 
     if (CWorldScene::camTargetEntity) {

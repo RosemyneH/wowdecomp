@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include "Engine/Source/Base/OsTypes.h"
+#include "WoW/Source/Object/ObjectClient/Types.h"
 #include "Engine/Source/Storm/H/stpl.h"
 #include "WoW/Source/Object/Object.h"
 #include "WoW/Source/Object/WGUID.h"
@@ -187,7 +188,7 @@ class CGObject_C : public CGObject, public TSHashObject<CGObject_C, CHashKeyGUID
     C3Vector GetModelPosition();
     int32_t GetQuestGiverCursor(int32_t highlighted);
     void HandleScaleUpdate(float scale);
-    void HideHighlightType(int32_t type);
+    void HideHighlightType(HIGHLIGHTTYPE type);
     void AddWorldObject();
     int32_t IsObjectLocked();
     int32_t IsObjectModelLoaded();
@@ -205,7 +206,7 @@ class CGObject_C : public CGObject, public TSHashObject<CGObject_C, CHashKeyGUID
     void SetQuestStatus(uint32_t status);
     void SetStorage(uint32_t* storage, uint32_t* saved);
     void SetTypeID(OBJECT_TYPE_ID typeId);
-    void ShowHighlightType(int32_t type);
+    void ShowHighlightType(HIGHLIGHTTYPE type);
     void UpdateEffectAttachments();
     void Fadeout();
     static void __stdcall BuildSelectionRotMatrix(C44Matrix* matrix, const C3Vector* position);

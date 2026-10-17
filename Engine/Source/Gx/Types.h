@@ -82,6 +82,11 @@ enum EGxBuffer {
     GxBuffers_Last = 2,
 };
 
+enum EGxBufferBit : uint32_t {
+    GxBufferBit_Color = 0x1,
+    GxBufferBit_Depth = 0x2,
+};
+
 enum EGxOverride {
     GxOverride_PixelShader = 0,
     GxOverride_Unk1 = 1,

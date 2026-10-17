@@ -7,6 +7,7 @@
 #include "Engine/Source/Storm/H/stpl.h"
 #include "WoW/Source/Object/Movement.h"
 #include "WoW/Source/Object/ObjectClient/Object_C.h"
+#include "WoW/Source/Object/ObjectClient/Types.h"
 #include "WoW/Source/Object/ObjectClient/UnitCombat_C.h"
 #include "WoW/Source/Object/Unit.h"
 #include "WoW/Source/Object/Combat.h"
@@ -383,7 +384,7 @@ class CGUnit_C : public CGObject_C, public CGUnit {
     /* 0FA8 */ CM2Model* m_precastMissileModel;
     /* 0FAC */ uint8_t m_precastCastCount;
     /* 0FB0 */ int32_t m_predictedHealth;
-    /* 0FB4 */ int32_t m_predictedPower [7];
+    /* 0FB4 */ int32_t m_predictedPower [NUM_POWER_TYPES];
     /* 0FD0 */ uint32_t m_powerRegenRemainder;
     /* 0FD4 */ uint32_t m_manaRegenInterruptTime;
     /* 0FD8 */ WOWGUID m_highestThreatGuid;
@@ -393,7 +394,7 @@ class CGUnit_C : public CGObject_C, public CGUnit {
     virtual void GetDNDText(char* buffer, uint32_t size) const;
     virtual void GetGMText(char* buffer, uint32_t size) const;
     virtual void GetDevText(char* buffer, uint32_t size) const;
-    virtual void PlayUnitSound(uint32_t soundType, int32_t a2);
+    virtual void PlayUnitSound(UNITSOUNDTYPE soundType, int32_t a2);
     virtual void PlayFoleySound();
     virtual uint32_t GetImpactType() const;
     virtual const CGUnitVirtualItem* GetDefendingItem() const;
@@ -554,7 +555,7 @@ class CGUnit_C : public CGObject_C, public CGUnit {
     uint64_t GetCreatorGuid() const;
     bool CanGainXP() const;
     int32_t IsPVPLeader() const;
-    uint32_t GetBasePowerForType(int32_t powerType) const;
+    uint32_t GetBasePowerForType(POWER_TYPE powerType) const;
     uint32_t GetCanFly() const;
     int32_t IsInMeleeRange(CGUnit_C* target) const;
     bool IsClientControlled() const;
@@ -597,7 +598,7 @@ class CGUnit_C : public CGObject_C, public CGUnit {
     void PlayStandSound();
     int32_t GetNewNPCSoundCount(int32_t count, int32_t* soundKitId, int32_t* soundIndex) const;
     void PlayEmoteStateSound(const C3Vector* position);
-    int32_t GetUnitSoundKitIndex(uint32_t soundType) const;
+    int32_t GetUnitSoundKitIndex(UNITSOUNDTYPE soundType) const;
     void VehiclePassengerOnUninit();
     int32_t HasVehicleTransport() const;
     int32_t IsSeatedInVehicle() const;
@@ -654,7 +655,7 @@ class CGUnit_C : public CGObject_C, public CGUnit {
     void ChooseDefaultAnim(uint32_t& anim, int32_t force) const;
     void UpdateSelectionRadius();
     void OnRemoteMissileTrajectoryCollision(MissileCollisionData* data);
-    int32_t UnitReaction(const CGCorpse_C* corpse) const;
+    UNIT_REACTION UnitReaction(const CGCorpse_C* corpse) const;
     CreatureSoundDataRec* GetSoundData() const;
     void PlayNPCSound(bool greeting);
     bool CanCurrentFormMount() const;
@@ -764,7 +765,7 @@ class CGUnit_C : public CGObject_C, public CGUnit {
     void HandleNPCFeedback();
     CVehicleCamera_C* CreateVehicleCamera();
     bool IsOutdoors() const;
-    int32_t GetPredictedPower(int32_t powerType) const;
+    int32_t GetPredictedPower(POWER_TYPE powerType) const;
     bool IgnoresAuraState(const SpellRec* spell) const;
     bool CheckStealthRules(const SpellRec* spell, int32_t* reason) const;
     bool CheckShapeshiftRules(const SpellRec* spell, int32_t* reason);
@@ -780,7 +781,7 @@ class CGUnit_C : public CGObject_C, public CGUnit {
     void RemoveThreat(const WOWGUID& guid);
     void AddWorldThreatUpdateText(int32_t oldStatus, int32_t newStatus);
     void OnAiReaction(int32_t reaction);
-    void DoPowerRegen(int32_t powerType, uint32_t elapsed);
+    void DoPowerRegen(POWER_TYPE powerType, uint32_t elapsed);
     void DoPowerRegen(uint32_t elapsed);
     char* GetUnitChosenTitle(char* buffer, uint32_t size, int32_t showTitle, int32_t* lines);
     void RequestTalkEmote(int32_t index);
@@ -849,7 +850,7 @@ class CGUnit_C : public CGObject_C, public CGUnit {
     void OnPvPFlagChanged(uint8_t oldFlags);
     void OnVirtualItemChanged(uint32_t slot, int32_t oldItemId);
     void OnVisFlagChanged(uint8_t oldFlags);
-    void SetPredictedPower(int32_t powerType, int32_t value);
+    void SetPredictedPower(POWER_TYPE powerType, int32_t value);
     void SetSheatheState(uint32_t showWeapons, int32_t a2, int32_t a3);
     void UpdateClientStandState(uint32_t standState);
     void UpdateModelScale(const CreatureModelDataRec* modelRec);
@@ -878,7 +879,7 @@ class CGUnit_C : public CGObject_C, public CGUnit {
     uint32_t ResolveAnimForModel(uint32_t animId, CM2Model* model);
     void ClearLockedTarget();
     void PlayDeathAnimation(int32_t force);
-    static int32_t UnitReaction(int32_t factionTemplate, const CGUnit_C* unit);
+    static UNIT_REACTION UnitReaction(int32_t factionTemplate, const CGUnit_C* unit);
     bool IsFriendly(const CGUnit_C* unit) const;
     bool IsHatedTowards(const CGUnit_C* unit) const;
     uint64_t GetComboPointTarget() const;
@@ -899,7 +900,7 @@ class CGUnit_C : public CGObject_C, public CGUnit {
     void UpdateBaseAnimation(uint32_t animFlags, int32_t mask);
     void UpdatePartyMemberPetState();
     void ExecuteClientControlUpdate(WOWGUID guid, uint8_t state);
-    int32_t UnitReaction(const CGUnit_C* unit) const;
+    UNIT_REACTION UnitReaction(const CGUnit_C* unit) const;
     float GetPlayerDiscount(const CGUnit_C* unit) const;
     void SetAttacking(WOWGUID guid);
     void UpdateObjectEffectMovementStates();
@@ -987,7 +988,7 @@ class CGUnit_C : public CGObject_C, public CGUnit {
     void PlayWoundAnimKit(int32_t crit);
     void ShowBloodSpurt(const WOWGUID& attacker, int32_t a3);
     UnitBloodRec* GetBloodRecord();
-    void ModifyPredictedPower(int32_t powerType, int32_t delta);
+    void ModifyPredictedPower(POWER_TYPE powerType, int32_t delta);
     void AddWorldText(const WOWGUID& source, int32_t reason, const SpellRec* spell, bool periodic);
     void AddWorldHealingText(const WOWGUID& source, int32_t amount, const SpellRec* spell, bool crit, int32_t unused_a6);
     void AddWorldHonorGainText(int32_t honor, int32_t pvpRank, const char* victimName);
@@ -1029,7 +1030,7 @@ class CGUnit_C : public CGObject_C, public CGUnit {
 };
 
 void CreatureQueryCallback(int32_t id, const WOWGUID& guid, void* param, bool success);
-int32_t FactionTemplateReaction(const FactionTemplateRec* faction, const FactionTemplateRec* other);
+UNIT_REACTION FactionTemplateReaction(const FactionTemplateRec* faction, const FactionTemplateRec* other);
 int32_t Packet_SMSG_MULTIPLE_PACKETS(void* param, NETMESSAGE msgId, uint32_t time, CDataStore* msg);
 int32_t Packet_SMSG_UNKNOWN_1240(void* param, NETMESSAGE msgId, uint32_t time, CDataStore* msg);
 int32_t Packet_SMSG_PET_DISMISS_SOUND(void* param, NETMESSAGE msgId, uint32_t time, CDataStore* msg);

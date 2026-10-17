@@ -871,7 +871,7 @@ void CSimpleMovieFrame::Render() {
     clearColor.g = 0;
     clearColor.r = 0;
     clearColor.a = 0xFF;
-    GxSceneClear(3, clearColor);
+    GxSceneClear(GxBufferBit_Color | GxBufferBit_Depth, clearColor);
 
     C44Matrix view;
     C44Matrix projection;

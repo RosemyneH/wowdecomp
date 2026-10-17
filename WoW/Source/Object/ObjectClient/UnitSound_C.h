@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include "WoW/Source/Object/ObjectClient/Types.h"
 
 class CreatureSoundDataRec;
 
@@ -15,7 +16,7 @@ struct DEATTHUDSOUNDINFO {
 
 void UnitSoundInitialize();
 void UnitSoundShutdown();
-int32_t GetSoundID(const CreatureSoundDataRec* soundData, uint32_t soundType);
-int32_t CheckUnitSoundTimer(uint32_t soundType);
+int32_t GetSoundID(const CreatureSoundDataRec* soundData, UNITSOUNDTYPE soundType);
+int32_t CheckUnitSoundTimer(UNITSOUNDTYPE soundType);
 
 #endif

@@ -171,7 +171,7 @@ static TSList<SpellInTransit, TSGetLink<SpellInTransit>> s_spellsInTransit;
 static uint32_t s_nextHistoryCleanup;
 
 // STATIC: 0x00AF5220
-static uint32_t s_powerDisplayMod[7] = { 1, 10, 1, 1, 1000, 1, 10 };
+static uint32_t s_powerDisplayMod[NUM_POWER_TYPES] = { 1, 10, 1, 1, 1000, 1, 10 };
 
 // STATIC: 0x00D397D4
 static uint8_t s_cursorWorldObjectHousing;
@@ -332,7 +332,7 @@ int32_t Spell_C_GetPowerCost(const SpellRec* spell, const CGUnit_C* unit) {
     int32_t cost = spell->m_manaCost + spell->m_manaCostPerLevel * (static_cast<int32_t>(rank / 5) - spell->m_baseLevel);
 
     if (spell->m_manaCostPct) {
-        cost += spell->m_manaCostPct * static_cast<int32_t>(unit->GetBasePowerForType(spell->m_powerType)) / 100;
+        cost += spell->m_manaCostPct * static_cast<int32_t>(unit->GetBasePowerForType(static_cast<POWER_TYPE>(spell->m_powerType))) / 100;
     }
 
     if ((spell->m_attributesExD & 0x400) && const_cast<CGUnit_C*>(unit)->IsActivePlayer()) {
@@ -420,14 +420,14 @@ bool Spell_C_HaveSpellPower(CGUnit_C* unit, const SpellRec* spell) {
         return false;
     }
 
-    int32_t powerType = spell->m_powerType;
+    POWER_TYPE powerType = static_cast<POWER_TYPE>(spell->m_powerType);
 
-    if (powerType == -2) {
+    if (powerType == POWER_TYPE_HEALTH) {
         int32_t cost = Spell_C_GetPowerCost(spell, unit);
         return cost < static_cast<int32_t>(unit->GetPredictedHealth());
     }
 
-    if (powerType == 5) {
+    if (powerType == POWER_TYPE_RUNES) {
         return unit->IsActivePlayer() && CGRuneInfo::HasRunesForSpell(spell->m_id, nullptr);
     }
 
@@ -1032,20 +1032,20 @@ void PendingSpellCast::OnSpellStartPacket(CDataStore* msg) {
     }
 
     if (hasPower && !(unit->m_unit->m_unitFieldFlags2 & 0x100)) {
-        if (spell.m_powerType == -2) {
+        if (spell.m_powerType == POWER_TYPE_HEALTH) {
             unit->SetPredictedHealth(power);
-        } else if (spell.m_powerType == 5) {
+        } else if (spell.m_powerType == POWER_TYPE_RUNES) {
             if (caster == ClntObjMgrGetActivePlayer() && hasRunes) {
                 CGRuneInfo::SetPredictedRunes(runesBefore, runesAfter, runeCooldowns);
             }
         } else {
-            unit->SetPredictedPower(spell.m_powerType, power);
+            unit->SetPredictedPower(static_cast<POWER_TYPE>(spell.m_powerType), power);
         }
 
-        if (spell.m_powerType == -2) {
+        if (spell.m_powerType == POWER_TYPE_HEALTH) {
             unit->SetPredictedHealth(power);
         } else {
-            unit->SetPredictedPower(spell.m_powerType, power);
+            unit->SetPredictedPower(static_cast<POWER_TYPE>(spell.m_powerType), power);
         }
     }
 
@@ -1142,8 +1142,8 @@ int32_t Packet_Group_30(void* param, NETMESSAGE msgId, uint32_t time, CDataStore
 
 // VERIFY: 2ad579bf manual
 // OFFSET: 0x00722C50
-void CGUnit_C::SetPredictedPower(int32_t powerType, int32_t value) {
-    uint32_t maximum = powerType == -2 ? this->m_unit->m_unitFieldMaxhealth : this->m_unit->m_unitFieldMaxpower[powerType];
+void CGUnit_C::SetPredictedPower(POWER_TYPE powerType, int32_t value) {
+    uint32_t maximum = powerType == POWER_TYPE_HEALTH ? this->m_unit->m_unitFieldMaxhealth : this->m_unit->m_unitFieldMaxpower[powerType];
 
     if (static_cast<int32_t>(maximum) < value) {
         value = maximum;
@@ -1892,20 +1892,20 @@ void PendingSpellCast::OnSpellGo(CDataStore* msg) {
     }
 
     if (unit && hasPower) {
-        if (spell.m_powerType == -2) {
+        if (spell.m_powerType == POWER_TYPE_HEALTH) {
             if (!(unit->m_unit->m_unitFieldFlags2 & 0x100)) {
                 unit->SetPredictedHealth(power);
             }
-        } else if (spell.m_powerType == 5) {
+        } else if (spell.m_powerType == POWER_TYPE_RUNES) {
             if (caster == ClntObjMgrGetActivePlayer() && hasRunes) {
                 CGRuneInfo::SetPredictedRunes(runesBefore, runesAfter, runeCooldowns);
             }
         } else {
             if (!(unit->m_unit->m_unitFieldFlags2 & 0x100)) {
-                unit->SetPredictedPower(spell.m_powerType, power);
+                unit->SetPredictedPower(static_cast<POWER_TYPE>(spell.m_powerType), power);
             }
 
-            if (spell.m_powerType == 0) {
+            if (spell.m_powerType == POWER_TYPE_MANA) {
                 unit->SetManaRegenInterrupt();
             }
         }
@@ -2400,7 +2400,7 @@ void PendingSpellCast::OnSpellGo(CDataStore* msg) {
 
 // VERIFY: 2af0e265 manual
 // OFFSET: 0x007FDE00
-uint32_t Spell_C_GetPowerDisplayMod(uint32_t powerType) {
+uint32_t Spell_C_GetPowerDisplayMod(POWER_TYPE powerType) {
     if (static_cast<int32_t>(powerType) < 0) {
         return 1;
     }
@@ -2410,10 +2410,10 @@ uint32_t Spell_C_GetPowerDisplayMod(uint32_t powerType) {
 
 // VERIFY: f2862d5e auto
 // OFFSET: 0x007FE4B0
-const char* GetPowerString(uint32_t powerType) {
-    const char* tokens[7] = { "MANA", "RAGE", "FOCUS", "ENERGY", "HAPPINESS", "RUNES", "RUNIC_POWER" };
+const char* GetPowerString(POWER_TYPE powerType) {
+    const char* tokens[NUM_POWER_TYPES] = { "MANA", "RAGE", "FOCUS", "ENERGY", "HAPPINESS", "RUNES", "RUNIC_POWER" };
 
-    if (powerType < sizeof(tokens) / sizeof(tokens[0])) {
+    if (static_cast<uint32_t>(powerType) < sizeof(tokens) / sizeof(tokens[0])) {
         return tokens[powerType];
     }
 
@@ -5850,7 +5850,7 @@ void ShowPetSpellFailed(PendingSpellCast* cast, const SpellRec* spell, int32_t r
                 char power[128];
                 FormatString(display->m_globalStringBaseTag, -1, GENDER_NOT_APPLICABLE, power, 127);
                 CGGameUI::DisplayError(ERR_OUT_OF_POWER_DISPLAY, power);
-            } else if (spell->m_powerType == -2) {
+            } else if (spell->m_powerType == POWER_TYPE_HEALTH) {
                 CGGameUI::DisplayError(ERR_OUT_OF_HEALTH);
             } else {
                 CGGameUI::DisplayError(s_powerErrors[spell->m_powerType]);
@@ -6430,12 +6430,12 @@ void Spell_C_SpellFailed(PendingSpellCast* cast, const SpellRec* spell, int32_t 
 
             uint32_t powerType = player->m_unit->m_unitFieldBytes0[3];
 
-            if (powerType > 6) {
+            if (powerType > POWER_TYPE_RUNIC_POWER) {
                 Spell_C_FailPendingCast(cast, spell, 27);
                 return;
             }
 
-            const char* power = FrameScript_GetText(GetPowerString(powerType), -1, GENDER_NOT_APPLICABLE);
+            const char* power = FrameScript_GetText(GetPowerString(static_cast<POWER_TYPE>(powerType)), -1, GENDER_NOT_APPLICABLE);
 
             if (!power || !*power) {
                 Spell_C_FailPendingCast(cast, spell, 27);
@@ -6507,7 +6507,7 @@ void Spell_C_SpellFailed(PendingSpellCast* cast, const SpellRec* spell, int32_t 
                 char power[128];
                 FormatString(display->m_globalStringBaseTag, -1, GENDER_NOT_APPLICABLE, power, 127);
                 CGGameUI::DisplayError(ERR_OUT_OF_POWER_DISPLAY, power);
-            } else if (spell->m_powerType == -2) {
+            } else if (spell->m_powerType == POWER_TYPE_HEALTH) {
                 error = ERR_OUT_OF_HEALTH;
             } else {
                 error = s_powerErrors[spell->m_powerType];
@@ -8450,7 +8450,7 @@ bool Spell_C_CastSpell(CGUnit_C* caster, int32_t spellId, const CGItem_C* item, 
     }
 
     if (item) {
-        SndInterfacePlayItemSound(2, const_cast<CGItem_C*>(item));
+        SndInterfacePlayItemSound(ITEMSOUND_USE, const_cast<CGItem_C*>(item));
     } else if (spell.m_attributes & 0x10) {
         SI2::PlaySoundKit("GAMEABILITYACTIVATE", nullptr, nullptr, nullptr);
     } else {

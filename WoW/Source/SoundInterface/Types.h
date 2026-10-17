@@ -4,6 +4,17 @@
 #include <cstddef>
 #include <cstdint>
 
+enum ITEMSOUNDTYPE : int32_t {
+    ITEMSOUND_PICKUP = 0,
+    ITEMSOUND_DROP = 1,
+    ITEMSOUND_USE = 2,
+    ITEMSOUND_UNKNOWN_3 = 3, // Historical close operation is unconfirmed in 3.3.5.
+    NUM_ITEMSOUNDS = 4,
+
+    // Unused 0.5.3 name for slot 3; its 3.3.5 meaning is unverified.
+    // ITEMSOUND_CLOSE = 3,
+};
+
 enum SI2_DSP_TYPE {
     SI2_DSP_TYPE_NONE = 0,
     SI2_DSP_TYPE_PITCHSHIFT = 1,

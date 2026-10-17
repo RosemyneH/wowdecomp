@@ -565,7 +565,7 @@ static void LoadingScreenPaint(void* param, const RECTF* rect, const RECTF* visi
 
     CImVector black;
     *reinterpret_cast<uint32_t*>(&black) = 0xFF000000;
-    GxSceneClear(1, black);
+    GxSceneClear(GxBufferBit_Color, black);
 
     float aspect = CoordinateGetAspectCompensation();
     float ratio = s_usingWideScreen ? s_wideAspect / s_normalAspect : 1.0f;

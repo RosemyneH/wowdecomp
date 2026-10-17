@@ -184,7 +184,7 @@ class CGPlayer_C : public CGUnit_C, public CGPlayer {
     static void __stdcall HandleActivateTaxiReply(uint32_t reply);
     static void __stdcall ServerBindConfirm(WOWGUID item, uint64_t srcContainer, uint32_t srcSlot, uint64_t dstContainer, uint8_t dstSlot);
     static void SellItem(WOWGUID vendor, WOWGUID item, uint32_t count);
-    static void __stdcall SetLootMethod(uint32_t method, WOWGUID master, uint32_t threshold);
+    static void __stdcall SetLootMethod(LOOT_METHOD method, WOWGUID master, uint32_t threshold);
     static void __stdcall SetPartyAssignment(uint8_t assignment, WOWGUID guid);
     static void __stdcall SilencePlayer(WOWGUID guid, bool silence);
     void StartTaxi(WOWGUID guid, uint32_t source, uint32_t destination);
@@ -240,7 +240,7 @@ class CGPlayer_C : public CGUnit_C, public CGPlayer {
     ~CGPlayer_C() override;
     void Disable() override;
     void OnSpellEffectClear(CEffect* effect) override;
-    void PlayUnitSound(uint32_t soundType, int32_t force) override;
+    void PlayUnitSound(UNITSOUNDTYPE soundType, int32_t force) override;
     void PlayFoleySound() override;
     const CGUnitVirtualItem* GetVirtualItem(uint32_t slot, bool ignoreDisarm) const override;
     uint32_t GetVirtualItemDisplayID(uint32_t slot) const override;

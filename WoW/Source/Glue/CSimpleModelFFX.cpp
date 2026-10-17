@@ -92,7 +92,7 @@ void CSimpleModelFFX::Render(void* arg) {
     clearColor.g = 0x00;
     clearColor.r = 0x00;
     clearColor.a = 0xFF;
-    GxSceneClear(3, clearColor);
+    GxSceneClear(GxBufferBit_Color | GxBufferBit_Depth, clearColor);
 
     int32_t params[3];
     params[0] = 0;
@@ -106,7 +106,7 @@ void CSimpleModelFFX::Render(void* arg) {
     clearColor.g = 0x00;
     clearColor.r = 0x00;
     clearColor.a = 0xFF;
-    GxSceneClear(3, clearColor);
+    GxSceneClear(GxBufferBit_Color | GxBufferBit_Depth, clearColor);
 
     if (model->m_model) {
         CSimpleModel::RenderModel(model);

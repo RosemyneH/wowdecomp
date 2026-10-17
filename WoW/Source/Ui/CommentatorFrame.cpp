@@ -10,6 +10,7 @@
 #include "Engine/Source/FrameScript/FrameScript.h"
 #include "WoW/Source/Object/ObjectClient/Unit_C.h"
 #include "WoW/Source/UIUtil/Camera.h"
+#include "WoW/Source/UIUtil/Types.h"
 #include "WoW/Source/Ui/Types.h"
 #include "WoW/Source/WorldClient/World.h"
 
@@ -31,17 +32,17 @@ void CGCommentator::UpdateCameraVelocity(uint32_t controlFlags, int32_t canContr
         return;
     }
 
-    int32_t forward = (controlFlags & 0x1000) != 0;
+    int32_t forward = (controlFlags & INPUT_MOVE_PLAYER_AUTORUN) != 0;
 
-    if (controlFlags & 0x10) {
+    if (controlFlags & INPUT_MOVE_PLAYER_FORWARD_KEY) {
         forward++;
     }
 
-    if ((controlFlags & 0x1) && (controlFlags & 0x2)) {
+    if ((controlFlags & INPUT_TURN_PLAYER) && (controlFlags & INPUT_TURN_CAMERA)) {
         forward++;
     }
 
-    if (controlFlags & 0x20) {
+    if (controlFlags & INPUT_MOVE_PLAYER_BACKWARD_KEY) {
         forward--;
     }
 
@@ -52,17 +53,17 @@ void CGCommentator::UpdateCameraVelocity(uint32_t controlFlags, int32_t canContr
         this->m_forwardVelocity = 0.0f;
     }
 
-    int32_t strafe = (controlFlags & 0x40) != 0;
+    int32_t strafe = (controlFlags & INPUT_STRAFE_PLAYER_LEFT_KEY) != 0;
 
-    if ((controlFlags & 0x2000001) && (controlFlags & 0x100)) {
+    if ((controlFlags & INPUT_PLAYER_LOOK_MASK) && (controlFlags & INPUT_TURN_PLAYER_LEFT_KEY)) {
         strafe++;
     }
 
-    if (controlFlags & 0x80) {
+    if (controlFlags & INPUT_STRAFE_PLAYER_RIGHT_KEY) {
         strafe--;
     }
 
-    if ((controlFlags & 0x2000001) && (controlFlags & 0x200)) {
+    if ((controlFlags & INPUT_PLAYER_LOOK_MASK) && (controlFlags & INPUT_TURN_PLAYER_RIGHT_KEY)) {
         strafe--;
     }
 
@@ -73,9 +74,9 @@ void CGCommentator::UpdateCameraVelocity(uint32_t controlFlags, int32_t canContr
         this->m_strafeVelocity = 0.0f;
     }
 
-    int32_t vertical = (controlFlags & 0x2000) != 0;
+    int32_t vertical = (controlFlags & INPUT_ASCEND_PLAYER_KEY) != 0;
 
-    if (controlFlags & 0x4000) {
+    if (controlFlags & INPUT_DESCEND_PLAYER_KEY) {
         vertical--;
     }
 
@@ -83,15 +84,15 @@ void CGCommentator::UpdateCameraVelocity(uint32_t controlFlags, int32_t canContr
 
     int32_t turn = 0;
 
-    if (controlFlags & 0x100) {
+    if (controlFlags & INPUT_TURN_PLAYER_LEFT_KEY) {
         turn = 1;
     }
 
-    if (controlFlags & 0x200) {
+    if (controlFlags & INPUT_TURN_PLAYER_RIGHT_KEY) {
         turn--;
     }
 
-    if (controlFlags & 0x2000001) {
+    if (controlFlags & INPUT_PLAYER_LOOK_MASK) {
         turn = 0;
     }
 

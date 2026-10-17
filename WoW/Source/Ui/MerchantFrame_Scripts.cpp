@@ -434,7 +434,7 @@ static int32_t Script_PickupMerchantItem(lua_State* L) {
     if (CGGameUI::GetCursorVirtualItem() == itemId) {
         CGGameUI::ClearCursor(1, 1);
     } else {
-        CGGameUI::SetCursorVirtualItem(itemId, item->m_displayID, index, 5, 0);
+        CGGameUI::SetCursorVirtualItem(itemId, item->m_displayID, index, UICURSOR_MERCHANT, 0);
     }
 
     return 0;

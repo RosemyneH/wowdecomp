@@ -137,8 +137,8 @@ class WowConnection {
     char* PeerAddrToStr(char* buffer, uint32_t size);
     int32_t Release();
     void ReleaseResponseRef();
-    int32_t Send(uint8_t* data, int32_t size, bool raw);
-    int32_t SendPacket(CDataStore* msg, int32_t headroom);
+    WC_SEND_RESULT Send(uint8_t* data, int32_t size, bool raw);
+    WC_SEND_RESULT SendPacket(CDataStore* msg, int32_t headroom);
     void SetEncryption(bool enabled);
     void SetEncryptionKey(const uint8_t* key, uint8_t keyLength, uint8_t direction, const uint8_t* seed, uint8_t seedLength);
     void SetResponse(WowConnectionResponse* response, bool deferred);

@@ -394,11 +394,11 @@ void CGGameObject_C::Initialize() {
     ClientServices::SetMessageHandler(SMSG_PAGE_TEXT, Packet_SMSG_GAMEOBJECT_PAGETEXT, nullptr);
     ClientServices::SetMessageHandler(SMSG_GAME_OBJECT_CUSTOM_ANIM, Packet_SMSG_GAMEOBJECT_CUSTOM_ANIM, nullptr);
     ClientServices::SetMessageHandler(SMSG_GAMEOBJECT_DESPAWN_ANIM, Packet_SMSG_GAMEOBJECT_DESPAWN_ANIM, nullptr);
-    ClntObjMgrSetTypeMirrorHandler(ID_GAMEOBJECT, offsetof(CGGameObjectData, m_state), sizeof(int8_t), CGGameObject_C::OnStateChanged, nullptr, static_cast<HANDLER_PRIORITY>(0), 1);
-    ClntObjMgrSetTypeMirrorHandler(ID_GAMEOBJECT, offsetof(CGGameObjectData, m_flags), sizeof(uint32_t), CGGameObject_C::OnFlagsChanged, nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
-    ClntObjMgrSetTypeMirrorHandler(ID_GAMEOBJECT, offsetof(CGGameObjectData, m_artKit), sizeof(int8_t), OnUpdateArtKit, nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
-    ClntObjMgrSetTypeMirrorHandler(ID_GAMEOBJECT, offsetof(CGGameObjectData, m_pathProgress), sizeof(uint16_t), CGGameObject_C::OnAnimProgressChanged, nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
-    ClntObjMgrSetTypeMirrorHandler(ID_GAMEOBJECT, offsetof(CGGameObjectData, m_dynamicFlags), sizeof(uint16_t), OnUpdateDynamicFlags, nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
+    ClntObjMgrSetTypeMirrorHandler(ID_GAMEOBJECT, offsetof(CGGameObjectData, m_state), sizeof(int8_t), CGGameObject_C::OnStateChanged, nullptr, HANDLER_PRIORITY_NORMAL, 1);
+    ClntObjMgrSetTypeMirrorHandler(ID_GAMEOBJECT, offsetof(CGGameObjectData, m_flags), sizeof(uint32_t), CGGameObject_C::OnFlagsChanged, nullptr, HANDLER_PRIORITY_NORMAL, 0);
+    ClntObjMgrSetTypeMirrorHandler(ID_GAMEOBJECT, offsetof(CGGameObjectData, m_artKit), sizeof(int8_t), OnUpdateArtKit, nullptr, HANDLER_PRIORITY_NORMAL, 0);
+    ClntObjMgrSetTypeMirrorHandler(ID_GAMEOBJECT, offsetof(CGGameObjectData, m_pathProgress), sizeof(uint16_t), CGGameObject_C::OnAnimProgressChanged, nullptr, HANDLER_PRIORITY_NORMAL, 0);
+    ClntObjMgrSetTypeMirrorHandler(ID_GAMEOBJECT, offsetof(CGGameObjectData, m_dynamicFlags), sizeof(uint16_t), OnUpdateDynamicFlags, nullptr, HANDLER_PRIORITY_NORMAL, 0);
 }
 
 // VERIFY: 0add9943 auto
@@ -2883,7 +2883,7 @@ void CGGameObject_C::Reenable() {
 
 // VERIFY: d9d6f845 manual
 // OFFSET: 0x0070EDD0
-int32_t CGGameObject_C::ObjectReaction(const CGUnit_C* unit) const {
+UNIT_REACTION CGGameObject_C::ObjectReaction(const CGUnit_C* unit) const {
     CGUnit_C* creator = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(this->m_gameObject->m_createdBy, TYPEMASK_UNIT, __FILE__, __LINE__));
 
     if (creator) {
@@ -2894,7 +2894,7 @@ int32_t CGGameObject_C::ObjectReaction(const CGUnit_C* unit) const {
         return CGUnit_C::UnitReaction(this->m_gameObject->m_faction, unit);
     }
 
-    return 3;
+    return UNIT_REACTION_NEUTRAL;
 }
 
 // VERIFY: 7fd3c3af auto
@@ -3145,7 +3145,7 @@ bool CGGameObject_C_TypeBase::CanUse() const {
     }
 
     if (this->m_owner->m_gameObject->m_typeID == 6) {
-        if (!this->m_owner->GetLockRec() || this->m_owner->ObjectReaction(player) > 1) {
+        if (!this->m_owner->GetLockRec() || this->m_owner->ObjectReaction(player) > UNIT_REACTION_HOSTILE) {
             return false;
         }
 
@@ -3164,7 +3164,7 @@ bool CGGameObject_C_TypeBase::CanUse() const {
                 return false;
             }
         }
-    } else if (this->m_owner->ObjectReaction(player) <= 1) {
+    } else if (this->m_owner->ObjectReaction(player) <= UNIT_REACTION_HOSTILE) {
         return false;
     }
 
@@ -4048,7 +4048,7 @@ void CGGameObject_C::RefreshInteractIcon() {
         return;
     }
 
-    if (this->ObjectReaction(player) >= 3 && this->IsQuestGiver()) {
+    if (this->ObjectReaction(player) >= UNIT_REACTION_NEUTRAL && this->IsQuestGiver()) {
         player->UpdateQuestStatus(this);
     } else {
         this->m_questStatus = 0;

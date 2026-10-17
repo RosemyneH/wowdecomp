@@ -777,7 +777,7 @@ void CVehicleCamera_C::UpdateFacing(CGUnit_C* target, uint32_t time, float progr
 
     int32_t sync = 1;
 
-    if (input && (input->m_flags & 0x300) && !(input->m_flags & 0x2000001)) {
+    if (input && (input->m_flags & INPUT_TURN_PLAYER_MASK) && !(input->m_flags & INPUT_PLAYER_LOOK_MASK)) {
         sync = 0;
     }
 
@@ -1075,7 +1075,7 @@ void CVehicleCamera_C::Update(uint32_t time) {
         CGCamera* camera = CGWorldFrame::GetActiveCamera();
         CGInputControl* input = CGInputControl::GetActive();
 
-        if (camera && input && (input->m_flags & 0x2000001)) {
+        if (camera && input && (input->m_flags & INPUT_PLAYER_LOOK_MASK)) {
             camera->UpdateFreeLookFacing(0.0f, 0.0f, nullptr);
 
             if (input->CanSyncFreeLookFacing(this->m_unit)) {

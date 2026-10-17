@@ -144,7 +144,7 @@ static int32_t Script_GetWatchedFactionInfo(lua_State* L) {
     }
 
     lua_pushstring(L, rec->m_name);
-    int32_t reaction = CGReputationInfo::GetFactionStandingReaction(faction);
+    UNIT_REACTION reaction = CGReputationInfo::GetFactionStandingReaction(faction);
     lua_pushnumber(L, reaction + 1);
     int32_t max = CGReputationInfo::m_reactionThresholds[reaction + 1];
     int32_t value = GetRepListRepValue(faction);

@@ -14,6 +14,16 @@ class XMLNode;
 
 class CLayoutFrame {
     public:
+    enum GuardFlags : uint32_t {
+        GUARD_NONE = 0,
+        GUARD_LEFT = 0x01,
+        GUARD_TOP = 0x02,
+        GUARD_RIGHT = 0x04,
+        GUARD_BOTTOM = 0x08,
+        GUARD_CENTER_X = 0x10,
+        GUARD_CENTER_Y = 0x20,
+    };
+
     struct FRAMENODE : public TSLinkedNode<FRAMENODE> {
         /* 0008 */ CLayoutFrame* m_frame;
         /* 000C */ uint32_t m_dependency;

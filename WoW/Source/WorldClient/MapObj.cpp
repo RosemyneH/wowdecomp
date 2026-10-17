@@ -1151,7 +1151,7 @@ void CMapObj::RenderGroup(int32_t groupIndex, C44Matrix& matrix, TSExplicitList<
         index++;
     }
 
-    if (CWorld::enables & 0x40000000) {
+    if (CWorld::enables & Enable_ShowNormals) {
         this->RenderNormals(group);
     }
 

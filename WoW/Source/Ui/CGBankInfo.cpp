@@ -17,7 +17,7 @@ static int32_t BankUpdateHandler(WOWGUID guid, uint32_t fieldOffset, uint32_t fi
 // VERIFY: e46cf018 auto
 // OFFSET: 0x0057BA60
 void CGBankInfo::EnterWorld() {
-    ClntObjMgrSetObjMirrorHandler(ClntObjMgrGetActivePlayer(), ID_PLAYER, 0x1A, 1, BankUpdateHandler, nullptr, static_cast<HANDLER_PRIORITY>(0), 0);
+    ClntObjMgrSetObjMirrorHandler(ClntObjMgrGetActivePlayer(), ID_PLAYER, 0x1A, 1, BankUpdateHandler, nullptr, HANDLER_PRIORITY_NORMAL, 0);
 }
 
 // VERIFY: 082418b8 auto

@@ -51,7 +51,7 @@ uint32_t CGReputationInfo::m_collapsedHeaders = 0xFFFFFFFF;
 int32_t CGReputationInfo::m_selectedFaction;
 
 // STATIC: 0x00A2D2FC
-const int32_t CGReputationInfo::m_reactionThresholds[9] = { -42000, -6000, -3000, 0, 3000, 9000, 21000, 42000, 43000 };
+const int32_t CGReputationInfo::m_reactionThresholds[NUM_UNIT_REACTIONS + 1] = { -42000, -6000, -3000, 0, 3000, 9000, 21000, 42000, 43000 };
 
 // VERIFY: 9f6b81ad auto
 // OFFSET: 0x005CFE40
@@ -182,45 +182,45 @@ bool CGReputationInfo::IsFactionInactive(uint32_t index) {
 
 // VERIFY: 4a87da41 manual
 // OFFSET: 0x005D0600
-int32_t CGReputationInfo::GetFactionStandingReaction(int32_t faction) {
+UNIT_REACTION CGReputationInfo::GetFactionStandingReaction(int32_t faction) {
     FactionRec* rec = g_factionDB.GetRecord(faction);
 
     if (!rec || static_cast<uint32_t>(rec->m_reputationIndex) > 127) {
-        return 3;
+        return UNIT_REACTION_NEUTRAL;
     }
 
     int32_t standing = CGReputationInfo::m_factionStandings[rec->m_reputationIndex].m_base + CGReputationInfo::m_factionStandings[rec->m_reputationIndex].m_standing;
 
     if (standing >= 42000) {
-        return 7;
+        return UNIT_REACTION_EXALTED;
     }
 
     if (standing >= 21000) {
-        return 6;
+        return UNIT_REACTION_REVERED;
     }
 
     if (standing >= 9000) {
-        return 5;
+        return UNIT_REACTION_HONORED;
     }
 
     if (standing >= 3000) {
-        return 4;
+        return UNIT_REACTION_FRIENDLY;
     }
 
     if (standing >= 0) {
-        return 3;
+        return UNIT_REACTION_NEUTRAL;
     }
 
     if (standing >= -3000) {
-        return 2;
+        return UNIT_REACTION_UNFRIENDLY;
     }
 
-    return standing >= -6000;
+    return standing >= -6000 ? UNIT_REACTION_HOSTILE : UNIT_REACTION_HATED;
 }
 
 // VERIFY: df3fc44a auto
 // OFFSET: 0x005D06A0
-bool CGReputationInfo::GetForcedReaction(int32_t faction, int32_t* reaction) {
+bool CGReputationInfo::GetForcedReaction(int32_t faction, UNIT_REACTION* reaction) {
     for (uint32_t i = 0; i < CGReputationInfo::m_forcedReactions.m_count; i++) {
         if (faction == CGReputationInfo::m_forcedReactions.m_data[i].m_factionId) {
             *reaction = CGReputationInfo::m_forcedReactions.m_data[i].m_reaction;
@@ -830,7 +830,12 @@ int32_t Packet_SMSG_SET_FORCED_REACTIONS(void* param, NETMESSAGE msgId, uint32_t
 
     for (uint32_t i = 0; i < count; i++) {
         msg->Get(reinterpret_cast<uint32_t&>(CGReputationInfo::m_forcedReactions.m_data[i].m_factionId));
-        msg->Get(reinterpret_cast<uint32_t&>(CGReputationInfo::m_forcedReactions.m_data[i].m_reaction));
+        uint32_t reaction;
+        msg->Get(reaction);
+
+        if (msg->m_read <= msg->m_size) {
+            CGReputationInfo::m_forcedReactions.m_data[i].m_reaction = static_cast<UNIT_REACTION>(reaction);
+        }
     }
 
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
@@ -907,7 +912,7 @@ int32_t Packet_SMSG_SET_FACTION_STANDING(void* param, NETMESSAGE msgId, uint32_t
         }
 
         int32_t factionId = (repListId >= 0 && repListId < 128) ? CGReputationInfo::m_factionStandings[repListId].m_factionId : 0;
-        int32_t oldReaction = CGReputationInfo::GetFactionStandingReaction(factionId);
+        UNIT_REACTION oldReaction = CGReputationInfo::GetFactionStandingReaction(factionId);
         int32_t oldStanding = CGReputationInfo::m_factionStandings[repListId].m_standing;
 
         if (standing != oldStanding) {
@@ -918,7 +923,7 @@ int32_t Packet_SMSG_SET_FACTION_STANDING(void* param, NETMESSAGE msgId, uint32_t
             }
         }
 
-        int32_t newReaction = CGReputationInfo::GetFactionStandingReaction(factionId);
+        UNIT_REACTION newReaction = CGReputationInfo::GetFactionStandingReaction(factionId);
 
         if (!(flags & 0x5)) {
             flags |= 0x1;
@@ -928,7 +933,7 @@ int32_t Packet_SMSG_SET_FACTION_STANDING(void* param, NETMESSAGE msgId, uint32_t
             }
         }
 
-        if (newReaction < 2) {
+        if (newReaction < UNIT_REACTION_UNFRIENDLY) {
             flags |= 0x2;
         } else if (newReaction > oldReaction) {
             flags &= ~0x2;
@@ -1067,7 +1072,7 @@ int32_t GetFactionInfoHelper(lua_State* L, int32_t faction) {
 
     lua_pushstring(L, rec->m_name);
     lua_pushstring(L, rec->m_description);
-    int32_t reaction = CGReputationInfo::GetFactionStandingReaction(faction);
+    UNIT_REACTION reaction = CGReputationInfo::GetFactionStandingReaction(faction);
     lua_pushnumber(L, reaction + 1);
     int32_t max = CGReputationInfo::m_reactionThresholds[reaction + 1];
     int32_t value = GetRepListRepValue(faction);

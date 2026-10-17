@@ -357,7 +357,7 @@ static int32_t Script_GetRaidRosterInfo(lua_State* L) {
         lua_pushnil(L);
     }
 
-    if (CGPartyInfo::m_lootMethod == 2 && CGPartyInfo::m_lootMaster == member->m_guid) {
+    if (CGPartyInfo::m_lootMethod == LOOT_METHOD_MASTERLOOTER && CGPartyInfo::m_lootMaster == member->m_guid) {
         lua_pushnumber(L, 1.0);
     } else {
         lua_pushnil(L);

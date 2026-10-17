@@ -286,34 +286,34 @@ int32_t EvaluateCursor(const WOWGUID* unit, const TSGrowableArray<MacroSubstring
     const char* type;
 
     switch (CGGameUI::m_cursorItemType) {
-        case 1:
-        case 7:
-        case 9:
-        case 11:
+        case UICURSOR_ITEM:
+        case UICURSOR_ACTIONBAR:
+        case UICURSOR_AMMO:
+        case UICURSOR_GUILDBANK_ITEM:
             type = "item";
             break;
 
-        case 2:
+        case UICURSOR_MONEY:
             type = "money";
             break;
 
-        case 3:
+        case UICURSOR_SPELL:
             type = "spell";
             break;
 
-        case 5:
+        case UICURSOR_MERCHANT:
             type = "merchant";
             break;
 
-        case 8:
+        case UICURSOR_MACRO:
             type = "macro";
             break;
 
-        case 12:
+        case UICURSOR_GUILDBANK_MONEY:
             type = "guildbankmoney";
             break;
 
-        case 13:
+        case UICURSOR_EQUIPMENT_SET:
             type = "equipmentset";
             break;
 

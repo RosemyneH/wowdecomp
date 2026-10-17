@@ -58,7 +58,7 @@ void CGGuildRegistrar::CloseRegistrar() {
 // VERIFY: 57b4dc65 auto
 // OFFSET: 0x00599ED0
 int32_t CGGuildRegistrar::ValidateAndReportGuildName(const char* name) {
-    int32_t error = ValidateGuildName(s_locale, name);
+    VALIDATE_NAME_RESULT error = ValidateGuildName(s_locale, name);
 
     if (!error) {
         return 1;

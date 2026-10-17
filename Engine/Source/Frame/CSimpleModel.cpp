@@ -474,7 +474,7 @@ void CSimpleModel::RenderModel(void* arg) {
     clearColor.g = 0x00;
     clearColor.r = 0x00;
     clearColor.a = 0xFF;
-    GxSceneClear(0x2, clearColor);
+    GxSceneClear(GxBufferBit_Depth, clearColor);
 
     CShaderEffect::UpdateProjMatrix();
     simpleModel->UpdateModel();

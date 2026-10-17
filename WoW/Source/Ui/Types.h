@@ -5,6 +5,27 @@
 #include <cstdint>
 #include "Engine/Source/BLPFile/Types.h"
 
+enum UICURSORTYPE : int32_t {
+    UICURSOR_EMPTY = 0,
+    UICURSOR_ITEM = 1,
+    UICURSOR_MONEY = 2,
+    UICURSOR_SPELL = 3,
+    UICURSOR_PET_ACTION = 4,
+    UICURSOR_MERCHANT = 5,
+    UICURSOR_LOOT = 6,
+    UICURSOR_ACTIONBAR = 7,
+    UICURSOR_MACRO = 8,
+    UICURSOR_AMMO = 9,
+    UICURSOR_PET = 10,
+    UICURSOR_GUILDBANK_ITEM = 11,
+    UICURSOR_GUILDBANK_MONEY = 12,
+    UICURSOR_EQUIPMENT_SET = 13,
+    NUM_UICURSOR_TYPES = 14,
+
+    // Pet spells share the current spell payload; there is no separate current kind.
+    // UICURSOR_PET_SPELL = UICURSOR_SPELL,
+};
+
 enum UIErrors {
     ERR_INV_FULL = 0,
     ERR_BANK_FULL = 1,

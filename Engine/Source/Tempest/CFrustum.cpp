@@ -12,7 +12,7 @@ void CFrustum::Extents(CAaBox& box) {
 
 // VERIFY: 835d8937 auto
 // OFFSET: 0x009839E0
-uint32_t CFrustum::Cull(const CAaBox& box) {
+WorldCullStatus CFrustum::Cull(const CAaBox& box) {
     const C3Vector* extremes[2] = { &box.t, &box.b };
 
     for (uint32_t i = 0; i < 6; i++) {
@@ -22,16 +22,16 @@ uint32_t CFrustum::Cull(const CAaBox& box) {
         const C3Vector* z = extremes[*reinterpret_cast<const uint32_t*>(&plane.n.z) >> 31];
 
         if (z->z * plane.n.z + y->y * plane.n.y + x->x * plane.n.x + plane.d < -0.019444443f) {
-            return 0;
+            return WorldCull_outside;
         }
     }
 
-    return 3;
+    return WorldCull_notOutside;
 }
 
 // VERIFY: 93cc8ec1 auto
 // OFFSET: 0x00983A60
-uint32_t CFrustum::CullInv(const CAaBox& box) {
+WorldCullStatus CFrustum::CullInv(const CAaBox& box) {
     const C3Vector* extremes[2] = { &box.t, &box.b };
 
     for (uint32_t i = 0; i < 6; i++) {
@@ -41,11 +41,11 @@ uint32_t CFrustum::CullInv(const CAaBox& box) {
         const C3Vector* z = extremes[*reinterpret_cast<const uint32_t*>(&plane.n.z) >> 31];
 
         if (z->z * plane.n.z + y->y * plane.n.y + x->x * plane.n.x + plane.d > 0.019444443f) {
-            return 0;
+            return WorldCull_outside;
         }
     }
 
-    return 3;
+    return WorldCull_notOutside;
 }
 
 // VERIFY: 2f6339ef manual
@@ -65,18 +65,18 @@ void CFrustum::Translate(const C3Vector& v) {
 
 // VERIFY: b3982b68 manual
 // OFFSET: 0x00983D20
-uint32_t CFrustum::Cull(const CAaSphere& sphere) {
+WorldCullStatus CFrustum::Cull(const CAaSphere& sphere) {
     float limit = -sphere.r;
 
     for (uint32_t i = 0; i < 6; i++) {
         const C4Plane& plane = this->planes[i];
 
         if (plane.n.x * sphere.c.x + plane.n.z * sphere.c.z + plane.n.y * sphere.c.y + plane.d < limit) {
-            return 0;
+            return WorldCull_outside;
         }
     }
 
-    return 3;
+    return WorldCull_notOutside;
 }
 
 // VERIFY: 3dfc1f7d manual
@@ -123,7 +123,7 @@ void CFrustum::Transform(const C44Matrix& m) {
 
 // VERIFY: 75e79820 auto
 // OFFSET: 0x00983FB0
-uint32_t CFrustum::Cull(const C3Vector& center, float radius) {
+WorldCullStatus CFrustum::Cull(const C3Vector& center, float radius) {
     CAaSphere sphere;
     sphere.c = center;
     sphere.r = radius;

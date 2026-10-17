@@ -905,7 +905,7 @@ static int32_t LinkPendingNodes(TSExplicitList<CMirrorHandler, offsetof(CMirrorH
 
     for (CMirrorHandler* handler = list->Head(); handler; handler = handler->m_link.Next()) {
         uint32_t misalign = handler->m_fieldByteOffset & 3;
-        pending->LinkNode(handler, (handler->m_linkPositionSelector != 1) + 1, nullptr);
+        pending->LinkNode(handler, (handler->m_linkPositionSelector != HANDLER_PRIORITY_HIGH) + 1, nullptr);
         handler->m_count = (handler->m_fieldByteSize + misalign + 3) >> 2;
     }
 

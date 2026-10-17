@@ -179,12 +179,12 @@ static int32_t Script_SetInsertMode(lua_State* L) {
         const char* mode = lua_tolstring(L, 2, nullptr);
 
         if (!SStrCmpI(mode, "TOP", STORM_MAX_STR)) {
-            frame->SetInsertMode(0);
+            frame->SetInsertMode(INSERT_AT_TOP);
             return 0;
         }
 
         if (!SStrCmpI(mode, "BOTTOM", STORM_MAX_STR)) {
-            frame->SetInsertMode(1);
+            frame->SetInsertMode(INSERT_AT_BOTTOM);
             return 0;
         }
     }
@@ -201,10 +201,10 @@ static int32_t Script_GetInsertMode(lua_State* L) {
     const char* mode = nullptr;
 
     switch (frame->m_insertMode) {
-        case 0:
+        case INSERT_AT_TOP:
             mode = "TOP";
             break;
-        case 1:
+        case INSERT_AT_BOTTOM:
             lua_pushstring(L, "BOTTOM");
             return 1;
     }

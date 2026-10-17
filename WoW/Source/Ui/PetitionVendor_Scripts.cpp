@@ -125,7 +125,7 @@ static int32_t Script_BuyPetition(lua_State* L) {
 
     uint32_t index = static_cast<uint32_t>(lua_tonumber(L, 1)) - 1;
     const char* name = lua_tolstring(L, 2, nullptr);
-    int32_t error = ValidateGuildName(s_locale, name);
+    VALIDATE_NAME_RESULT error = ValidateGuildName(s_locale, name);
 
     if (error) {
         CGGameUI::DisplayNameError(error);

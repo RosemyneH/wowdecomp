@@ -113,6 +113,7 @@ void GxRsSet(EGxRenderState which, void* value);
 void GxRsSet(EGxRenderState which, int32_t value);
 void GxRsSet(EGxRenderState which, float value);
 void GxUpdateAlphaRef(EGxRenderState which);
+// mask is a combination of GxBufferBit_* values.
 void GxSceneClear(uint32_t mask, CImVector color);
 void GxScenePresent();
 void GxuClearDrawList(EGxuDrawListCategory category);
