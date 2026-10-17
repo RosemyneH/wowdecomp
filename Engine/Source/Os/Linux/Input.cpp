@@ -311,29 +311,6 @@ static void RestoreMouse() {
     WarpMouse(s_mousePos.x, s_mousePos.y);
 }
 
-static int32_t s_typedChar;
-
-static void QueueText(const char* text) {
-    const uint8_t* p = reinterpret_cast<const uint8_t*>(text);
-
-    while (*p) {
-        uint32_t ch = *p++;
-        int32_t extra = ch >= 0xF0 ? 3 : ch >= 0xE0 ? 2 : ch >= 0xC0 ? 1 : 0;
-
-        if (extra) {
-            ch &= 0x3F >> extra;
-        }
-
-        for (; extra && (*p & 0xC0) == 0x80; extra--) {
-            ch = (ch << 6) | (*p++ & 0x3F);
-        }
-
-        if (ch >= 0x20) {
-            OsQueuePut(OS_INPUT_CHAR, static_cast<int32_t>(ch), 1, 0, 0);
-        }
-    }
-}
-
 // OFFSET: 0x00869620
 void OsInputSetWindowResizeLock(int32_t resizeLock) {
     s_WindowResizeLock = resizeLock;
@@ -381,20 +358,6 @@ int32_t OsInputIsMouseButtonDown(MOUSEBUTTON button) {
     }
 }
 
-static void EnsureTextInput(SDL_Window* window) {
-#if defined(__ANDROID__)
-    (void)window;
-#else
-    if (!window || SDL_TextInputActive(window)) return;
-    SDL_StartTextInput(window);
-    int width = 0;
-    int height = 0;
-    SDL_GetWindowSize(window, &width, &height);
-    SDL_Rect area = { 0, 0, width, height };
-    SDL_SetTextInputArea(window, &area, 0);
-#endif
-}
-
 void OsInputInitialize() {
     SdlUseWayland();
 #if defined(__ANDROID__)
@@ -405,7 +368,6 @@ void OsInputInitialize() {
     SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
     SDL_InitSubSystem(SDL_INIT_EVENTS);
-    EnsureTextInput(GxWindow());
 }
 
 void OsInputDestroy() {
@@ -496,7 +458,6 @@ static void HandleWindowEvent(const SDL_WindowEvent& event) {
             s_appActive = event.type == SDL_EVENT_WINDOW_FOCUS_GAINED;
             s_osButtonState = 0;
             if (!s_appActive) SDL_CaptureMouse(false);
-            else EnsureTextInput(GxWindow());
             OsQueuePut(OS_INPUT_FOCUS, s_appActive, 0, 0, 0);
             break;
 
@@ -521,7 +482,6 @@ int32_t OsInputGet(OSINPUT* id, int32_t* param0, int32_t* param1, int32_t* param
 
     WaylandEmbedService();
     SDL_Window* window = GxWindow();
-    EnsureTextInput(window);
     ApplyOsCursor(window);
 
     // ʕ ◕ᴥ◕ ʔ✿ Compare every call: Wayland scale changes may not arrive as SIZE_CHANGED ✿ ʕ ◕ᴥ◕ ʔ
@@ -674,16 +634,8 @@ intptr_t OsWindowProc(void* window, uint32_t message, uintptr_t wparam, intptr_t
             OsQueuePut(OS_INPUT_IME, 0, 0, 0, 0);
             break;
 
-        case SDL_EVENT_TEXT_INPUT: {
-            const char* text = event.text.text;
-            if (text && s_typedChar && text[0] == static_cast<char>(s_typedChar) && text[1] == '\0') {
-                s_typedChar = 0;
-                break;
-            }
-            s_typedChar = 0;
-            if (text) QueueText(text);
+        case SDL_EVENT_TEXT_INPUT:
             break;
-        }
 
         case SDL_EVENT_KEY_DOWN:
         case SDL_EVENT_KEY_UP: {
@@ -710,13 +662,10 @@ intptr_t OsWindowProc(void* window, uint32_t message, uintptr_t wparam, intptr_t
             if (ConvertKeyCode(code, &key)) {
                 OsQueuePut(message == SDL_EVENT_KEY_DOWN ? OS_INPUT_KEY_DOWN : OS_INPUT_KEY_UP, key, event.key.repeat ? 1 : 0, 0, 0);
             }
-            // ʕ •ᴥ•ʔ✿ Chat inserts from character events. SDL3 often marks text input active and then never sends the text ✿ ʕ •ᴥ•ʔ
-            if (message == SDL_EVENT_KEY_DOWN && !(event.key.mod & (SDL_KMOD_CTRL | SDL_KMOD_ALT | SDL_KMOD_GUI))) {
+            if (message == SDL_EVENT_KEY_DOWN && !(event.key.mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI))) {
                 SDL_Keycode typed = SDL_GetKeyFromScancode(event.key.scancode, event.key.mod, false);
-                if (typed < 0x20 || typed >= 0x7F) typed = code;
-                if (typed >= 0x20 && typed < 0x7F) {
-                    s_typedChar = static_cast<int32_t>(typed);
-                    OsQueuePut(OS_INPUT_CHAR, s_typedChar, event.key.repeat ? 1 : 0, 0, 0);
+                if (typed >= 0x20 && typed != 0x7F && typed < SDLK_SCANCODE_MASK) {
+                    OsQueuePut(OS_INPUT_CHAR, static_cast<int32_t>(typed), 0, 0, 0);
                 }
             }
             break;
