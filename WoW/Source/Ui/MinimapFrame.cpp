@@ -3211,6 +3211,8 @@ void CGMinimapFrame::RenderInside(float scale, const C2Vector* center, const CIm
     g_theGxDevicePtr->XformSetProjection(ortho);
     g_theGxDevicePtr->RsPush();
     GxRsSet(GxRs_TextureShader0, 1);
+    GxRsSet(GxRs_ColorOp0, 0);
+    GxRsSet(GxRs_AlphaOp0, 0);
     g_theGxDevicePtr->RsSet(GxRs_Texture0, TextureGetGxTex(s_indoor.m_texture, 1, nullptr));
     g_theGxDevicePtr->XformPush(GxXform_Tex0);
 
@@ -3226,6 +3228,8 @@ void CGMinimapFrame::RenderInside(float scale, const C2Vector* center, const CIm
 
     GxXformSet(GxXform_Tex0, texMatrix);
     GxRsSet(GxRs_TextureShader1, 1);
+    GxRsSet(GxRs_ColorOp1, 0);
+    GxRsSet(GxRs_AlphaOp1, 0);
     g_theGxDevicePtr->RsSet(GxRs_Texture1, TextureGetGxTex(s_maskTexture, 1, nullptr));
     g_theGxDevicePtr->XformPush(GxXform_Tex1);
     GxXformTranslate(GxXform_Tex1, C3Vector(0.0f, 1.0f, 0.0f));

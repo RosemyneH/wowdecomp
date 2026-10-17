@@ -720,6 +720,12 @@ void CGxDeviceVulkan::IBeginPass() {
     info.pClearValues = clears;
 
     if (this->m_passTarget) {
+        // ʕ •ᴥ•ʔ✿ The offscreen pass loads SHADER_READ. Do that transition here, on the same buffer as the draw ✿ ʕ •ᴥ•ʔ
+        if (this->m_passTarget->layout != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL && this->m_vk.Frame().recording) {
+            VkContext::Barrier(this->m_vk.Frame().cmd, this->m_passTarget->image.image, VK_IMAGE_ASPECT_COLOR_BIT, this->m_passTarget->levels, this->m_passTarget->layout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            this->m_passTarget->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        }
+
         info.renderPass = this->m_vk.m_passes[VkContext::Pass_Offscreen];
         info.framebuffer = this->ITexFramebuffer(this->m_passTarget);
         this->m_targetExtent = { this->m_passTarget->width, this->m_passTarget->height };
@@ -901,12 +907,17 @@ void CGxDeviceVulkan::IXformSetViewport() {
     const CRect& window = this->DeviceCurWindow();
 
     uint32_t x = static_cast<uint32_t>(this->m_viewport.m_x.m_l * window.maxX + 0.5f);
-    uint32_t y = static_cast<uint32_t>((1.0f - this->m_viewport.m_y.m_h) * window.maxY + 0.5f);
+    uint32_t y;
     uint32_t width = static_cast<uint32_t>(this->m_viewport.m_x.m_h * window.maxX - x + 0.5f);
-    uint32_t height = static_cast<uint32_t>((1.0f - this->m_viewport.m_y.m_l) * window.maxY - y + 0.5f);
+    uint32_t height;
 
+    // ʕ •ᴥ•ʔ✿ Render targets are top-left. Replacing only Y left the height measured from the flipped edge, so the draw landed outside the texture ✿ ʕ •ᴥ•ʔ
     if (this->m_textureTarget[GxBuffers_Color].m_apiSpecific || this->m_textureTarget[GxBuffers_Depth].m_apiSpecific) {
-        y = static_cast<uint32_t>(window.maxY * this->m_viewport.m_y.m_l);
+        y = static_cast<uint32_t>(window.maxY * this->m_viewport.m_y.m_l + 0.5f);
+        height = static_cast<uint32_t>(this->m_viewport.m_y.m_h * window.maxY - y + 0.5f);
+    } else {
+        y = static_cast<uint32_t>((1.0f - this->m_viewport.m_y.m_h) * window.maxY + 0.5f);
+        height = static_cast<uint32_t>((1.0f - this->m_viewport.m_y.m_l) * window.maxY - y + 0.5f);
     }
 
     this->m_viewportRect = { { static_cast<int32_t>(x), static_cast<int32_t>(y) }, { width, height } };
@@ -2203,6 +2214,24 @@ int32_t CGxDeviceVulkan::ITexUpload(CGxTex* texId) {
     this->ITexWHDStartEnd(texId, width, height, baseMip, mipCount);
 
     VkTexture* texture = static_cast<VkTexture*>(texId->m_apiSpecificData);
+
+    // ʕ •ᴥ•ʔ✿ A latch renders on the frame buffer. Transfer barriers on the upload buffer are a second command buffer in the same submit, so they overlap the draw and the sample comes back clear ✿ ʕ •ᴥ•ʔ
+    if (texId->m_flags.m_renderTarget) {
+        uint32_t mipWidth = width;
+        uint32_t mipHeight = height;
+
+        for (uint32_t mip = baseMip, level = 0; mip != mipCount && level < texture->levels; mip++, level++) {
+            texels = nullptr;
+            texId->m_userFunc(GxTex_Latch, mipWidth, mipHeight, 0, mip, texId->m_userArg, texelStrideInBytes, texels);
+            mipWidth = std::max(mipWidth >> 1, 1u);
+            mipHeight = std::max(mipHeight >> 1, 1u);
+        }
+
+        texels = nullptr;
+        texId->m_userFunc(GxTex_Unlock, texId->m_width, texId->m_height, 0, 0, texId->m_userArg, texelStrideInBytes, texels);
+        return 1;
+    }
+
     VkCommandBuffer cmd = this->m_vk.UploadCmd();
     if (!cmd) {
         texels = nullptr;
@@ -2388,14 +2417,15 @@ VkFramebuffer CGxDeviceVulkan::ITexFramebuffer(VkTexture* texture) {
             return VK_NULL_HANDLE;
         }
 
-        VkCommandBuffer upload = this->m_vk.UploadCmd();
-        if (!upload) {
+        VkFrame& frame = this->m_vk.Frame();
+        VkCommandBuffer layoutCmd = frame.recording ? frame.cmd : this->m_vk.UploadCmd();
+        if (!layoutCmd) {
             this->m_vk.RetireImage(this->m_offscreenDepth);
             this->m_offscreenDepthExtent = {};
             return VK_NULL_HANDLE;
         }
 
-        VkContext::Barrier(upload, this->m_offscreenDepth.image, VK_IMAGE_ASPECT_DEPTH_BIT, 1, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        VkContext::Barrier(layoutCmd, this->m_offscreenDepth.image, VK_IMAGE_ASPECT_DEPTH_BIT, 1, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 
         this->m_offscreenDepthExtent = extent;
         this->m_offscreenDepthGeneration++;
