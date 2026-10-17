@@ -3,6 +3,7 @@
 #include "Engine/Source/Event/Types.h"
 #include "Engine/Source/Os/Gui.h"
 #include "Engine/Source/Os/Input.h"
+#include "Engine/Source/Os/WaylandEmbed.h"
 #include "Engine/Source/Os/Joystick.h"
 #include "Engine/Source/Os/TimeManager.h"
 #include "Engine/Source/Storm/H/storm.h"
@@ -488,6 +489,7 @@ void OsInputSetEventPollProc(void (*pollProc)()) {
 int32_t OsInputGet(OSINPUT* id, int32_t* param0, int32_t* param1, int32_t* param2, int32_t* param3) {
     *id = static_cast<OSINPUT>(-1);
 
+    WaylandEmbedService();
     SDL_Window* window = GxWindow();
     ApplyOsCursor(window);
 
@@ -646,6 +648,24 @@ intptr_t OsWindowProc(void* window, uint32_t message, uintptr_t wparam, intptr_t
 
         case SDL_KEYDOWN:
         case SDL_KEYUP: {
+            int32_t sym = (int32_t)event.key.keysym.sym;
+            switch (event.key.keysym.sym) {
+                case SDLK_RETURN: case SDLK_KP_ENTER: sym = 0xff0d; break;
+                case SDLK_ESCAPE: sym = 0xff1b; break;
+                case SDLK_BACKSPACE: sym = 0xff08; break;
+                case SDLK_TAB: sym = 0xff09; break;
+                case SDLK_DELETE: sym = 0xffff; break;
+                case SDLK_LEFT: sym = 0xff51; break;
+                case SDLK_UP: sym = 0xff52; break;
+                case SDLK_RIGHT: sym = 0xff53; break;
+                case SDLK_DOWN: sym = 0xff54; break;
+                case SDLK_HOME: sym = 0xff50; break;
+                case SDLK_END: sym = 0xff57; break;
+                case SDLK_PAGEUP: sym = 0xff55; break;
+                case SDLK_PAGEDOWN: sym = 0xff56; break;
+                default: break;
+            }
+            if (WaylandEmbedTakeKey(sym, message == SDL_KEYDOWN)) break;
             KEY key;
             if (ConvertKeyCode(event.key.keysym.sym, &key)) {
                 OsQueuePut(message == SDL_KEYDOWN ? OS_INPUT_KEY_DOWN : OS_INPUT_KEY_UP, key, 1, 0, 0);
@@ -674,6 +694,7 @@ intptr_t OsWindowProc(void* window, uint32_t message, uintptr_t wparam, intptr_t
         }
 
         case SDL_MOUSEBUTTONDOWN:
+            WaylandEmbedClearFocus();
             HandleMouseButton(event.button, OS_INPUT_MOUSE_DOWN);
             break;
 

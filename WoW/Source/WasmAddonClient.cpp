@@ -6,12 +6,19 @@
 #include "WoW/Source/Ui/ChatFrame.h"
 #include "WoW/Source/Ui/ScriptEvents.h"
 #include "WoW/Source/Ui/WasmConfirmUi.h"
+#include "WoW/Source/Ui/WaylandFrame.h"
+#include "WoW/Source/Ui/WaylandFrame.h"
 #include "WoW/Source/WowSvcs/WowSvcsClient/ClientServices.h"
 #include "Engine/Source/ConsoleBase/ConsoleCommand.h"
 #include "Engine/Source/ConsoleBase/IConsole.h"
 #include "Engine/Source/ConsoleBase/Types.h"
 #include "Engine/Source/Storm/Source/MD5.h"
+#include "Engine/Source/Base/Handle.h"
+#include "Engine/Source/Frame/CSimpleTexture.h"
 #include "Engine/Source/FrameScript/FrameScript.h"
+#include "Engine/Source/Gx/Gx.h"
+#include "Engine/Source/Services/Texture.h"
+#include "Engine/Source/Tempest/CiRect.h"
 #include "Engine/Source/FrameXML/FrameXML.h"
 #include "Engine/Source/Os/TimeManager.h"
 #include "Engine/Source/WasmAddon/WasmAddonManager.h"
@@ -20,6 +27,7 @@
 #include "Engine/Source/lua-5.1/src/lua.h"
 #include "Engine/Source/lua-5.1/src/lauxlib.h"
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -31,6 +39,22 @@ bool LoadAddOn(const char* name, bool demandLoad, CStatus* status);
 namespace {
 
 namespace fs = std::filesystem;
+
+struct CanvasPixels {
+    std::vector<uint8_t> bgra;
+    int32_t width = 0;
+    int32_t height = 0;
+};
+
+std::map<uint64_t, CanvasPixels> g_canvas;
+
+void CanvasFill(EGxTexCommand command, uint32_t, uint32_t, uint32_t, uint32_t, void* user, uint32_t& stride, const void*& texels) {
+    if (command != GxTex_Lock && command != GxTex_Latch) return;
+    auto it = g_canvas.find((uint64_t)(uintptr_t)user);
+    if (it == g_canvas.end() || it->second.bgra.empty()) return;
+    stride = (uint32_t)it->second.width * 4;
+    texels = it->second.bgra.data();
+}
 
 struct TaintScope {
     const char* saved;
@@ -91,6 +115,20 @@ public:
         if (!L) return false;
         HostCallCtx ctx{this, nullptr, &text, handle, nullptr};
         return lua_cpcall(L, &TrampUiSetText, &ctx) == 0 && ctx.ok;
+    }
+
+    uint64_t SurfaceOpen(const std::string& addonId, const std::string& spec, int32_t width, int32_t height, std::string& error) override {
+        (void)addonId;
+        char text[256] = {};
+        int32_t ref = LUA_NOREF;
+        int32_t id = WaylandFrame_Open(spec.c_str(), width, height, &ref, text, sizeof(text));
+        if (!id || ref == LUA_NOREF) {
+            error = text[0] ? text : "surface failed";
+            return 0;
+        }
+        uint64_t handle = m_nextHandle++;
+        m_ui[handle] = {ref, LUA_NOREF, WidgetKind::Surface, id};
+        return handle;
     }
 
     uint64_t UiSpawn(const std::string& addonId, uint64_t parentHost, const std::string& kind) override {
@@ -203,6 +241,11 @@ public:
 
     void UiDestroy(uint64_t handle) override {
         auto it = m_ui.find(handle);
+        if (it != m_ui.end() && it->second.surfaceId) WaylandFrame_Close(it->second.surfaceId);
+        if (it != m_ui.end() && it->second.canvasImage) {
+            HandleClose(reinterpret_cast<HOBJECT>(it->second.canvasImage));
+            g_canvas.erase(handle);
+        }
         lua_State* L = FrameScript_GetContext();
         if (it == m_ui.end() || !L) return;
         if (L != m_seenState) { m_ui.erase(it); return; }
@@ -599,17 +642,21 @@ private:
             ref = MakeChildTexture(L);
             ok = ref != LUA_NOREF;
             wk = WidgetKind::Texture;
-        } else if (kind == "frame" || kind == "statusbar" || kind == "button" || kind == "editbox" || kind == "scrollframe") {
+        } else if (kind == "canvas" || kind == "model" || kind == "frame" || kind == "statusbar" || kind == "button" || kind == "editbox" || kind == "scrollframe") {
             const char* type = "Frame";
             if (kind == "statusbar") type = "StatusBar";
             else if (kind == "button") type = "Button";
             else if (kind == "editbox") type = "EditBox";
             else if (kind == "scrollframe") type = "ScrollFrame";
+            else if (kind == "model") type = "PlayerModel";
+            else if (kind == "canvas") type = "Frame";
             ok = MakeChildFrame(L, type, kind == "statusbar", kind == "editbox", ref);
             if (kind == "statusbar") wk = WidgetKind::StatusBar;
             else if (kind == "button") wk = WidgetKind::Button;
             else if (kind == "editbox") wk = WidgetKind::EditBox;
             else if (kind == "scrollframe") wk = WidgetKind::ScrollFrame;
+            else if (kind == "canvas") wk = WidgetKind::Canvas;
+            else if (kind == "model") wk = WidgetKind::Model;
             else wk = WidgetKind::Frame;
         }
         lua_settop(L, top);
@@ -619,8 +666,109 @@ private:
         }
         uint64_t handle = m_nextHandle++;
         int32_t textRef = (wk == WidgetKind::FontString || wk == WidgetKind::EditBox) ? ref : LUA_NOREF;
-        m_ui[handle] = {ref, textRef, wk};
+        UiRefs refs{ref, textRef, wk};
+        if (wk == WidgetKind::Canvas) {
+            lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+            int32_t textureRef = MakeChildTexture(L);
+            lua_settop(L, top);
+            if (textureRef != LUA_NOREF) {
+                lua_rawgeti(L, LUA_REGISTRYINDEX, textureRef);
+                if (lua_isuserdata(L, -1)) refs.canvas = static_cast<CSimpleTexture*>(lua_touserdata(L, -1));
+                lua_pop(L, 1);
+                refs.textRef = textureRef;
+            }
+        }
+        m_ui[handle] = refs;
         return handle;
+    }
+
+    bool CanvasWrite(uint64_t handle, int32_t width, int32_t height, const uint8_t* rgba, uint32_t len) override {
+        auto it = m_ui.find(handle);
+        if (it == m_ui.end() || it->second.kind != WidgetKind::Canvas || !it->second.canvas || !rgba) return false;
+        uint64_t need = (uint64_t)width * (uint64_t)height * 4;
+        if (width < 1 || height < 1 || need != len) return false;
+        CanvasPixels& store = g_canvas[handle];
+        store.width = width;
+        store.height = height;
+        store.bgra.resize((size_t)need);
+        for (uint32_t i = 0; i < len; i += 4) {
+            store.bgra[i] = rgba[i + 2];
+            store.bgra[i + 1] = rgba[i + 1];
+            store.bgra[i + 2] = rgba[i];
+            store.bgra[i + 3] = rgba[i + 3];
+        }
+        UiRefs& refs = it->second;
+        if (!refs.canvasImage || refs.canvasW != width || refs.canvasH != height) {
+            CGxTexFlags flags;
+            flags.m_filter = GxTex_Linear;
+            CTexture* image = TextureCreate((uint32_t)width, (uint32_t)height, GxTex_Argb8888, GxTex_Argb8888, flags, (void*)(uintptr_t)handle, CanvasFill, "WasmCanvas", 0);
+            if (!image) return false;
+            refs.canvas->SetTexture(image);
+            if (refs.canvasImage) HandleClose(reinterpret_cast<HOBJECT>(refs.canvasImage));
+            refs.canvasImage = image;
+            refs.canvasW = width;
+            refs.canvasH = height;
+        }
+        CGxTex* gx = TextureGetGxTex(refs.canvasImage, 0, nullptr);
+        if (!gx) return false;
+        CiRect rect;
+        rect.minY = 0;
+        rect.minX = 0;
+        rect.maxY = height;
+        rect.maxX = width;
+        GxTexUpdate(gx, rect, 1);
+        return true;
+    }
+
+    bool ModelSet(uint64_t handle, const std::string& spec) override {
+        auto it = m_ui.find(handle);
+        if (it == m_ui.end() || it->second.kind != WidgetKind::Model) return false;
+        lua_State* L = FrameScript_GetContext();
+        if (!L) return false;
+        const char* method = "SetModel";
+        std::string value = spec;
+        if (spec.rfind("unit:", 0) == 0) {
+            method = "SetUnit";
+            value = spec.substr(5);
+        } else if (!spec.empty() && spec.find_first_not_of("0123456789") == std::string::npos) {
+            method = "SetCreature";
+        }
+        int top = lua_gettop(L);
+        lua_rawgeti(L, LUA_REGISTRYINDEX, it->second.mainRef);
+        lua_getfield(L, -1, method);
+        if (!lua_isfunction(L, -1)) { lua_settop(L, top); return false; }
+        lua_pushvalue(L, -2);
+        if (std::strcmp(method, "SetCreature") == 0) lua_pushnumber(L, std::strtol(value.c_str(), nullptr, 10));
+        else lua_pushstring(L, value.c_str());
+        bool ok = lua_pcall(L, 2, 0, 0) == 0;
+        lua_settop(L, top);
+        return ok;
+    }
+
+    bool HookBind(const std::string& addonId, const std::string& name) override {
+        (void)addonId;
+        lua_State* L = FrameScript_GetContext();
+        if (!L || name.empty() || name.size() > 64) return false;
+        for (char c : name) {
+            bool okChar = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+            if (!okChar) return false;
+        }
+        static const char* kHook = R"lua(
+local name = ...
+local fn = _G[name]
+if type(fn) ~= "function" then return false end
+local function fire()
+    if WasmAddon_HookFire then WasmAddon_HookFire(name) end
+end
+if hooksecurefunc then hooksecurefunc(name, fire) else _G[name] = function(...) fire(); return fn(...) end end
+return true
+)lua";
+        if (luaL_loadbuffer(L, kHook, std::strlen(kHook), "WasmHook") != 0) { lua_pop(L, 1); return false; }
+        lua_pushstring(L, name.c_str());
+        if (lua_pcall(L, 1, 1, 0) != 0) { lua_pop(L, 1); return false; }
+        bool ok = lua_toboolean(L, -1) != 0;
+        lua_pop(L, 1);
+        return ok;
     }
 
     bool ApplyBackdrop(lua_State* L, int32_t ref, const uint8_t* rgba) {
@@ -1359,8 +1507,18 @@ private:
         if (m_seenState && L != m_seenState) m_ui.clear();
         m_seenState = L;
     }
-    enum class WidgetKind : uint8_t { Frame, FontString, Texture, StatusBar, Button, EditBox, ScrollFrame };
-    struct UiRefs { int32_t mainRef = LUA_NOREF; int32_t textRef = LUA_NOREF; WidgetKind kind = WidgetKind::Frame; };
+    enum class WidgetKind : uint8_t { Frame, FontString, Texture, StatusBar, Button, EditBox, ScrollFrame, Canvas, Model, Surface };
+    struct UiRefs {
+        int32_t mainRef = LUA_NOREF;
+        int32_t textRef = LUA_NOREF;
+        WidgetKind kind = WidgetKind::Frame;
+        int32_t surfaceId = 0;
+        CSimpleTexture* canvas = nullptr;
+        CTexture* canvasImage = nullptr;
+        std::vector<uint8_t> pixels;
+        int32_t canvasW = 0;
+        int32_t canvasH = 0;
+    };
     lua_State* m_seenState = nullptr;
     std::map<uint64_t, UiRefs> m_ui;
     std::map<std::string, std::map<int32_t, int>> m_luaRefs;
@@ -1464,6 +1622,16 @@ bool OnEventInterest(uint32_t index) {
     if (index >= NUM_SCRIPT_EVENTS) return false;
     const char* name = g_scriptEvents[index];
     return name && s_manager.HasSubscriber(name);
+}
+
+int32_t Script_WasmAddonHookFire(lua_State* L) {
+    size_t len = 0;
+    const char* name = lua_tolstring(L, 1, &len);
+    if (!name || !len) return 0;
+    WasmAddon::EventPayloadWriter writer("WASM_HOOK", 0);
+    writer.String(name, len);
+    s_manager.DispatchEvent("WASM_HOOK", writer.Finish());
+    return 0;
 }
 
 int32_t Script_WasmAddonUiSignal(lua_State* L) {
@@ -1659,6 +1827,8 @@ void WasmAddonClient_RegisterScripts() {
     FrameScript_RegisterFunction("WasmAddon_GetNumAddOns", Script_WasmAddonGetNumAddOns);
     FrameScript_RegisterFunction("WasmAddon_GetAddOnInfo", Script_WasmAddonGetAddOnInfo);
     FrameScript_RegisterFunction("WasmAddon_UiSignal", Script_WasmAddonUiSignal);
+    FrameScript_RegisterFunction("WasmAddon_HookFire", Script_WasmAddonHookFire);
+    WaylandFrame_Register(FrameScript_GetContext());
 }
 void WasmAddonClient_UnregisterScripts() {
     if (!s_initialized) return;
@@ -1666,6 +1836,7 @@ void WasmAddonClient_UnregisterScripts() {
     FrameScript_UnregisterFunction("WasmAddon_GetNumAddOns");
     FrameScript_UnregisterFunction("WasmAddon_GetAddOnInfo");
     FrameScript_UnregisterFunction("WasmAddon_UiSignal");
+    FrameScript_UnregisterFunction("WasmAddon_HookFire");
 }
 
 // ʕ •ᴥ•ʔ✿ Loading mirrors LoadAddOns: UI/chat/inventory services only exist once the game UI is up ✿ ʕ •ᴥ•ʔ

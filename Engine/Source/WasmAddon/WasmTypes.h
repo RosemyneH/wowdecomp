@@ -55,6 +55,8 @@ enum Permission : uint32_t {
     PermCombatRead = 1u << 14,
     PermLuaFull = 1u << 15,
     PermAwesome = 1u << 16,
+    PermSurface = 1u << 17,
+    PermHook = 1u << 18,
 };
 const char* PermissionName(Permission perm);
 bool PermissionFromName(const std::string& name, Permission& out);
@@ -192,7 +194,7 @@ private:
 
 struct AddonStats {
     uint64_t hostCalls = 0;
-    uint64_t hostCallsByFn[32] = {};
+    uint64_t hostCallsByFn[40] = {};
     uint64_t eventsReceived = 0;
     uint64_t traps = 0;
     uint64_t denials = 0;
@@ -260,7 +262,7 @@ enum class UiOp : int32_t {
     SetAlpha = 12, SetMouse = 13, SetTexture = 14,
 };
 
-enum class UiKind : uint8_t { None = 0, Frame = 1, FontString = 2, Texture = 3, StatusBar = 4, Button = 5, EditBox = 6, ScrollFrame = 7 };
+enum class UiKind : uint8_t { None = 0, Frame = 1, FontString = 2, Texture = 3, StatusBar = 4, Button = 5, EditBox = 6, ScrollFrame = 7, Canvas = 8, Model = 9, Surface = 10 };
 
 class IWasmHostServices {
 public:
@@ -283,6 +285,10 @@ public:
     virtual int CallLua(const std::string& addonId, const uint8_t* req, uint32_t reqLen, std::vector<uint8_t>& out, std::string& error) { (void)addonId; (void)req; (void)reqLen; (void)out; (void)error; return ErrUnavailable; }
     virtual int BindLua(const std::string& addonId, int32_t handle, const std::string& script, std::string& error) { (void)addonId; (void)handle; (void)script; (void)error; return ErrUnavailable; }
     virtual int AwesomeCall(const std::string& addonId, const uint8_t* req, uint32_t reqLen, std::vector<uint8_t>& out, std::string& error) { (void)addonId; (void)req; (void)reqLen; (void)out; (void)error; return ErrUnavailable; }
+    virtual uint64_t SurfaceOpen(const std::string& addonId, const std::string& spec, int32_t width, int32_t height, std::string& error) { (void)addonId; (void)spec; (void)width; (void)height; (void)error; return 0; }
+    virtual bool CanvasWrite(uint64_t hostHandle, int32_t width, int32_t height, const uint8_t* rgba, uint32_t len) { (void)hostHandle; (void)width; (void)height; (void)rgba; (void)len; return false; }
+    virtual bool ModelSet(uint64_t hostHandle, const std::string& spec) { (void)hostHandle; (void)spec; return false; }
+    virtual bool HookBind(const std::string& addonId, const std::string& name) { (void)addonId; (void)name; return false; }
     virtual void ReleaseLua(const std::string& addonId) { (void)addonId; }
     virtual void UiDestroy(uint64_t hostHandle) { (void)hostHandle; }
     virtual void Log(const std::string& message) { (void)message; }
@@ -295,9 +301,9 @@ public:
 
 enum class HostFn : uint32_t {
     ApiVersion = 0, Ping, ChatPrint, EventSubscribe, InventorySnapshot, UiCreate, UiSetText, PerfQuery,
-    StorageGet, StorageLen, StorageKeys, StorageUsage, StorageSet, StorageDelete, UnitSnapshot, AuctionSnapshot, ChatSendRequest, AuctionBidRequest, UiSpawn, UiStyle, UiBind, UiGetText, UnitNames, LuaExec, LuaLoad, LuaLoadAddon, LuaCall, LuaBind, AwesomeCall, Count
+    StorageGet, StorageLen, StorageKeys, StorageUsage, StorageSet, StorageDelete, UnitSnapshot, AuctionSnapshot, ChatSendRequest, AuctionBidRequest, UiSpawn, UiStyle, UiBind, UiGetText, UnitNames,     LuaExec, LuaLoad, LuaLoadAddon, LuaCall, LuaBind, AwesomeCall, SurfaceOpen, CanvasWrite, ModelSet, HookBind, Count
 };
-static_assert((uint32_t)HostFn::Count <= 32, "hostCallsByFn array too small");
+static_assert((uint32_t)HostFn::Count <= 40, "hostCallsByFn array too small");
 
 
 } // namespace WasmAddon

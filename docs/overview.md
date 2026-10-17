@@ -19,6 +19,7 @@ Discord: https://discord.gg/DsZMGUD8aT
 | Where a frame spends its time | [Performance](performance.md) |
 | Which operating system actually builds | [Platforms](platforms.md) |
 | How to write a sandboxed addon | [Writing addons](../Addons/Wasm/README.md) |
+| A page, a model, or a browser in a frame | [Surfaces](surfaces.md) |
 
 Build commands and the decompilation percentages are in the [README](https://github.com/RosemyneH/wowdecomp/blob/main/README.md). No game `Data` ships with the source. You bring a 3.3.5a client.
 

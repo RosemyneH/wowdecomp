@@ -147,7 +147,7 @@ bool WasmAddonManager::IsKnownEvent(const std::string& name) {
     static const char* kEvents[] = {"BAG_UPDATE","BAG_UPDATE_DELAYED","PLAYER_LOGIN","PLAYER_LOGOUT",
         "PLAYER_ENTERING_WORLD","ADDON_LOADED","CHAT_MSG_SYSTEM","UNIT_HEALTH","AUCTION_HOUSE_SHOW","WOW_ON_LOAD_TEST",
         "COMBAT_LOG_EVENT","COMBAT_LOG_EVENT_UNFILTERED","AUCTION_ITEM_LIST_UPDATE","AUCTION_HOUSE_CLOSED","WASM_CONFIRM_RESULT",
-        "WASM_UI","WASM_SLASH"};
+        "WASM_UI","WASM_SLASH","WASM_HOOK"};
     for (auto e : kEvents) if (name == e) return true;
     auto starts = [&](const char* prefix) {
         size_t n = std::strlen(prefix);
@@ -367,7 +367,8 @@ WasmAddonManager::UiHandle* WasmAddonManager::FindUi(Addon& addon, int64_t guest
 
 static bool CanParent(UiKind kind) {
     return kind == UiKind::Frame || kind == UiKind::StatusBar || kind == UiKind::Button
-        || kind == UiKind::EditBox || kind == UiKind::ScrollFrame;
+        || kind == UiKind::EditBox || kind == UiKind::ScrollFrame || kind == UiKind::Canvas
+        || kind == UiKind::Model || kind == UiKind::Surface;
 }
 
 static bool IsUiBindEvent(const std::string& event) {
@@ -517,6 +518,8 @@ int64_t WasmAddonManager::HandleHostCall(Addon& addon, IWasmInstance& instance, 
             else if (kind == "button") kindId = UiKind::Button;
             else if (kind == "editbox") kindId = UiKind::EditBox;
             else if (kind == "scrollframe") kindId = UiKind::ScrollFrame;
+            else if (kind == "canvas") kindId = UiKind::Canvas;
+            else if (kind == "model") kindId = UiKind::Model;
             else return ErrInvalidArgument;
             uint64_t parentHost = 0;
             if (args[0] != 0) {
@@ -948,6 +951,53 @@ int64_t WasmAddonManager::HandleHostCall(Addon& addon, IWasmInstance& instance, 
             if ((uint64_t)args[3] < out.size()) return ErrBufferTooSmall;
             if (!out.empty() && !instance.WriteMemory((uint32_t)args[2], out.data(), (uint32_t)out.size())) return ErrInvalidMemory;
             return (int64_t)out.size();
+        }
+        case HostFn::SurfaceOpen: {
+            if (!HasPermission(addon, PermSurface, fn)) return ErrPermissionDenied;
+            if (args.size() < 4 || args[0] < 0 || args[1] < 1 || args[1] > 1024) return ErrInvalidArgument;
+            std::string spec;
+            if (!instance.ReadMemory((uint32_t)args[0], (uint32_t)args[1], spec)) return ErrInvalidMemory;
+            if (addon.uiHandles.size() >= addon.limits.maxUiHandles || addon.nextUiSlot > 0xffff) return ErrLimitExceeded;
+            std::string error;
+            uint64_t hostHandle = m_host ? m_host->SurfaceOpen(addon.info.manifest.id, spec, (int32_t)args[2], (int32_t)args[3], error) : 0;
+            if (!hostHandle) return ErrUnavailable;
+            uint32_t slot = addon.nextUiSlot++;
+            uint32_t generation = addon.uiGeneration & 0x7fff;
+            addon.uiHandles[slot] = {0, generation, hostHandle, UiKind::Surface};
+            RecordActivity(addon.info.manifest.id, "surface.open", spec);
+            return (int32_t)((generation << 16) | slot);
+        }
+        case HostFn::CanvasWrite: {
+            if (!HasPermission(addon, PermUiCreate, fn)) return ErrPermissionDenied;
+            if (args.size() < 5 || args[1] < 1 || args[2] < 1 || args[3] < 0 || args[4] < 0) return ErrInvalidArgument;
+            if ((uint64_t)args[1] > 1024 || (uint64_t)args[2] > 1024) return ErrLimitExceeded;
+            uint64_t bytes = (uint64_t)args[1] * (uint64_t)args[2] * 4;
+            if ((uint64_t)args[4] < bytes || bytes > 4 * 1024 * 1024) return ErrBufferTooSmall;
+            UiHandle* widget = FindUi(addon, args[0]);
+            if (!widget || widget->kind != UiKind::Canvas) return ErrInvalidHandle;
+            std::string raw;
+            if (!instance.ReadMemory((uint32_t)args[3], (uint32_t)bytes, raw)) return ErrInvalidMemory;
+            if (!m_host || !m_host->CanvasWrite(widget->hostHandle, (int32_t)args[1], (int32_t)args[2], reinterpret_cast<const uint8_t*>(raw.data()), (uint32_t)raw.size())) return ErrUnavailable;
+            return Ok;
+        }
+        case HostFn::ModelSet: {
+            if (!HasPermission(addon, PermUiCreate, fn)) return ErrPermissionDenied;
+            std::string spec;
+            if (!readString(1, 2, spec)) return ErrInvalidMemory;
+            UiHandle* widget = FindUi(addon, args[0]);
+            if (!widget || widget->kind != UiKind::Model) return ErrInvalidHandle;
+            if (!m_host || !m_host->ModelSet(widget->hostHandle, spec)) return ErrUnavailable;
+            return Ok;
+        }
+        case HostFn::HookBind: {
+            if (!HasPermission(addon, PermHook, fn)) return ErrPermissionDenied;
+            std::string name;
+            if (!readString(0, 1, name)) return ErrInvalidMemory;
+            if (addon.subscriptionsSet.size() >= addon.limits.maxEvents && !addon.subscriptionsSet.count("WASM_HOOK")) return ErrLimitExceeded;
+            addon.subscriptionsSet.insert("WASM_HOOK");
+            if (!m_host || !m_host->HookBind(addon.info.manifest.id, name)) return ErrUnavailable;
+            RecordActivity(addon.info.manifest.id, "ui.hook", name);
+            return Ok;
         }
         default: return ErrGeneric;
     }

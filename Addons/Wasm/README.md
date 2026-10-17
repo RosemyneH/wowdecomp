@@ -25,7 +25,21 @@ MyAddon/
 └── LICENSE        # optional; addon.sig is detected but not verified yet
 ```
 
-Copy the folder into `Interface/WasmAddOns/` in the client directory. The host also accepts a top-level `WasmAddOns/` if `Interface/WasmAddOns` is absent. Each package is also an entry in the addon list: `DisableAddOn`, the character screen checkbox, and `AddOns.txt` stop it the same way they stop any other addon. The description on that entry says it is a WASM addon and includes the id, version, API version, author, and the permissions declared in `addon.toml`. A package that also has a TOC keeps its own notes, with that sentence added after them.
+Copy the folder into `Interface/WasmAddOns/` in the client directory. The host also accepts a top-level `WasmAddOns/` if `Interface/WasmAddOns` is absent. Each package is also an entry in the addon list: `DisableAddOn`, the character screen checkbox, and `AddOns.txt` stop it the same way they stop any other addon. The description on that entry is a colored list: id, version, API, author, and each declared permission. Green permissions are ordinary. Gold ones need `wasmgrant`. Hover the row on the character screen and the same text sits in a panel beside the list. A package that also has a TOC keeps its own notes above that list.
+
+## Frames beyond widgets
+
+`ui_spawn` also accepts `canvas` and `model`. `canvas_write` uploads RGBA into the canvas. `model_set` points a `PlayerModel` at `unit:player`, a creature id, or a model path. `hook_bind` is `hooksecurefunc` on one global and delivers `WASM_HOOK`. Those three use `ui.create`, except `hook_bind`, which needs `ui.hook`.
+
+`surface_open` puts a Wayland client in a frame you can drag and close, the same way you close a bag. It is not a desktop overlay. The game is a private Wayland display for that one window. An `https://` address opens Chromium. `app:` runs another program with `WAYLAND_DISPLAY` pointed at that frame, so anything that already speaks Wayland can sit in the corner. The permission is `surface.host`, and it stays off until `wasmgrant`.
+
+```rust
+use wow_addon_sdk::{hook_bind, model_set, surface_open};
+
+let page = surface_open("https://www.youtube.com", 640, 400);
+let _ = model_set(model, "unit:player");
+let _ = hook_bind("CastSpellByName");
+```
 
 ```toml
 [addon]

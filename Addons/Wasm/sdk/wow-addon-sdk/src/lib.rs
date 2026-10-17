@@ -38,6 +38,10 @@ mod raw {
         pub fn lua_call(ptr: *const u8, len: u32, out: *mut u8, cap: u32) -> i32;
         pub fn lua_bind(handle: i32, ptr: *const u8, len: u32) -> i32;
         pub fn awesome_call(ptr: *const u8, len: u32, out: *mut u8, cap: u32) -> i32;
+        pub fn surface_open(ptr: *const u8, len: u32, width: i32, height: i32) -> i32;
+        pub fn canvas_write(handle: i32, width: i32, height: i32, ptr: *const u8, len: u32) -> i32;
+        pub fn model_set(handle: i32, ptr: *const u8, len: u32) -> i32;
+        pub fn hook_bind(ptr: *const u8, len: u32) -> i32;
     }
 }
 
@@ -392,3 +396,23 @@ pub extern "C" fn wow_free(ptr: *mut u8, len: u32) {
 
 pub mod awesome;
 pub mod frame;
+
+/// A Wayland client inside a normal UI frame. `https://` opens Chromium. `app:` runs another program on the private display.
+pub fn surface_open(spec: &str, width: i32, height: i32) -> i32 {
+    unsafe { raw::surface_open(spec.as_ptr(), spec.len() as u32, width, height) }
+}
+
+/// RGBA8 pixels for a `canvas` frame. The handle is the one `ui_spawn` returned.
+pub fn canvas_write(handle: i32, width: i32, height: i32, rgba: &[u8]) -> i32 {
+    unsafe { raw::canvas_write(handle, width, height, rgba.as_ptr(), rgba.len() as u32) }
+}
+
+/// `unit:player`, a creature id, or a model path on a `model` frame.
+pub fn model_set(handle: i32, spec: &str) -> i32 {
+    unsafe { raw::model_set(handle, spec.as_ptr(), spec.len() as u32) }
+}
+
+/// `hooksecurefunc` on a global. The addon then receives `WASM_HOOK` with that name.
+pub fn hook_bind(name: &str) -> i32 {
+    unsafe { raw::hook_bind(name.as_ptr(), name.len() as u32) }
+}

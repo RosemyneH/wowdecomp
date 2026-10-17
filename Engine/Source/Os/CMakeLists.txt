@@ -30,6 +30,14 @@ elseif(WOWDECOMP_UNIX)
 
     target_compile_definitions(Os PUBLIC WOWDECOMP_SDL2=1)
 
+    if (WOWDECOMP_LINUX)
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(WAYLAND_SERVER REQUIRED IMPORTED_TARGET wayland-server)
+        pkg_check_modules(XKBCOMMON REQUIRED IMPORTED_TARGET xkbcommon)
+        target_sources(Os PRIVATE Linux/protocol/xdg-shell-protocol.c)
+        target_link_libraries(Os PUBLIC PkgConfig::WAYLAND_SERVER PkgConfig::XKBCOMMON)
+    endif ()
+
     if (WOWDECOMP_APPLE)
         target_link_libraries(Os
             PUBLIC

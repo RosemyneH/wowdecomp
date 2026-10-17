@@ -37,6 +37,7 @@ The [wiki](https://github.com/RosemyneH/wowdecomp/wiki) explains each area in th
 | [Performance](https://github.com/RosemyneH/wowdecomp/wiki/Performance) | [`docs/performance.md`](docs/performance.md) | Job pool and the in-game profiler |
 | [Platforms](https://github.com/RosemyneH/wowdecomp/wiki/Platforms) | [`docs/platforms.md`](docs/platforms.md) | Which OS builds, and what a release contains |
 | [Writing addons](https://github.com/RosemyneH/wowdecomp/wiki/Writing-Addons) | [`Addons/Wasm/README.md`](Addons/Wasm/README.md) | WASM packages, permissions, ports |
+| [Surfaces](https://github.com/RosemyneH/wowdecomp/wiki/Surfaces) | [`docs/surfaces.md`](docs/surfaces.md) | Canvas, models, hooks, and a Wayland client in a frame |
 
 ### Build & CI status
 

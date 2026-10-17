@@ -12,6 +12,7 @@
 #include "Engine/Source/Os/OsFile.h"
 #include "Engine/Source/Storm/H/storm.h"
 #include "Engine/Source/FrameXML/FrameXML.h"
+#include "Engine/Source/WasmAddon/WasmManifest.h"
 #include "Engine/Source/FrameXML/LoadXML.h"
 #include "Engine/Source/Storm/Source/MD5.h"
 #include "Engine/Source/lua-5.1/src/lua.h"
@@ -1484,31 +1485,7 @@ static void TomlTrueKeys(const char* text, const char* section, char* out, size_
     }
 }
 
-static void AppendSentence(char* dest, size_t cap, const char* sentence) {
-    if (cap < 2) return;
-    size_t len = strlen(dest);
-    if (len >= cap - 1) return;
-    if (len && len + 2 < cap) {
-        char last = dest[len - 1];
-        if (last != '.' && last != '!' && last != '?') dest[len++] = '.';
-        dest[len++] = ' ';
-        dest[len] = '\0';
-    }
-    SStrCopy(dest + strlen(dest), sentence, cap - strlen(dest));
-}
-
-// ʕ •ᴥ•ʔ✿ The addon list shows Notes as the description. A wasm package has no TOC notes unless it also ships one ✿ ʕ •ᴥ•ʔ
-static void AppendDetail(char* dest, size_t cap, const char* piece) {
-    size_t len = strlen(dest);
-    if (!piece || !piece[0] || len + 3 >= cap) return;
-    if (len) {
-        dest[len++] = ',';
-        dest[len++] = ' ';
-        dest[len] = '\0';
-    }
-    SStrCopy(dest + len, piece, cap - len);
-}
-
+// ʕ •ᴥ•ʔ✿ Notes are the addon-list description. Color codes and |n render in the tooltip and the side panel. ✿ ʕ •ᴥ•ʔ
 static void ApplyWasmDescription(UIADDON* addon, const char* text) {
     char id[128];
     char displayName[256];
@@ -1532,36 +1509,55 @@ static void ApplyWasmDescription(UIADDON* addon, const char* text) {
     if (version[0] && !hadVersion) addon->SetMetadata("Version", version);
     if (author[0] && !hadAuthor) addon->SetMetadata("Author", author);
 
-    char detail[768];
-    if (id[0]) SStrPrintf(detail, sizeof(detail), "WASM addon %s", id);
-    else SStrCopy(detail, "WASM addon", sizeof(detail));
-    if (version[0] && !hadVersion) {
-        char piece[96];
-        SStrPrintf(piece, sizeof(piece), "version %s", version);
-        AppendDetail(detail, sizeof(detail), piece);
-    }
-    if (api[0]) {
-        char piece[64];
-        SStrPrintf(piece, sizeof(piece), "API %s", api);
-        AppendDetail(detail, sizeof(detail), piece);
-    }
-    if (author[0] && !hadAuthor) {
-        char piece[160];
-        SStrPrintf(piece, sizeof(piece), "by %s", author);
-        AppendDetail(detail, sizeof(detail), piece);
-    }
-
-    char sentence[1024];
-    if (perms[0]) SStrPrintf(sentence, sizeof(sentence), "%s. Permissions: %s.", detail, perms);
-    else SStrPrintf(sentence, sizeof(sentence), "%s.", detail);
-
     char notes[1024];
     notes[0] = '\0';
     UIADDON::METADATA* existing = addon->m_metadata.Ptr("Notes");
     if (existing && existing->m_value && existing->m_value[0] && !strstr(existing->m_value, "WASM addon")) {
         SStrCopy(notes, existing->m_value, sizeof(notes));
     }
-    AppendSentence(notes, sizeof(notes), sentence);
+
+    auto line = [&](const char* text) {
+        size_t len = strlen(notes);
+        if (len && len + 2 < sizeof(notes)) {
+            notes[len++] = '|';
+            notes[len++] = 'n';
+            notes[len] = '\0';
+        }
+        SStrCopy(notes + strlen(notes), text, sizeof(notes) - strlen(notes));
+    };
+    auto row = [&](const char* label, const char* value) {
+        if (!value || !value[0]) return;
+        char text[384];
+        SStrPrintf(text, sizeof(text), "|cffd4c4a8%s|r  |cffffffff%s|r", label, value);
+        line(text);
+    };
+
+    line("|cff8ec8ffWASM addon|r");
+    row("Id", id);
+    if (!hadVersion) row("Version", version);
+    row("API", api);
+    if (!hadAuthor) row("Author", author);
+    if (perms[0]) {
+        line("|cffd4c4a8Permissions|r");
+        const char* cursor = perms;
+        while (*cursor) {
+            while (*cursor == ' ') cursor++;
+            const char* comma = strchr(cursor, ',');
+            char name[96];
+            size_t nameLen = comma ? (size_t)(comma - cursor) : strlen(cursor);
+            if (nameLen >= sizeof(name)) nameLen = sizeof(name) - 1;
+            memcpy(name, cursor, nameLen);
+            name[nameLen] = '\0';
+            while (nameLen && name[nameLen - 1] == ' ') name[--nameLen] = '\0';
+            WasmAddon::Permission perm = WasmAddon::PermNone;
+            bool sensitive = WasmAddon::PermissionFromName(name, perm) && WasmAddon::IsSensitive(perm);
+            char text[160];
+            SStrPrintf(text, sizeof(text), sensitive ? "|cffffb04a  %s|r" : "|cff9dff9d  %s|r", name);
+            line(text);
+            if (!comma) break;
+            cursor = comma + 1;
+        }
+    }
     addon->SetMetadata("Notes", notes);
 }
 
