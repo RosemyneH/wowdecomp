@@ -1,5 +1,6 @@
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 #include "Engine/Source/Base/Job/JobSystem.h"
 #include "Engine/Source/Model2/CM2SceneRender.h"
@@ -744,6 +745,83 @@ static int32_t DrawRigidDoodads(M2Data* data, CM2Shared* shared, M2SkinSection* 
     return 1;
 }
 
+// ʕ •ᴥ•ʔ✿ One shared bind-pose mesh. Each copy is a bone palette, and a short ring falls back to the CPU tail ✿ ʕ •ᴥ•ʔ
+static uint32_t DrawSkinnedDoodads(M2Data* data, CM2Shared* shared, M2SkinSection* section, M2Element* elements, uint32_t* indices, uint32_t total) {
+    if (!g_theGxDevicePtr->GpuSkinSupported() || !data || !shared || !shared->m_cache || !shared->m_skinData || !section) {
+        return 0;
+    }
+
+    if (section->m_boneCount <= 1 || section->m_boneInfluences < 1 || section->m_boneInfluences > 4) {
+        return 0;
+    }
+
+    uint32_t boneCount = data->m_bones.m_count;
+
+    if (!boneCount || boneCount > 256 || (shared->m_cache->m_flags & 8) || !section->m_vertexCount || !section->m_indexCount || section->m_vertexStart + section->m_vertexCount > data->m_vertices.m_count) {
+        return 0;
+    }
+
+    uint32_t sectionIndex = static_cast<uint32_t>(section - shared->m_skinSections);
+
+    if (sectionIndex >= shared->m_skinData->m_skinSections.m_count) {
+        return 0;
+    }
+
+    CGxBuf* verts = g_theGxDevicePtr->BufStream(GxPoolTarget_Vertex, sizeof(M2Vertex), section->m_vertexCount);
+    M2Vertex* dst = reinterpret_cast<M2Vertex*>(g_theGxDevicePtr->BufLock(verts));
+
+    if (!dst) {
+        return 0;
+    }
+
+    memcpy(dst, &data->m_vertices[section->m_vertexStart], sizeof(M2Vertex) * section->m_vertexCount);
+    g_theGxDevicePtr->BufUnlock(verts, 0);
+    verts->m_hasData = 1;
+
+    uint32_t indexStart = shared->m_skinData->m_skinSections[sectionIndex].m_indexStart;
+    uint16_t bias = static_cast<uint16_t>(-static_cast<int32_t>(section->m_vertexStart));
+    CGxBuf* ib = g_theGxDevicePtr->BufStream(GxPoolTarget_Index, sizeof(uint16_t), section->m_indexCount);
+    uint16_t* indexOut = reinterpret_cast<uint16_t*>(g_theGxDevicePtr->BufLock(ib));
+
+    if (!indexOut) {
+        return 0;
+    }
+
+    for (uint32_t j = 0; j < section->m_indexCount; ++j) {
+        indexOut[j] = static_cast<uint16_t>(bias + shared->m_skinData->m_indices[indexStart + j]);
+    }
+
+    g_theGxDevicePtr->BufUnlock(ib, 0);
+    ib->m_hasData = 1;
+    GxRsSet(GxRs_NormalizeNormals, 1);
+
+    uint32_t drawn = 0;
+
+    for (uint32_t n = 0; n < total; ++n) {
+        CM2Model* model = elements[indices[n]].m_model;
+
+        if (!model || !model->m_boneMatrices || !g_theGxDevicePtr->GpuSkinBind(model->m_boneMatrices, boneCount)) {
+            g_theGxDevicePtr->GpuSkinBind(nullptr, 0);
+            break;
+        }
+
+        GxPrimVertexPtr(verts, GxVBF_PBNT2);
+        g_theGxDevicePtr->PrimIndexPtr(ib);
+
+        CGxBatch batch;
+        batch.m_primType = GxPrim_Triangles;
+        batch.m_start = 0;
+        batch.m_count = section->m_indexCount;
+        batch.m_minIndex = 0;
+        batch.m_maxIndex = static_cast<uint16_t>(section->m_vertexCount - 1);
+        g_theGxDevicePtr->Draw(&batch, 1);
+        drawn++;
+    }
+
+    g_theGxDevicePtr->GpuSkinMesh(0);
+    return drawn;
+}
+
 // VERIFY: 2ff5e9df manual
 // OFFSET: 0x00820AE0
 void CM2SceneRender::DrawBatchDoodad(M2Element* elements, uint32_t* indices) {
@@ -768,6 +846,16 @@ void CM2SceneRender::DrawBatchDoodad(M2Element* elements, uint32_t* indices) {
 
     if (!CShaderEffect::s_enableShaders && DrawRigidDoodads(this->m_data, this->m_curShared, this->m_curSkinSection, elements, indices, total)) {
         return;
+    }
+
+    uint32_t gpuDrawn = 0;
+
+    if (!CShaderEffect::s_enableShaders) {
+        gpuDrawn = DrawSkinnedDoodads(this->m_data, this->m_curShared, this->m_curSkinSection, elements, indices, total);
+
+        if (gpuDrawn == total) {
+            return;
+        }
     }
 
     this->m_curShared->SetIndices();
@@ -820,7 +908,7 @@ void CM2SceneRender::DrawBatchDoodad(M2Element* elements, uint32_t* indices) {
             g_theGxDevicePtr->Draw(&batch, 1);
         }
     } else {
-        for (uint32_t done = 0; done < total; done += instances) {
+        for (uint32_t done = gpuDrawn; done < total; done += instances) {
             if (done + instances > total) {
                 instances = total - done;
             }
@@ -843,7 +931,6 @@ void CM2SceneRender::DrawBatchDoodad(M2Element* elements, uint32_t* indices) {
             skin.stride = 32 * section->m_vertexCount;
             skin.influences = section->m_boneInfluences;
 
-            // ʕ •ᴥ•ʔ✿ Doodads stay CPU: no shared bind-pose buffer to bind without another upload ✿ ʕ •ᴥ•ʔ
             if (instances >= 8) {
                 Job::ParallelFor(instances, FillDoodadSkin, &skin);
             } else {

@@ -1,6 +1,6 @@
 # GPU M2 skinning
 
-G1 is in the client. `GpuSkinBind` arms a 32 MiB bone ring, `SetVertices` keeps a bind-pose `GxVBF_PBNT2` for `texCoord == 0`, and `DrawBatch` binds that model's skeleton before the draw. Env, optimized, and multi-sample batches stay on the CPU. G2 is multi-bone doodads. G4 is moving those static meshes to device-local memory.
+G1 and G2 are in the client. Characters with one UV set keep a bind-pose mesh and skin in `Ffp.vert`. Multi-bone doodads do the same, one bone bind per instance, and fall back to `FillDoodadSkin` if the ring is full. Env, optimized, and multi-sample batches stay on the CPU. G3 still has to keep the doodad bind-pose buffer across frames. G4 moves those static meshes to device-local memory.
 
 Vulkan stays on the fixed-function path (`m_shaderTargets` are all 0, so `CShaderEffect::s_enableShaders` stays off). Retail D3D9 / DXVK skins in the vertex shader. This campaign does the same job without porting the `.bls` shader library: the mesh stays in bind pose, bone matrices go up in a storage buffer, and `Ffp.vert` blends position and normal before the existing world / view / proj and lighting.
 
