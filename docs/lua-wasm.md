@@ -261,7 +261,7 @@ let _ = lua::call("SendChatMessage", &[
 
 `lua::call(name, args)` invokes any global (`CreateFrame`, `UnitName`, `GetSpellInfo`, `CastSpellByName`, …). `lua::method(handle, name, args)` invokes a method on a frame or other object the client returned. `Val` is `Nil`, `Bool`, `Num`, `Str`, `Obj`, or `Map` for the tables those APIs take (`SetBackdrop`). `lua::bind(frame, "OnEnterPressed")` delivers `WASM_UI` back into `on_event` with the script name and the object handle.
 
-`port.wim` is a Rust addon on this path. It calls the client’s real widget and unit functions. It does not ship or execute Lua source. ElvUI and Details are the original Lua addons in `Interface/AddOns`.
+`port.wim` is a Rust addon on this path. It calls the client’s real widget and unit functions. It does not ship or execute Lua source. ElvUI and Details stay the original Lua trees, staged under `Interface/WasmAddOns` with a wasm package stub. Their UI still loads from the TOC.
 
 ## AwesomeWotLK
 

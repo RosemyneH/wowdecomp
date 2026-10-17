@@ -1,6 +1,6 @@
 # Writing WASM addons
 
-Sandboxed `wasm32` packages for the wowdecomp 3.3.5a client. The longer Lua dictionary is [docs/lua-wasm.md](../../docs/lua-wasm.md). Host layout is [docs/wasm-addon-architecture.md](../../docs/wasm-addon-architecture.md). The same pages are on the [GitHub wiki](https://github.com/RosemyneH/wowdecomp/wiki).
+Sandboxed `wasm32` packages for the wowdecomp 3.3.5a client. The longer Lua dictionary is [docs/lua-wasm.md](../../docs/lua-wasm.md). Host layout is [docs/wasm-addon-architecture.md](../../docs/wasm-addon-architecture.md). The rest of the fork — Vulkan, the long view, AwesomeWotLK — is the [project overview](../../docs/overview.md). The same pages are on the [GitHub wiki](https://github.com/RosemyneH/wowdecomp/wiki).
 
 ## Build
 

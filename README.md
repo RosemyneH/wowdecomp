@@ -23,6 +23,21 @@ Join the Discord for other clients and to show off cool stuff you build: https:/
 
 Everything above is **experimental**: APIs move, backends differ per OS, and regressions are expected. Treat nightly-quality builds as the norm.
 
+### Where to read more
+
+The [wiki](https://github.com/RosemyneH/wowdecomp/wiki) explains each area in the table. The same pages live in this repo:
+
+| Wiki | In the repo | What it answers |
+|------|-------------|-----------------|
+| [Home](https://github.com/RosemyneH/wowdecomp/wiki) | [`docs/overview.md`](docs/overview.md) | What this fork is, and where to start |
+| [Graphics](https://github.com/RosemyneH/wowdecomp/wiki/Graphics) | [`docs/graphics.md`](docs/graphics.md) | Vulkan device, shaders, terrain, models |
+| [World](https://github.com/RosemyneH/wowdecomp/wiki/World) | [`docs/world.md`](docs/world.md) | Full view, far clip, horizon, ground casts |
+| [AwesomeWotLK](https://github.com/RosemyneH/wowdecomp/wiki/AwesomeWotLK) | [`docs/awesomewotlk.md`](docs/awesomewotlk.md) | Nameplates, speech, interact, camera, the Lua API |
+| [Fonts](https://github.com/RosemyneH/wowdecomp/wiki/Fonts) | [`docs/fonts.md`](docs/fonts.md) | Distance-field UI text and screenshots |
+| [Performance](https://github.com/RosemyneH/wowdecomp/wiki/Performance) | [`docs/performance.md`](docs/performance.md) | Job pool and the in-game profiler |
+| [Platforms](https://github.com/RosemyneH/wowdecomp/wiki/Platforms) | [`docs/platforms.md`](docs/platforms.md) | Which OS builds, and what a release contains |
+| [Writing addons](https://github.com/RosemyneH/wowdecomp/wiki/Writing-Addons) | [`Addons/Wasm/README.md`](Addons/Wasm/README.md) | WASM packages, permissions, ports |
+
 ### Build & CI status
 
 What **GitHub Actions** exercises on every push/PR, what **releases** ship, and what you can expect when building locally. “**WowClient**” means the full game executable (`Tools/WowClient`); “**Os + Gx**” is only the engine layers needed for the Vulkan path.
