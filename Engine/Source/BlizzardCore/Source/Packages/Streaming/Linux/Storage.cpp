@@ -1072,7 +1072,7 @@ uint32_t Blizzard::Storage::StorageThread(void* param) {
 }
 
 bool Blizzard::Storage::Close(Blizzard::File::Filesystem* fs, Blizzard::File::StreamRecord* file, Blizzard::Streaming::StorageEntry* entry) {
-    if (entry->m_flags & 4) {
+    if (!entry || (entry->m_flags & 4)) {
         return true;
     }
 

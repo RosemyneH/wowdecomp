@@ -17,6 +17,9 @@
 #endif
 #include <pthread.h>
 #include <sys/stat.h>
+#if defined(__ANDROID__)
+extern "C" int SDL_ShowSimpleMessageBox(unsigned int flags, const char* title, const char* message, void* window);
+#endif
 #include <sys/syscall.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -660,6 +663,9 @@ void SErrDisplayAppFatalCustomV(uint32_t errorcode, const char* format, va_list 
     char buffer[2048];
     vsnprintf(buffer, sizeof(buffer) - 1, format, args);
     buffer[sizeof(buffer) - 1] = 0;
+#if defined(__ANDROID__)
+    SDL_ShowSimpleMessageBox(0x10u, "wowdecomp", buffer, nullptr);
+#endif
     SErrDisplayError(errorcode, filename, linenumber, buffer, 0, 1, 0x11111111);
     StormExitProcess(1);
 }

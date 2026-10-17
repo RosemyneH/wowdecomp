@@ -84,9 +84,11 @@ done
 mapfile -t reg < <(python3 "$ROOT/Tools/local-server/acore-account.py" a a)
 salt="${reg[0]}"
 verifier="${reg[1]}"
+lan_host="$(wowdecomp_cdn_host)"
+lan_host="${lan_host:-127.0.0.1}"
 mysql_exec "INSERT INTO acore_auth.account (username, salt, verifier, expansion) VALUES ('A', UNHEX('${salt}'), UNHEX('${verifier}'), 2) ON DUPLICATE KEY UPDATE salt=VALUES(salt), verifier=VALUES(verifier), expansion=2;
 INSERT INTO acore_auth.account_access (id, gmlevel, RealmID) SELECT id, 3, -1 FROM acore_auth.account WHERE username='A' ON DUPLICATE KEY UPDATE gmlevel=3;
-UPDATE acore_auth.realmlist SET address='127.0.0.1', localAddress='127.0.0.1', port=8085 WHERE id=1;"
+UPDATE acore_auth.realmlist SET address='${lan_host}', localAddress='${lan_host}', port=8085 WHERE id=1;"
 
 echo "Waiting for worldserver..."
 deadline=$((SECONDS + 900))

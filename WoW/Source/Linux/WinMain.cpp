@@ -52,7 +52,7 @@ static void MainFiberProc() {
 static const char kStreamingMfil[] =
     "version=1\n"
     "isTrial=0\n"
-    "source=http://yourcdn.com/\n"
+    "source=%s\n"
     "Data;0;12340;0\n"
     "Data/enUS;0;12340;0\n"
     "Data/common.MPQ;2881154862;12340;0\n"
@@ -74,13 +74,7 @@ static const char kStreamingMfil[] =
     "Data/enUS/patch-enUS-2.MPQ;225570171;12340;0\n"
     "Data/enUS/patch-enUS-3.MPQ;100373935;12340;0\n";
 
-static void WriteIfMissing(const char* path, const char* text) {
-    FILE* existing = fopen(path, "rb");
-    if (existing) {
-        fclose(existing);
-        return;
-    }
-
+static void WriteFile(const char* path, const char* text) {
     FILE* file = fopen(path, "wb");
     if (!file) {
         return;
@@ -109,10 +103,22 @@ static void AndroidPrepareGameRoot() {
     mkdir("Data", 0755);
     mkdir("Data/enUS", 0755);
     mkdir("WTF", 0755);
-    WriteIfMissing("WoW.mfil", kStreamingMfil);
-    WriteIfMissing("WTF/Config.wtf", "SET realmList \"127.0.0.1\"\nSET locale \"enUS\"\n");
-    WriteIfMissing("Data/enUS/realmlist.wtf", "SET realmList \"127.0.0.1\"\n");
-    WriteIfMissing("streaming-credits.txt",
+
+    // ʕ •ᴥ•ʔ✿ Same LAN as the Docker CDN. A subnet scan was missing it and falling back to yourcdn.com. ✿ ʕ •ᴥ•ʔ
+    const char* cdnHost = "192.168.1.129";
+
+    char source[96];
+    snprintf(source, sizeof(source), "http://%s:1119/", cdnHost);
+    char mfil[2048];
+    snprintf(mfil, sizeof(mfil), kStreamingMfil, source);
+    WriteFile("WoW.mfil", mfil);
+
+    char realm[160];
+    snprintf(realm, sizeof(realm), "SET realmList \"%s\"\nSET locale \"enUS\"\n", cdnHost);
+    WriteFile("WTF/Config.wtf", realm);
+    snprintf(realm, sizeof(realm), "SET realmList \"%s\"\n", cdnHost);
+    WriteFile("Data/enUS/realmlist.wtf", realm);
+    WriteFile("streaming-credits.txt",
         "WoW.mfil streaming follows brian8544's 3.3.5a CDN client.\n"
         "https://github.com/brian8544/streamingclient-3.3.5\n"
         "Server module (GPL-2.0): https://github.com/brian8544/mod-streamingclient\n"

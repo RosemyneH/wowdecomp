@@ -122,12 +122,16 @@ static int32_t ParseFormatSpecifier(const char** format, ArgumentSize* size, int
 // VERIFY: 7c8d9894 manual
 // OFFSET: 0x00773E10
 static void FixUpLongLongFormatSpecifier(char* specifier) {
+#if defined(_MSC_VER)
     char* ll = strstr(specifier, "ll");
 
     if (ll) {
         memmove(ll + 3, ll + 2, strlen(ll) - 1);
         memcpy(ll, "I64", 3);
     }
+#else
+    (void)specifier;
+#endif
 }
 
 // VERIFY: 33f0aefe manual
