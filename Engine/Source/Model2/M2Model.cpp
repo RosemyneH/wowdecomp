@@ -93,7 +93,103 @@ static void M2DestroyUploadSlot(M2VertexUploadSlot* slot) {
     SMemFree(slot, __FILE__, __LINE__, 0);
 }
 
+struct M2BindPoseBuf {
+    CM2Model* model;
+    M2SkinSection* section;
+    CGxPool* pool;
+    CGxBuf* buf;
+    M2BindPoseBuf* next;
+};
+
+static M2BindPoseBuf* s_bindPoses;
+
+static void M2ReleaseBindPoses(CM2Model* model) {
+    M2BindPoseBuf** link = &s_bindPoses;
+
+    while (*link) {
+        if ((*link)->model != model) {
+            link = &(*link)->next;
+            continue;
+        }
+
+        M2BindPoseBuf* dead = *link;
+        *link = dead->next;
+
+        if (g_theGxDevicePtr) {
+            if (dead->buf) {
+                g_theGxDevicePtr->BufDestroy(dead->buf);
+            }
+
+            if (dead->pool) {
+                g_theGxDevicePtr->PoolDestroy(dead->pool);
+            }
+        }
+
+        SMemFree(dead, __FILE__, __LINE__, 0);
+    }
+}
+
+static int32_t M2BindPose(CM2Model* model, M2SkinSection* section) {
+    if (!g_theGxDevicePtr->GpuSkinSupported() || !section || !section->m_vertexCount || !model->m_shared || !model->m_shared->m_data) {
+        return 0;
+    }
+
+    uint32_t boneCount = model->m_shared->m_data->m_bones.m_count;
+
+    if (!boneCount || boneCount > 256) {
+        return 0;
+    }
+
+    M2BindPoseBuf* pose = s_bindPoses;
+
+    while (pose) {
+        if (pose->model == model && pose->section == section && pose->buf && pose->buf->m_hasData && pose->buf->m_valid) {
+            GxPrimVertexPtr(pose->buf, GxVBF_PBNT2);
+            return 1;
+        }
+
+        pose = pose->next;
+    }
+
+    uint32_t bytes = sizeof(M2Vertex) * section->m_vertexCount;
+    CGxPool* pool = g_theGxDevicePtr->PoolCreate(GxPoolTarget_Vertex, GxPoolUsage_Static, static_cast<int32_t>(bytes), GxPoolHintBit_Unk1, model->m_shared->m_fileNameWithoutPath);
+
+    if (!pool) {
+        return 0;
+    }
+
+    CGxBuf* buf = g_theGxDevicePtr->BufCreate(pool, sizeof(M2Vertex), section->m_vertexCount, 0);
+
+    if (!buf) {
+        g_theGxDevicePtr->PoolDestroy(pool);
+        return 0;
+    }
+
+    M2Vertex* dst = reinterpret_cast<M2Vertex*>(g_theGxDevicePtr->BufLock(buf));
+
+    if (!dst) {
+        g_theGxDevicePtr->BufDestroy(buf);
+        g_theGxDevicePtr->PoolDestroy(pool);
+        return 0;
+    }
+
+    memcpy(dst, &model->m_shared->m_data->m_vertices[section->m_vertexStart], bytes);
+    g_theGxDevicePtr->BufUnlock(buf, bytes);
+    buf->m_hasData = 1;
+
+    pose = static_cast<M2BindPoseBuf*>(SMemAlloc(sizeof(M2BindPoseBuf), __FILE__, __LINE__, 0));
+    pose->model = model;
+    pose->section = section;
+    pose->pool = pool;
+    pose->buf = buf;
+    pose->next = s_bindPoses;
+    s_bindPoses = pose;
+    GxPrimVertexPtr(buf, GxVBF_PBNT2);
+    return 1;
+}
+
 static void M2ReleaseVertexUploads(CM2Model* model) {
+    M2ReleaseBindPoses(model);
     M2VertexUploadCache* cache = model->m_vertexUploads;
     model->m_vertexUploads = nullptr;
 
@@ -3153,7 +3249,13 @@ int32_t CM2Model::SetVertices(int32_t optimized, M2SkinSection* section, int32_t
     CGxBuf* buf = nullptr;
     uint8_t* vertices = nullptr;
 
+    if (!optimized && texCoord == 0 && M2BindPose(this, section)) {
+        g_theGxDevicePtr->GpuSkinMesh(1);
+        return 1;
+    }
+
     if (M2BeginVertexUpload(this, section, optimized, texCoord, 32, 0, GxVBF_PNT, buf, vertices)) {
+        g_theGxDevicePtr->GpuSkinMesh(0);
         return 1;
     }
 
@@ -3171,6 +3273,7 @@ int32_t CM2Model::SetVertices(int32_t optimized, M2SkinSection* section, int32_t
         buf->m_hasData = 1;
         GxPrimVertexPtr(buf, GxVBF_PNT);
         M2CommitVertexUpload(this);
+        g_theGxDevicePtr->GpuSkinMesh(0);
         return 1;
     }
 
@@ -3195,6 +3298,7 @@ int32_t CM2Model::SetVertices(int32_t optimized, M2SkinSection* section, int32_t
     buf->m_hasData = 1;
     GxPrimVertexPtr(buf, GxVBF_PNT);
     M2CommitVertexUpload(this);
+    g_theGxDevicePtr->GpuSkinMesh(0);
     return 1;
 }
 

@@ -116,6 +116,8 @@ struct VkFrame {
     std::unordered_map<VkSetKey, VkDescriptorSet, VkSetKeyHash> sets;
     VkBufferAlloc uniforms;
     VkDeviceSize uniformOffset;
+    VkBufferAlloc bones;
+    VkDeviceSize boneCursor = 0;
     VkBufferAlloc items;
     uint32_t itemCursor = 0;
     VkBufferAlloc indirect;
@@ -140,6 +142,8 @@ class VkContext {
     enum {
         FramesInFlight = 2,
         UniformRingSize = 32 << 20,
+        // ʕ •ᴥ•ʔ✿ 256 mat4 slots. A 40-man is hundreds of skinned sections per frame ✿ ʕ •ᴥ•ʔ
+        BoneRingSize = 32 << 20,
         StagingRingSize = 16 << 20,
         // ʕ •ᴥ•ʔ✿ Chunks stay on the frame. A fresh buffer per lock after the first chunk filled was the stall ✿ ʕ •ᴥ•ʔ
         StreamRingSize = 64 << 20,

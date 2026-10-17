@@ -309,6 +309,10 @@ int32_t VkContext::CreateDeviceResources() {
             return 0;
         }
 
+        if (!this->CreateBuffer(BoneRingSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, frame.bones)) {
+            return 0;
+        }
+
         if (!this->CreateBuffer(ItemRingSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, frame.items)) {
             return 0;
         }
@@ -668,6 +672,7 @@ void VkContext::DestroyDevice() {
     for (VkFrame& frame : this->m_frames) {
         this->Collect(frame);
         this->DestroyBuffer(frame.uniforms);
+        this->DestroyBuffer(frame.bones);
         this->DestroyBuffer(frame.items);
         this->DestroyBuffer(frame.indirect);
         for (VkBufferAlloc& chunk : frame.stagingChunks) this->DestroyBuffer(chunk);
@@ -734,6 +739,7 @@ void VkContext::PrepareFrame() {
     frame.descriptorPoolCursor = 0;
     frame.sets.clear();
     frame.uniformOffset = 0;
+    frame.boneCursor = 0;
     frame.itemCursor = 0;
     frame.indirectCursor = 0;
     frame.stagingChunk = 0;
@@ -750,10 +756,11 @@ VkDescriptorPool VkContext::CreateDescriptorPool() {
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, DescriptorSetsPerFrame },
         { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, DescriptorSetsPerFrame * 2 },
         { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, DescriptorSetsPerFrame },
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, DescriptorSetsPerFrame },
     };
     VkDescriptorPoolCreateInfo info = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
     info.maxSets = DescriptorSetsPerFrame;
-    info.poolSizeCount = 3;
+    info.poolSizeCount = 4;
     info.pPoolSizes = poolSizes;
     VkDescriptorPool pool = VK_NULL_HANDLE;
     if (vkCreateDescriptorPool(this->m_device, &info, nullptr, &pool) != VK_SUCCESS) {

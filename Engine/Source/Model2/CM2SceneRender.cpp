@@ -489,7 +489,17 @@ void CM2SceneRender::DrawBatch() {
     } else {
         batch.m_minIndex = 0;
         batch.m_maxIndex = this->m_curSkinSection->m_vertexCount - 1;
+        int32_t gpuSkin = 0;
+
+        if (g_theGxDevicePtr->GpuSkinMesh() && !(this->m_curBatch->m_flags & 0x40) && !(this->m_curBatch->m_shader & 0x4000) && !(this->m_curElement->m_flags & 4)) {
+            gpuSkin = g_theGxDevicePtr->GpuSkinBind(this->m_curModel->m_boneMatrices, this->m_curModel->m_shared->m_data->m_bones.m_count);
+        }
+
         g_theGxDevicePtr->Draw(&batch, 1);
+
+        if (gpuSkin) {
+            g_theGxDevicePtr->GpuSkinBind(nullptr, 0);
+        }
     }
 }
 
@@ -833,6 +843,7 @@ void CM2SceneRender::DrawBatchDoodad(M2Element* elements, uint32_t* indices) {
             skin.stride = 32 * section->m_vertexCount;
             skin.influences = section->m_boneInfluences;
 
+            // ʕ •ᴥ•ʔ✿ Doodads stay CPU: no shared bind-pose buffer to bind without another upload ✿ ʕ •ᴥ•ʔ
             if (instances >= 8) {
                 Job::ParallelFor(instances, FillDoodadSkin, &skin);
             } else {

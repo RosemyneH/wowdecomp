@@ -1,5 +1,7 @@
 # GPU M2 skinning
 
+G1 is in the client. `GpuSkinBind` arms a 32 MiB bone ring, `SetVertices` keeps a bind-pose `GxVBF_PBNT2` for `texCoord == 0`, and `DrawBatch` binds that model's skeleton before the draw. Env, optimized, and multi-sample batches stay on the CPU. G2 is multi-bone doodads. G4 is moving those static meshes to device-local memory.
+
 Vulkan stays on the fixed-function path (`m_shaderTargets` are all 0, so `CShaderEffect::s_enableShaders` stays off). Retail D3D9 / DXVK skins in the vertex shader. This campaign does the same job without porting the `.bls` shader library: the mesh stays in bind pose, bone matrices go up in a storage buffer, and `Ffp.vert` blends position and normal before the existing world / view / proj and lighting.
 
 Do not advertise shader targets. Terrain, WMO, liquids, and UI stay on the current path. D3D9 and OpenGL keep CPU skinning (`GpuSkinBind` returns 0).

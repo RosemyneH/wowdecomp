@@ -59,11 +59,11 @@ struct VkPipelineKey {
     uint8_t fill;
     uint8_t pass;
     uint8_t bindingCount;
-    uint8_t attribBinding[5];
-    uint8_t attribType[5];
+    uint8_t attribBinding[7];
+    uint8_t attribType[7];
     uint8_t unused;
     uint8_t bindless;
-    uint16_t attribOffset[5];
+    uint16_t attribOffset[7];
     uint16_t bindingStride[6];
 
     bool operator==(const VkPipelineKey& key) const;
@@ -79,6 +79,7 @@ class CGxDeviceVulkan : public CGxDevice {
         MaxBindings = 6,
         TerrainSlots = 65536,
         DepthFunc_Always = 4,
+        BonePaletteCount = 256,
     };
 
     static const VkFormat s_gxTexFmtToVkFmt[GxTexFormats_Last];
@@ -135,7 +136,14 @@ class CGxDeviceVulkan : public CGxDevice {
     uint32_t m_uniformPrimMask = 0;
     uint32_t m_uniformMasterEnables = 0;
     int32_t m_uniformGpuDrawMode = 0;
+    int32_t m_uniformSkin = -1;
     int32_t m_uniformDisableTex = -1;
+    int32_t m_skinActive = 0;
+    int32_t m_skinThisDraw = 0;
+    int32_t m_bindPoseMesh = 0;
+    VkDeviceSize m_skinOffset = 0;
+    VkDeviceSize m_skinOffsetThis = 0;
+    uint32_t m_boundBoneOffset = 0xFFFFFFFFu;
     CGxApiLight m_uniformLights[4] = {};
     VkPipeline m_boundPipeline = VK_NULL_HANDLE;
     VkDescriptorSet m_boundSet = VK_NULL_HANDLE;
@@ -179,6 +187,10 @@ class CGxDeviceVulkan : public CGxDevice {
     virtual void XformSetProjection(const C44Matrix& matrix);
     virtual void Draw(CGxBatch* batch, int32_t count);
     virtual void DrawInstanced(CGxBatch* batch, const C44Matrix* worlds, uint32_t count);
+    virtual int32_t GpuSkinSupported() const;
+    virtual int32_t GpuSkinBind(const C44Matrix* bones, uint32_t boneCount);
+    virtual void GpuSkinMesh(int32_t bindPose);
+    virtual int32_t GpuSkinMesh() const;
     virtual int32_t DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t count);
     virtual int32_t TerrainBindless();
     virtual uint32_t TerrainTextureSlot(CGxTex* tex);

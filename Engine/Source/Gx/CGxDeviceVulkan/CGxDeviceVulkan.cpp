@@ -42,7 +42,7 @@ const VkFormat CGxDeviceVulkan::s_gxAttribToVkFormat[7] = { VK_FORMAT_B8G8R8A8_U
 
 const uint32_t CGxDeviceVulkan::s_gxAttribSize[7] = { 4, 4, 4, 8, 12, 4, 4 };
 
-const int32_t CGxDeviceVulkan::s_gxAttribLocation[GxVAs_Last] = { 0, -1, -1, 1, 2, -1, 3, 4, -1, -1, -1, -1, -1, -1 };
+const int32_t CGxDeviceVulkan::s_gxAttribLocation[GxVAs_Last] = { 0, 5, 6, 1, 2, -1, 3, 4, -1, -1, -1, -1, -1, -1 };
 
 EGxTexFormat CGxDeviceVulkan::s_gxTexFormatToUse[GxTexFormats_Last] = { GxTex_Unknown, GxTex_Abgr8888, GxTex_Argb8888, GxTex_Argb4444, GxTex_Argb1555, GxTex_Rgb565, GxTex_Dxt1, GxTex_Dxt3, GxTex_Dxt5, GxTex_Uv88, GxTex_Gr1616F, GxTex_R32F, GxTex_D24X8 };
 
@@ -281,15 +281,16 @@ int32_t CGxDeviceVulkan::ICreateVulkan(const CGxFormat& format) {
 int32_t CGxDeviceVulkan::ICreateDeviceObjects() {
     VkDevice device = this->m_vk.m_device;
 
-    VkDescriptorSetLayoutBinding bindings[4] = {
+    VkDescriptorSetLayoutBinding bindings[5] = {
         { 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
         { 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
         { 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
         { 3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr },
+        { 4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr },
     };
 
     VkDescriptorSetLayoutCreateInfo setInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
-    setInfo.bindingCount = 4;
+    setInfo.bindingCount = 5;
     setInfo.pBindings = bindings;
 
     VkDescriptorSetLayout setLayout = VK_NULL_HANDLE;
@@ -607,6 +608,7 @@ void CGxDeviceVulkan::IInvalidateCmdState() {
     // ʕ •ᴥ•ʔ✿ New command buffer: the set and its dynamic uniform offset are unbound ✿ ʕ •ᴥ•ʔ
     this->m_boundSet = VK_NULL_HANDLE;
     this->m_boundDynamicOffset = 0xFFFFFFFFu;
+    this->m_boundBoneOffset = 0xFFFFFFFFu;
     memset(this->m_setViews, 0, sizeof(this->m_setViews));
     memset(this->m_setSamplers, 0, sizeof(this->m_setSamplers));
     memset(this->m_boundBuffers, 0, sizeof(this->m_boundBuffers));
@@ -1127,6 +1129,7 @@ void CGxDeviceVulkan::IBuildUniforms(VkDrawUniforms& uniforms) {
     float pointSize = rs[GxRs_PointScale].m_value.m_data.f[0];
     uniforms.misc[0] = pointSize > 1.0f && this->m_vk.m_features.largePoints ? pointSize : 1.0f;
     uniforms.misc[1] = static_cast<float>(this->m_gpuDrawMode);
+    uniforms.misc[2] = this->m_skinThisDraw ? 1.0f : 0.0f;
 }
 
 void CGxDeviceVulkan::IRsSendToHw(EGxRenderState which) {
@@ -1151,16 +1154,17 @@ VkPipeline CGxDeviceVulkan::IPipeline(const VkPipelineKey& key) {
         bindings[i] = { i, key.bindingStride[i], VK_VERTEX_INPUT_RATE_VERTEX };
     }
 
-    VkVertexInputAttributeDescription attribs[5];
+    VkVertexInputAttributeDescription attribs[7];
 
-    for (uint32_t i = 0; i < 5; i++) {
-        attribs[i] = { i, key.attribBinding[i], s_gxAttribToVkFormat[key.attribType[i]], key.attribOffset[i] };
+    for (uint32_t i = 0; i < 7; i++) {
+        VkFormat format = i == 6 ? VK_FORMAT_R8G8B8A8_UINT : s_gxAttribToVkFormat[key.attribType[i]];
+        attribs[i] = { i, key.attribBinding[i], format, key.attribOffset[i] };
     }
 
     VkPipelineVertexInputStateCreateInfo vertexInput = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
     vertexInput.vertexBindingDescriptionCount = key.bindingCount;
     vertexInput.pVertexBindingDescriptions = bindings;
-    vertexInput.vertexAttributeDescriptionCount = 5;
+    vertexInput.vertexAttributeDescriptionCount = 7;
     vertexInput.pVertexAttributeDescriptions = attribs;
 
     VkPipelineInputAssemblyStateCreateInfo inputAssembly = { VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
@@ -1268,6 +1272,56 @@ VkSampler CGxDeviceVulkan::ISampler(const CGxTexFlags& flags) {
     return sampler;
 }
 
+int32_t CGxDeviceVulkan::GpuSkinSupported() const {
+    return this->m_context != 0;
+}
+
+int32_t CGxDeviceVulkan::GpuSkinBind(const C44Matrix* bones, uint32_t boneCount) {
+    this->m_skinActive = 0;
+
+    if (!bones || !boneCount || boneCount > 256 || !this->m_context) {
+        return 0;
+    }
+
+    VkFrame& frame = this->m_vk.Frame();
+
+    if (!frame.bones.mapped) {
+        return 0;
+    }
+
+    VkDeviceSize align = this->m_vk.m_properties.limits.minStorageBufferOffsetAlignment;
+
+    if (align < 1) {
+        align = 1;
+    }
+
+    VkDeviceSize slot = (256 * sizeof(C44Matrix) + align - 1) / align * align;
+    VkDeviceSize cursor = (frame.boneCursor + align - 1) / align * align;
+
+    if (cursor + slot > frame.bones.size) {
+        return 0;
+    }
+
+    memcpy(frame.bones.mapped + cursor, bones, boneCount * sizeof(C44Matrix));
+
+    if (boneCount < 256) {
+        memset(frame.bones.mapped + cursor + boneCount * sizeof(C44Matrix), 0, (256 - boneCount) * sizeof(C44Matrix));
+    }
+
+    frame.boneCursor = cursor + slot;
+    this->m_skinOffset = cursor;
+    this->m_skinActive = 1;
+    return 1;
+}
+
+void CGxDeviceVulkan::GpuSkinMesh(int32_t bindPose) {
+    this->m_bindPoseMesh = bindPose;
+}
+
+int32_t CGxDeviceVulkan::GpuSkinMesh() const {
+    return this->m_bindPoseMesh;
+}
+
 void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
     Profiler::Scope profile(Profiler::GxDraw);
     struct ResetGpuDraw {
@@ -1283,6 +1337,10 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
     if (!this->m_context || this->m_intF5C || !this->m_frameActive || this->m_targetInvalid) {
         return;
     }
+
+    this->m_skinThisDraw = this->m_skinActive;
+    this->m_skinOffsetThis = this->m_skinOffset;
+    this->m_skinActive = 0;
 
     // ʕ •ᴥ•ʔ✿ Copies are illegal inside a render pass. End it, upload, and the next begin loads color and depth ✿ ʕ •ᴥ•ʔ
     if (!this->m_vk.m_residentUploads.empty() && this->m_vk.Frame().recording) {
@@ -1361,12 +1419,17 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
 
     uint32_t bindingCount = streamCount;
 
-    if (locations != 0x1F) {
-        for (uint32_t location = 1; location < 5; location++) {
+    if (locations != 0x7F) {
+        for (uint32_t location = 1; location < 7; location++) {
             if (!(locations & (1 << location))) {
                 key.attribBinding[location] = static_cast<uint8_t>(bindingCount);
-                key.attribType[location] = location == 2 ? 0 : 4;
-                key.attribOffset[location] = location == 2 ? 16 : 0;
+                if (location >= 5) {
+                    key.attribType[location] = location == 6 ? 1 : 2;
+                    key.attribOffset[location] = 0;
+                } else {
+                    key.attribType[location] = location == 2 ? 0 : 4;
+                    key.attribOffset[location] = location == 2 ? 16 : 0;
+                }
             }
         }
 
@@ -1472,6 +1535,7 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
         || this->m_uniformPrimMask != this->m_primVertexMask
         || this->m_uniformMasterEnables != this->m_appMasterEnables
         || this->m_uniformGpuDrawMode != this->m_gpuDrawMode
+        || this->m_uniformSkin != this->m_skinThisDraw
         || this->m_uniformDisableTex != disableTex;
 
     if (!rebuildUniforms && memcmp(this->m_lights, this->m_uniformLights, sizeof(this->m_lights))) {
@@ -1518,6 +1582,7 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
         this->m_uniformPrimMask = this->m_primVertexMask;
         this->m_uniformMasterEnables = this->m_appMasterEnables;
         this->m_uniformGpuDrawMode = this->m_gpuDrawMode;
+        this->m_uniformSkin = this->m_skinThisDraw;
         this->m_uniformDisableTex = disableTex;
         memcpy(this->m_uniformLights, this->m_lights, sizeof(this->m_lights));
         // ʕ •ᴥ•ʔ✿ Dirty means changed since the last landed build. Tex stacks are cleared in IXformTex ✿ ʕ •ᴥ•ʔ
@@ -1552,7 +1617,7 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
             { samplers[1], views[1], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
         };
 
-        VkWriteDescriptorSet writes[4] = {};
+        VkWriteDescriptorSet writes[5] = {};
 
         for (uint32_t i = 0; i < 4; i++) {
             writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1561,15 +1626,22 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
             writes[i].descriptorCount = 1;
         }
 
+        VkDescriptorBufferInfo boneInfo = { frame.bones.buffer, 0, 256 * sizeof(C44Matrix) };
         writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
         writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         writes[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         writes[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        writes[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[4].dstSet = set;
+        writes[4].dstBinding = 4;
+        writes[4].descriptorCount = 1;
+        writes[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
         writes[0].pBufferInfo = &bufferInfo;
         writes[1].pImageInfo = &imageInfo[0];
         writes[2].pImageInfo = &imageInfo[1];
         writes[3].pBufferInfo = &itemInfo;
-        vkUpdateDescriptorSets(this->m_vk.m_device, 4, writes, 0, nullptr);
+        writes[4].pBufferInfo = &boneInfo;
+        vkUpdateDescriptorSets(this->m_vk.m_device, 5, writes, 0, nullptr);
         }
 
         this->m_boundSet = set;
@@ -1578,6 +1650,8 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
     }
 
     uint32_t dynamicOffset = static_cast<uint32_t>(this->m_uniformOffset);
+    uint32_t boneOffset = this->m_skinThisDraw ? static_cast<uint32_t>(this->m_skinOffsetThis) : 0;
+    uint32_t dynamicOffsets[2] = { dynamicOffset, boneOffset };
 
     // ʕ •ᴥ•ʔ✿ Command-buffer state. A new set, a recreated set, or a new dynamic offset still binds ✿ ʕ •ᴥ•ʔ
     if (key.bindless) {
@@ -1587,12 +1661,14 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
             return;
         }
 
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->m_terrainPipelineLayout, 0, 1, &this->m_boundSet, 1, &dynamicOffset);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->m_terrainPipelineLayout, 0, 1, &this->m_boundSet, 2, dynamicOffsets);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->m_terrainPipelineLayout, 1, 1, &terrainSet, 0, nullptr);
         this->m_boundDynamicOffset = dynamicOffset;
-    } else if (setChanged || dynamicOffset != this->m_boundDynamicOffset) {
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->m_pipelineLayout, 0, 1, &this->m_boundSet, 1, &dynamicOffset);
+        this->m_boundBoneOffset = boneOffset;
+    } else if (setChanged || dynamicOffset != this->m_boundDynamicOffset || boneOffset != this->m_boundBoneOffset) {
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->m_pipelineLayout, 0, 1, &this->m_boundSet, 2, dynamicOffsets);
         this->m_boundDynamicOffset = dynamicOffset;
+        this->m_boundBoneOffset = boneOffset;
     }
 
     if (memcmp(buffers, this->m_boundBuffers, sizeof(VkBuffer) * bindingCount) || memcmp(offsets, this->m_boundOffsets, sizeof(VkDeviceSize) * bindingCount)) {

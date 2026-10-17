@@ -8,6 +8,8 @@ layout(location = 1) in vec3 inNormal;
 layout(location = 2) in vec4 inColor;
 layout(location = 3) in vec2 inTexCoord0;
 layout(location = 4) in vec2 inTexCoord1;
+layout(location = 5) in vec4 inWeights;
+layout(location = 6) in uvec4 inIndices;
 
 layout(location = 0) out vec4 outColor;
 layout(location = 1) out vec3 outTexCoord0;
@@ -29,6 +31,10 @@ struct GpuDrawItem {
 layout(std430, set = 0, binding = 3, row_major) readonly buffer GpuDrawItems {
     GpuDrawItem items[];
 } gpu;
+
+layout(std430, set = 0, binding = 4, row_major) readonly buffer BonePalette {
+    mat4 bones[];
+} skin;
 
 vec3 StageTexCoord(int stage, vec3 viewPos, vec3 viewNormal, mat4 texMatrix) {
     int gen = u.stageTexGen[stage];
@@ -83,12 +89,36 @@ void main() {
 
     outTexIndex = texIndex;
 
-    vec4 worldPos = vec4(inPosition, 1.0) * worldMat;
+    vec3 position = inPosition;
+    vec3 normal = inNormal;
+
+    // ʕ •ᴥ•ʔ✿ Bind-pose M2. Weights are unorm, indices are the skeleton slot ✿ ʕ •ᴥ•ʔ
+    if (u.misc.z != 0.0) {
+        vec3 skinned = vec3(0.0);
+        vec3 skinnedNormal = vec3(0.0);
+
+        for (int influence = 0; influence < 4; influence++) {
+            float weight = inWeights[influence];
+
+            if (weight == 0.0) {
+                continue;
+            }
+
+            mat4 bone = skin.bones[inIndices[influence]];
+            skinned += (vec4(inPosition, 1.0) * bone).xyz * weight;
+            skinnedNormal += (vec4(inNormal, 0.0) * bone).xyz * weight;
+        }
+
+        position = skinned;
+        normal = skinnedNormal;
+    }
+
+    vec4 worldPos = vec4(position, 1.0) * worldMat;
     vec4 viewPos = worldPos * u.view;
     gl_Position = viewPos * u.proj;
     gl_PointSize = u.misc.x;
 
-    vec3 worldNormal = (vec4(inNormal, 0.0) * worldMat).xyz;
+    vec3 worldNormal = (vec4(normal, 0.0) * worldMat).xyz;
     worldNormal = dot(worldNormal, worldNormal) > 0.0 ? normalize(worldNormal) : worldNormal;
     vec3 viewNormal = (vec4(worldNormal, 0.0) * u.view).xyz;
 
