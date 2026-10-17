@@ -5,6 +5,7 @@
 #include "Engine/Source/Tempest/C3Ray.h"
 #include "Engine/Source/Tempest/NTempest.h"
 #include <cmath>
+#include <cstring>
 #include "Engine/Source/Base/CDataAllocator.h"
 #include "Engine/Source/Base/Profiler.h"
 #include "Engine/Source/Base/RCString.h"
@@ -391,8 +392,36 @@ static std::vector<VisRequest> s_visQueue;
 static std::vector<VisRequest> s_visRequests;
 static std::vector<VisJob> s_visJobs;
 static std::vector<LiquidOut> s_visLiquids;
+static VisSnapshot s_cachedSnap;
+static int32_t s_visCacheValid = 0;
+
+static int32_t SameVisibilityView(const VisSnapshot& a, const VisSnapshot& b) {
+    return memcmp(&a.frustum, &b.frustum, sizeof(CFrustum)) == 0
+        && memcmp(&a.camPlane, &b.camPlane, sizeof(C4Plane)) == 0
+        && memcmp(&a.camPlaneXY, &b.camPlaneXY, sizeof(C4Plane)) == 0
+        && memcmp(&a.camTarget, &b.camTarget, sizeof(C3Vector)) == 0
+        && memcmp(&a.activeView, &b.activeView, sizeof(C3Vector)) == 0
+        && a.farCorner == b.farCorner
+        && a.camZ == b.camZ;
+}
+
+static int32_t SameVisibilityRequests(const std::vector<VisRequest>& queue) {
+    if (queue.size() != s_visRequests.size()) {
+        return 0;
+    }
+
+    for (size_t i = 0; i < queue.size(); ++i) {
+        if (queue[i].chunk != s_visRequests[i].chunk || queue[i].linkChunk != s_visRequests[i].linkChunk || queue[i].wantLiquids != s_visRequests[i].wantLiquids) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
 
 void DropQueuedVisibility(CMapChunk* chunk) {
+    s_visCacheValid = 0;
+
     for (size_t i = 0; i < s_visQueue.size();) {
         if (s_visQueue[i].chunk == chunk) {
             s_visQueue.erase(s_visQueue.begin() + static_cast<std::ptrdiff_t>(i));
@@ -452,6 +481,23 @@ static void LinkLiquidBucket(CChunkLiquid* liquid, const C3Vector& pos, const C4
     }
 
     CWorldScene::sortTable.m_table[bucket].m_liquidList.LinkToTail(liquid);
+}
+
+static void LinkVisibilityResults(const VisSnapshot& snap) {
+    for (const VisJob& job : s_visJobs) {
+        if (job.linkChunk && !job.rejected) {
+            job.chunk->m_distToCamera = job.dist;
+            LinkChunkBucket(job.chunk, job.corner, snap.camPlaneXY);
+        }
+
+        for (uint32_t n = 0; n < job.liquidCount; ++n) {
+            const LiquidOut& out = s_visLiquids[job.liquidBegin + n];
+
+            if (out.visible) {
+                LinkLiquidBucket(out.liquid, out.corner, snap.camPlaneXY);
+            }
+        }
+    }
 }
 
 static void RunChunkVisibility(Job::Range range, void* user) {
@@ -522,9 +568,18 @@ void CMapChunk::FlushQueuedVisibility() {
         return;
     }
 
-    s_visRequests.swap(s_visQueue);
     VisSnapshot snap = s_visSnap;
     s_visSnap.valid = 0;
+
+    // -- ʕ •ᴥ•ʔ✿ The sort lists are cleared every frame. A still camera only needs the links redone. ✿ ʕ •ᴥ•ʔ
+    if (s_visCacheValid && SameVisibilityView(snap, s_cachedSnap) && SameVisibilityRequests(s_visQueue)) {
+        s_visQueue.clear();
+        LinkVisibilityResults(snap);
+        return;
+    }
+
+    s_visRequests.swap(s_visQueue);
+    s_visCacheValid = 0;
 
     s_visJobs.resize(s_visRequests.size());
     uint32_t liquidTotal = 0;
@@ -581,25 +636,9 @@ void CMapChunk::FlushQueuedVisibility() {
 
     // -- ʕ •ᴥ•ʔ✿ Frustum tests write per-chunk results; the lists are linked afterward ✿ ʕ •ᴥ•ʔ
     Job::ParallelFor(static_cast<uint32_t>(s_visJobs.size()), RunChunkVisibility, &batch);
-
-    for (const VisJob& job : s_visJobs) {
-        if (job.linkChunk && !job.rejected) {
-            job.chunk->m_distToCamera = job.dist;
-            LinkChunkBucket(job.chunk, job.corner, snap.camPlaneXY);
-        }
-
-        for (uint32_t n = 0; n < job.liquidCount; ++n) {
-            const LiquidOut& out = s_visLiquids[job.liquidBegin + n];
-
-            if (out.visible) {
-                LinkLiquidBucket(out.liquid, out.corner, snap.camPlaneXY);
-            }
-        }
-    }
-
-    s_visRequests.clear();
-    s_visJobs.clear();
-    s_visLiquids.clear();
+    LinkVisibilityResults(snap);
+    s_cachedSnap = snap;
+    s_visCacheValid = 1;
 }
 
 // VERIFY: 44a339cb manual
