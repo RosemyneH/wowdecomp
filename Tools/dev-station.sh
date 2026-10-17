@@ -39,7 +39,7 @@ Usage: $0 [all|deps|addons|scope|build|test|launch|release|smoke]
   build    Ninja RelWithDebInfo (-O2 -g -DNDEBUG) WowClient, wasm_addon_host, wasm_addon_tests
   test     headless host tests against Addons/Wasm/dist
   launch   start AzerothCore in Docker, then the RelWithDebInfo WowClient64 in the dev scope
-  release  build Release (-O3 -DNDEBUG) into a separate tree and launch a play-dir copy of that binary
+  release  build Release (-O3 -DNDEBUG) into a separate tree and launch that binary with MSDF fonts
   smoke    start the client, require it to stay up, then stop it
 
 Env: WOWDECOMP_GAME_SRC WOWDECOMP_PLAY_DIR WOWDECOMP_BUILD_DIR WOWDECOMP_RELEASE_BUILD_DIR WOWDECOMP_REALM_HOST
@@ -249,6 +249,21 @@ launch_client() {
     exec ./WowClient64
 }
 
+enable_release_msdf() {
+    local cfg="$PLAY_DIR/WTF/Config.wtf"
+    mkdir -p "$PLAY_DIR/WTF"
+    if [[ -L "$cfg" ]]; then
+        echo "WTF/Config.wtf is a symlink; not rewriting it for MSDF" >&2
+        return
+    fi
+    touch "$cfg"
+    if grep -q '^SET gxMsdfFonts ' "$cfg"; then
+        sed -i 's/^SET gxMsdfFonts .*/SET gxMsdfFonts "1"/' "$cfg"
+    else
+        printf 'SET gxMsdfFonts "1"\n' >> "$cfg"
+    fi
+}
+
 launch_release() {
     build_release
     if [[ ! -x "$RELEASE_BIN" ]]; then
@@ -259,6 +274,7 @@ launch_release() {
         echo "Missing $PLAY_DIR/Data — run: $0 scope" >&2
         exit 1
     fi
+    enable_release_msdf
     WOWDECOMP_SERVER_BACKEND=docker "$ROOT/Tools/local-server/start.sh"
     # ʕ •ᴥ•ʔ✿ Release play is the fps path. Leave the zone sampler off unless asked ✿ ʕ •ᴥ•ʔ
     : "${WOWDECOMP_PROFILE:=off}"
@@ -267,7 +283,7 @@ launch_release() {
     # ʕ •ᴥ•ʔ✿ /proc/self/exe is the Data root. A symlink resolves back to bin/Linux ✿ ʕ •ᴥ•ʔ
     local play_bin="$PLAY_DIR/WowClient64.release"
     cp -fl "$RELEASE_BIN" "$play_bin" 2>/dev/null || cp -f "$RELEASE_BIN" "$play_bin"
-    echo "Release (-O3 -DNDEBUG): $play_bin"
+    echo "Release (-O3 -DNDEBUG, gxMsdfFonts=1): $play_bin"
     cd "$PLAY_DIR"
     exec ./WowClient64.release
 }
