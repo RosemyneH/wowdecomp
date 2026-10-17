@@ -23,9 +23,7 @@ ensure_awesome_cvars() {
     [[ -f "$cfg" ]] || return 0
     local line
     for line in \
-        'SET cameraIndirectVisibility "1"' \
-        'SET cameraIndirectAlpha "0.6"' \
-        'SET cameraFov "100"' \
+        'SET cameraIndirectVisibility "0"' \
         'SET nameplateStacking "1"' \
         'SET nameplateDistance "41"' \
         'SET nameplateStackFriendly "1"' \

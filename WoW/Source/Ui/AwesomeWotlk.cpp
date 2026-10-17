@@ -1024,7 +1024,7 @@ void AwesomeWotlkRegister() {
     AddCVar("interactionMode", "1", "1 keeps interact in a facing cone");
     AddCVar("interactionAngle", "60", "Interact cone angle in degrees");
     AddCVar("MSDFMode", "1", "Stored MSDF mode");
-    AddCVar("cameraFov", "100", "Camera field of view, 1 to 200");
+    AddCVar("cameraFov", "0", "Camera field of view, 0 retail, 1 to 200 wide");
     AddCVar("showPlayer", "1", "Show the player model", ShowPlayerCallback);
     AddCVar("enableStancePatch", "0", "Write the stance form byte after a form spell");
 
