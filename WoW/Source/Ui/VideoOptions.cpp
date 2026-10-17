@@ -25,6 +25,10 @@ local function show(index)
         if WowDecompAddonNote then WowDecompAddonNote:Hide() end
         return
     end
+    if WowDecompAddonNote and not WowDecompAddonNote.title then
+        WowDecompAddonNote:Hide()
+        WowDecompAddonNote = nil
+    end
     if not WowDecompAddonNote then
         local panel = CreateFrame("Frame", "WowDecompAddonNote", parent)
         panel:SetWidth(268)
@@ -38,11 +42,17 @@ local function show(index)
         })
         panel:SetBackdropColor(0.05, 0.05, 0.07, 0.94)
         panel:SetBackdropBorderColor(0.55, 0.42, 0.18, 1)
-        panel.title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local function label(kind)
+            local text = panel:CreateFontString(nil, "OVERLAY")
+            local font = kind == "title" and (GlueFontNormal or GameFontNormal or GlueFontNormalSmall) or (GlueFontHighlightSmall or GameFontHighlightSmall or GlueFontNormalSmall)
+            if font then text:SetFontObject(font) else text:SetFont("Fonts\\FRIZQT__.TTF", kind == "title" and 12 or 10) end
+            return text
+        end
+        panel.title = label("title")
         panel.title:SetPoint("TOPLEFT", 14, -12)
         panel.title:SetWidth(240)
         panel.title:SetJustifyH("LEFT")
-        panel.body = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        panel.body = label("body")
         panel.body:SetPoint("TOPLEFT", 14, -34)
         panel.body:SetWidth(240)
         panel.body:SetJustifyH("LEFT")
