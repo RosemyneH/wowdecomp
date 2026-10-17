@@ -173,9 +173,11 @@ bool Script_GetGUIDFromToken(const char* token, WOWGUID& guid, bool defaultToTar
         token = AwesomeWotlkConsumeNameplateToken(token, guid);
     } else if (!SStrCmpI(token, "playerlocation", 14) && (!token[14] || token[14] == '-')) {
         token += 14;
+        guid.m_guid = 0xFFFFFFFFFFFFFFFFULL;
         AwesomeWotlkNoteGroundTarget("playerlocation");
     } else if (!SStrCmpI(token, "cursor", 6) && (!token[6] || token[6] == '-')) {
         token += 6;
+        guid.m_guid = 0xFFFFFFFFFFFFFFFFULL;
         AwesomeWotlkNoteGroundTarget("cursor");
     } else if (!SStrCmpI(token, "none", STORM_MAX_STR)) {
         token += 4;

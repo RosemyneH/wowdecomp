@@ -40,7 +40,6 @@ extern char** environ;
 #include "WoW/Source/Ui/Types.h"
 #include "WoW/Source/Ui/WorldFrame.h"
 #include "WoW/Source/UIUtil/Tooltip.h"
-#include "WoW/Source/WorldClient/Map.h"
 #if !defined(_WIN32)
 #include <SDL2/SDL.h>
 #endif
@@ -886,7 +885,8 @@ static void ApplyStance(int32_t spellId) {
     if (player && player->m_unit) player->m_unit->m_unitFieldBytes2[3] = form;
 }
 
-static bool GroundPoint(int kind, C3Vector& out) {
+static bool GroundPoint(int kind, C3Vector& out, WOWGUID& guid) {
+    guid = WOWGUID();
     if (kind == 2) {
         CGPlayer_C* player = ClntObjMgrGetActivePlayerObj();
         if (!player) return false;
@@ -894,28 +894,17 @@ static bool GroundPoint(int kind, C3Vector& out) {
         return true;
     }
     CGWorldFrame* world = CGWorldFrame::s_currentWorldFrame;
-    if (world && world->SetupDefaultAction()) {
-        if (world->m_defaultActionHitKind == 1 || world->m_defaultActionHitKind == 3) {
-            out = world->m_defaultActionHit.m_point;
-            return true;
-        }
-    }
-    C3Vector start;
-    C3Vector facing;
-    CGWorldFrame::GetCameraPosition(&start);
-    CGWorldFrame::GetCameraFacing(&facing);
-    C3Vector end(start.x + facing.x * 80.0f, start.y + facing.y * 80.0f, start.z + facing.z * 80.0f);
-    float dist = 1.0f;
-    if (CMap::VectorIntersectTerrain(&start, &end, &dist, 0x100, nullptr) && dist >= 0.0f && dist <= 1.0f) {
-        out = C3Vector(start.x + (end.x - start.x) * dist, start.y + (end.y - start.y) * dist, start.z + (end.z - start.z) * dist);
-        return true;
-    }
-    CGPlayer_C* player = ClntObjMgrGetActivePlayerObj();
-    if (!player) return false;
-    out = player->GetPosition();
-    float face = player->GetFacing();
-    out.x += cosf(face) * 5.0f;
-    out.y += sinf(face) * 5.0f;
+    if (!world) return false;
+    HITTESTRESULT hit;
+    hit.m_guid = WOWGUID();
+    hit.m_point = C3Vector(0.0f, 0.0f, 0.0f);
+    hit.m_distance = 0.0f;
+    hit.m_segStart = C3Vector(0.0f, 0.0f, 0.0f);
+    hit.m_segEnd = C3Vector(0.0f, 0.0f, 0.0f);
+    if (!world->HitTestCursor(&hit)) return false;
+    out = hit.m_point;
+    uint32_t high = static_cast<uint32_t>(hit.m_guid.m_guid >> 32);
+    if ((high & 0xF0000000) == 0x10000000 && (high & 0xFF00000) == 0xFC00000) guid = hit.m_guid;
     return true;
 }
 
@@ -931,9 +920,10 @@ void AwesomeWotlkAfterCast(int32_t spellId, bool succeeded) {
     s_groundAge = 0;
     if (kind) {
         C3Vector point;
-        if (GroundPoint(kind, point)) {
+        WOWGUID guid;
+        if (GroundPoint(kind, point, guid)) {
             CTerrainClickEvent evt;
-            evt.m_guid = WOWGUID();
+            evt.m_guid = guid;
             evt.m_point = point;
             evt.m_button = MOUSE_BUTTON_LEFT;
             Spell_C_HandleTerrainClick(evt);

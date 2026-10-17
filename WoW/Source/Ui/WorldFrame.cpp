@@ -1207,6 +1207,36 @@ int32_t CGWorldFrame::HitTestPoint(float x, float y, int32_t a3, HITTESTRESULT* 
     return kind;
 }
 
+int32_t CGWorldFrame::HitTestCursor(HITTESTRESULT* result) {
+    CGxDevice* device = g_theGxDevicePtr;
+
+    if (!result || !device || !this->m_camera || !this->m_simpleTop) {
+        return 0;
+    }
+
+    C44Matrix projection = device->m_projection;
+    CGxMatrixStack& stack = device->m_xforms[GxXform_View];
+    C44Matrix view = stack.m_mtx[stack.m_level];
+    this->m_camera->SetupWorldProjection(this->m_viewportDDC);
+
+    C2Vector ddc = { 0.0f, 0.0f };
+    NDCToDDC(this->m_simpleTop->m_mousePosition.m_x, this->m_simpleTop->m_mousePosition.m_y, &ddc.x, &ddc.y);
+
+    int32_t kind = 0;
+    C3Vector start = { 0.0f, 0.0f, 0.0f };
+    C3Vector end = { 0.0f, 0.0f, 0.0f };
+
+    if (this->GetLineSegment(ddc.x, ddc.y, &start, &end)) {
+        result->m_segStart = start;
+        result->m_segEnd = end;
+        kind = this->HitTest(start, end, 0x3, result);
+    }
+
+    device->XformSetProjection(projection);
+    device->XformSetView(view);
+    return kind;
+}
+
 // VERIFY: 21cb1ac2 auto
 // OFFSET: 0x004FA5D0
 void CGWorldFrame::UnitClear() {

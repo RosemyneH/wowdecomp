@@ -267,7 +267,7 @@ let _ = lua::call("SendChatMessage", &[
 
 `awesome.api` is a separate grant. Declare it, then `wasmgrant <id> awesome.api`. Guests call `wow_addon_sdk::awesome` (`awesome_call` on the host). The call list is the AwesomeWotLK surface: nameplates, text to speech, unit flags, transmog, spell cooldown, instant item info, window flash, clipboard, interact, and the AwesomeWotLK CVars. Tables come back as maps. A nameplate frame comes back as `nameplateN`. Anything outside that list returns `-10`.
 
-`GetCVar` and `SetCVar` through this grant only accept the AwesomeWotLK CVar names. `MSDFMode`, `cameraIndirectAlpha`, `nameplateExtendWorldFrameHeight`, and the nameplate speed CVars store a value. `cameraFov` applies after it is changed. `cameraIndirectVisibility` lets the camera pass through world objects.
+`GetCVar` and `SetCVar` through this grant only accept the AwesomeWotLK CVar names. `MSDFMode`, `cameraIndirectAlpha`, `nameplateExtendWorldFrameHeight`, and the nameplate speed CVars store a value. `cameraFov` applies after it is changed. `cameraIndirectVisibility` lets the camera pass through world objects. `/cast [@cursor]` and `[@playerlocation]` finish a ground-targeted spell on the terrain under the mouse, or at the player's feet.
 
 Owner GUIDs leave the host only through this grant. Unit snapshots still omit them. `port.awesome` flashes the window on a whisper and edits the CVars from a panel. It does not need `lua.full`.
 
