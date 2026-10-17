@@ -579,6 +579,8 @@ void CMapChunk::FlushQueuedVisibility() {
     }
 
     s_visRequests.swap(s_visQueue);
+    // -- ʕ •ᴥ•ʔ✿ The swap parks the previous frame in the queue. Leaving it there makes every moving frame append another full set. clear() keeps the capacity. ✿ ʕ •ᴥ•ʔ
+    s_visQueue.clear();
     s_visCacheValid = 0;
 
     s_visJobs.resize(s_visRequests.size());
