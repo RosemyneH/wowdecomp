@@ -46,7 +46,8 @@ void main() {
         float screenPxRange = max(0.5 * dot(vec2(4.0 / 256.0), vec2(1.0) / uvWidth), 1.0);
         float dist = sd * screenPxRange;
         float outlinePx = colorOp == 8 ? 2.0 : (colorOp == 7 ? 1.0 : 0.0);
-        outlinePx *= screenPxRange / 4.0;
+        // ʕ •ᴥ•ʔ✿ The field only covers four texels. An outline that reaches the rim stays a box ✿ ʕ •ᴥ•ʔ
+        outlinePx = min(outlinePx, max(0.5 * screenPxRange - 1.0, 0.0));
         float body = clamp(dist + 0.5, 0.0, 1.0);
         float alpha = clamp(dist + 0.5 + outlinePx, 0.0, 1.0);
         vec4 color = vec4(inColor.rgb * body / max(alpha, 1e-4), inColor.a * alpha);
