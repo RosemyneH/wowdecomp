@@ -768,32 +768,72 @@ static uint32_t DrawSkinnedDoodads(M2Data* data, CM2Shared* shared, M2SkinSectio
         return 0;
     }
 
-    CGxBuf* verts = g_theGxDevicePtr->BufStream(GxPoolTarget_Vertex, sizeof(M2Vertex), section->m_vertexCount);
-    M2Vertex* dst = reinterpret_cast<M2Vertex*>(g_theGxDevicePtr->BufLock(verts));
+    // ʕ •ᴥ•ʔ✿ The bind-pose section does not change. Streaming it every frame was scene time ✿ ʕ •ᴥ•ʔ
+    struct CachedSection {
+        M2SkinSection* section;
+        CGxPool* vpool;
+        CGxPool* ipool;
+        CGxBuf* verts;
+        CGxBuf* indices;
+    };
 
-    if (!dst) {
-        return 0;
+    static std::vector<CachedSection> cached;
+    CachedSection* mesh = nullptr;
+
+    for (CachedSection& entry : cached) {
+        if (entry.section == section) {
+            mesh = &entry;
+            break;
+        }
     }
 
-    memcpy(dst, &data->m_vertices[section->m_vertexStart], sizeof(M2Vertex) * section->m_vertexCount);
-    g_theGxDevicePtr->BufUnlock(verts, 0);
-    verts->m_hasData = 1;
+    if (!mesh) {
+        CachedSection entry = {};
+        entry.section = section;
+        entry.vpool = g_theGxDevicePtr->PoolCreate(GxPoolTarget_Vertex, GxPoolUsage_Static, static_cast<int32_t>(sizeof(M2Vertex) * section->m_vertexCount), GxPoolHintBit_Unk1, shared->m_fileNameWithoutPath);
+        entry.ipool = g_theGxDevicePtr->PoolCreate(GxPoolTarget_Index, GxPoolUsage_Static, static_cast<int32_t>(sizeof(uint16_t) * section->m_indexCount), GxPoolHintBit_Unk0, shared->m_fileNameWithoutPath);
 
-    uint32_t indexStart = shared->m_skinData->m_skinSections[sectionIndex].m_indexStart;
-    uint16_t bias = static_cast<uint16_t>(-static_cast<int32_t>(section->m_vertexStart));
-    CGxBuf* ib = g_theGxDevicePtr->BufStream(GxPoolTarget_Index, sizeof(uint16_t), section->m_indexCount);
-    uint16_t* indexOut = reinterpret_cast<uint16_t*>(g_theGxDevicePtr->BufLock(ib));
+        if (!entry.vpool || !entry.ipool) {
+            return 0;
+        }
 
-    if (!indexOut) {
-        return 0;
+        entry.verts = g_theGxDevicePtr->BufCreate(entry.vpool, sizeof(M2Vertex), section->m_vertexCount, 0);
+        entry.indices = g_theGxDevicePtr->BufCreate(entry.ipool, sizeof(uint16_t), section->m_indexCount, 0);
+
+        if (!entry.verts || !entry.indices) {
+            return 0;
+        }
+
+        M2Vertex* dst = reinterpret_cast<M2Vertex*>(g_theGxDevicePtr->BufLock(entry.verts));
+
+        if (!dst) {
+            return 0;
+        }
+
+        memcpy(dst, &data->m_vertices[section->m_vertexStart], sizeof(M2Vertex) * section->m_vertexCount);
+        g_theGxDevicePtr->BufUnlock(entry.verts, 0);
+        entry.verts->m_hasData = 1;
+
+        uint32_t indexStart = shared->m_skinData->m_skinSections[sectionIndex].m_indexStart;
+        uint16_t bias = static_cast<uint16_t>(-static_cast<int32_t>(section->m_vertexStart));
+        uint16_t* indexOut = reinterpret_cast<uint16_t*>(g_theGxDevicePtr->BufLock(entry.indices));
+
+        if (!indexOut) {
+            return 0;
+        }
+
+        for (uint32_t j = 0; j < section->m_indexCount; ++j) {
+            indexOut[j] = static_cast<uint16_t>(bias + shared->m_skinData->m_indices[indexStart + j]);
+        }
+
+        g_theGxDevicePtr->BufUnlock(entry.indices, 0);
+        entry.indices->m_hasData = 1;
+        cached.push_back(entry);
+        mesh = &cached.back();
     }
 
-    for (uint32_t j = 0; j < section->m_indexCount; ++j) {
-        indexOut[j] = static_cast<uint16_t>(bias + shared->m_skinData->m_indices[indexStart + j]);
-    }
-
-    g_theGxDevicePtr->BufUnlock(ib, 0);
-    ib->m_hasData = 1;
+    CGxBuf* verts = mesh->verts;
+    CGxBuf* ib = mesh->indices;
     static std::vector<const C44Matrix*> palettes;
     palettes.clear();
     palettes.reserve(total);
@@ -839,9 +879,20 @@ void CM2SceneRender::DrawBatchDoodad(M2Element* elements, uint32_t* indices) {
     this->m_curMaterial = &this->m_data->m_materials[this->m_curBatch->m_materialIndex];
     element->m_effect->SetCurrent();
 
-    this->SetupLighting();
-    this->SetupMaterial();
-    this->SetupTextures();
+    // ʕ •ᴥ•ʔ✿ Neighboring copies share a material. Lighting and texture setup stays on the first one ✿ ʕ •ᴥ•ʔ
+    static const M2Material* lastMaterial = nullptr;
+    static const CM2Shared* lastShared = nullptr;
+    static const CM2Lighting* lastLighting = nullptr;
+    int32_t repeat = lastMaterial == this->m_curMaterial && lastShared == this->m_curShared && lastLighting == this->m_curLighting;
+
+    if (!repeat) {
+        this->SetupLighting();
+        this->SetupMaterial();
+        this->SetupTextures();
+        lastMaterial = this->m_curMaterial;
+        lastShared = this->m_curShared;
+        lastLighting = this->m_curLighting;
+    }
 
     uint32_t total = this->m_curElement->m_count;
     uint32_t instances = this->m_curShared->AllocInstances(total);
