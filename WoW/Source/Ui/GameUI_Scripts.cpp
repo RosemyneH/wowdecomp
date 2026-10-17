@@ -78,6 +78,7 @@
 #include "WoW/Source/Ui/AchievementInfo.h"
 #include "WoW/Source/Ui/ActionBarFrame.h"
 #include "WoW/Source/Ui/AddOns.h"
+#include "WoW/Source/WasmAddonClient.h"
 #include "WoW/Source/Ui/ArenaTeamInfo.h"
 #include "WoW/Source/Ui/AuctionHouse.h"
 #include "WoW/Source/Ui/BarberShop.h"
@@ -1928,6 +1929,57 @@ static int32_t Script_LoadAddOn(lua_State* L) {
 
     lua_pushstring(L, "UNKNOWN_ERROR");
     return 2;
+}
+
+static const char* AddOnArg(lua_State* L) {
+    if (lua_isnumber(L, 1)) {
+        const char* name = GetAddOnByIndex(static_cast<int32_t>(lua_tonumber(L, 1)) - 1);
+        if (!name) {
+            luaL_error(L, "AddOn index must be in the range of 1 to %d", GetNumAddOns());
+            return nullptr;
+        }
+        return name;
+    }
+    if (!lua_isstring(L, 1)) {
+        luaL_error(L, "Usage: addon index or \"name\"");
+        return nullptr;
+    }
+    return lua_tolstring(L, 1, nullptr);
+}
+
+static int32_t Script_SaveAddOns(lua_State*) {
+    SaveAddOnEnableState();
+    return 0;
+}
+
+static int32_t Script_ReloadAddOn(lua_State* L) {
+    const char* name = AddOnArg(L);
+    if (!s_loadAddOnDepth) s_loadAddOnStatus = new (__FILE__, __LINE__) CWOWClientStatus("Logs\\FrameXML.log", 1);
+    s_loadAddOnDepth++;
+    bool loaded = ReloadAddOn(name, s_loadAddOnStatus);
+    if (loaded) WasmAddonClient_ReloadPackage(name);
+    if (--s_loadAddOnDepth == 0) {
+        delete s_loadAddOnStatus;
+        s_loadAddOnStatus = nullptr;
+    }
+    if (loaded) {
+        lua_pushnumber(L, 1.0);
+        lua_pushnil(L);
+        return 2;
+    }
+    lua_pushnil(L);
+    lua_pushstring(L, "DISABLED");
+    return 2;
+}
+
+static int32_t Script_LoadWasmPackage(lua_State* L) {
+    lua_pushboolean(L, WasmAddonClient_LoadPackage(AddOnArg(L)));
+    return 1;
+}
+
+static int32_t Script_UnloadWasmPackage(lua_State* L) {
+    lua_pushboolean(L, WasmAddonClient_UnloadPackage(AddOnArg(L)));
+    return 1;
 }
 
 // VERIFY: a3c4eae5 auto
@@ -6461,6 +6513,10 @@ static FrameScript_Method s_ScriptFunctions[] = {
     { "IsAddOnLoadOnDemand", &Script_IsAddOnLoadOnDemand },
     { "IsAddOnLoaded", &Script_IsAddOnLoaded },
     { "LoadAddOn", &Script_LoadAddOn },
+    { "ReloadAddOn", &Script_ReloadAddOn },
+    { "SaveAddOns", &Script_SaveAddOns },
+    { "LoadWasmPackage", &Script_LoadWasmPackage },
+    { "UnloadWasmPackage", &Script_UnloadWasmPackage },
     { "PartialPlayTime", &Script_PartialPlayTime },
     { "NoPlayTime", &Script_NoPlayTime },
     { "GetBillingTimeRested", &Script_GetBillingTimeRested },

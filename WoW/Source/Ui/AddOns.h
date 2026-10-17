@@ -30,6 +30,7 @@ int32_t GetAddOnSecurity(const char* name);
 void SetAddOnEnableState(const char* name, const char* character, int32_t state);
 char* AddOnUnloadableToken(UIADDON_LOADABLE_REASON reason, UIADDON_LOADABLE_REASON dependencyReason, char* buffer, uint32_t size);
 bool LoadAddOn(const char* name, bool demandLoad, CStatus* status);
+bool ReloadAddOn(const char* name, CStatus* status);
 uint32_t LoadAddOnFileCount();
 void LoadAddOns(CStatus* status);
 void UnloadAddOns();

@@ -29,6 +29,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <strings.h>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -1865,6 +1866,44 @@ void WasmAddonClient_UnloadWorldAddOns() {
     s_manager.SetStorageDirs("", "");
     for (auto& info : s_manager.GetInspector())
         if (info.state != WasmAddon::AddonState::Unloaded) s_manager.UnloadAddon(info.manifest.id);
+}
+
+static std::string PackageDirectory(const char* name) {
+    if (!name || !name[0]) return {};
+    for (const auto& info : s_manager.GetInspector()) {
+        if (!strcasecmp(fs::path(info.directory).filename().string().c_str(), name)) return info.directory;
+    }
+    fs::path dir = fs::path(s_manager.RootDir()) / name;
+    if (fs::exists(dir)) return dir.string();
+    return {};
+}
+
+bool WasmAddonClient_LoadPackage(const char* name) {
+    if (!s_initialized) return false;
+    const char* character = ClientServices::GetCharacterName();
+    if (GetAddOnEnableState(name, character ? character : "", true) == 0) return false;
+    std::string dir = PackageDirectory(name);
+    if (dir.empty()) return false;
+    for (const auto& info : s_manager.GetInspector()) {
+        if (info.directory == dir && (info.state == WasmAddon::AddonState::Loaded || info.state == WasmAddon::AddonState::Running || info.state == WasmAddon::AddonState::Suspended))
+            return true;
+    }
+    return s_manager.LoadAddon(dir);
+}
+
+bool WasmAddonClient_UnloadPackage(const char* name) {
+    if (!s_initialized) return false;
+    for (const auto& info : s_manager.GetInspector()) {
+        if (strcasecmp(fs::path(info.directory).filename().string().c_str(), name)) continue;
+        if (info.state != WasmAddon::AddonState::Unloaded) s_manager.UnloadAddon(info.manifest.id);
+        return true;
+    }
+    return false;
+}
+
+bool WasmAddonClient_ReloadPackage(const char* name) {
+    WasmAddonClient_UnloadPackage(name);
+    return WasmAddonClient_LoadPackage(name);
 }
 
 void WasmAddonClient_Shutdown() {

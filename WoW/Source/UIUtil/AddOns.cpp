@@ -1120,6 +1120,16 @@ bool LoadAddOn(const char* name, bool demandLoad, CStatus* status) {
     return true;
 }
 
+bool ReloadAddOn(const char* name, CStatus* status) {
+    UIADDON* addon = s_addons.Ptr(name);
+    if (!addon) return false;
+    const char* character = ClientServices::GetCharacterName();
+    if (!GetAddOnEnableState(addon->m_key.m_str, character, true)) return false;
+    addon->m_loading = false;
+    addon->m_loaded = false;
+    return LoadAddOn(addon->m_key.m_str, true, status);
+}
+
 // VERIFY: 96a89a20 auto
 // OFFSET: 0x005F84A0
 void LoadAddOns(CStatus* status) {

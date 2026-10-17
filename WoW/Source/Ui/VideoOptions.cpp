@@ -1,4 +1,5 @@
 #include "VideoOptions.h"
+#include "WowDecompAddonPanelLua.h"
 #include "WowDecompVideoOptionsLua.h"
 #include "Engine/Source/BlizzardCore/SFile2-Core.h"
 #include "Engine/Source/FrameScript/FrameScript.h"
@@ -71,4 +72,5 @@ end
 hookEntries()
 )lua";
     FrameScript_Execute(kAddonList, "Interface\\FrameXML\\WowDecompAddonList.lua", nullptr);
+    FrameScript_Execute(kWowDecompAddonPanelLua, "Interface\\FrameXML\\WowDecompAddonPanel.lua", nullptr);
 }
