@@ -125,7 +125,12 @@ static int (*s_drawListSorters[GxuSorts_Last])(const void*, const void*) = { Dra
 EGxApi GxDefaultApi() {
 #if defined(WOWDECOMP_VULKAN)
     // ʕ •ᴥ•ʔ✿ Name stays inside g_gxApiNames so gxApi registration still gets a string when the loader is absent ✿ ʕ •ᴥ•ʔ
+#if defined(_WIN32) && !defined(WOWDECOMP_WIN_ARM64)
+    // ʕ ◕ᴥ◕ ʔ✿ Stable local play on Win x64; set gxApi Vulkan in Config.wtf to test the Vulkan backend ✿ ʕ ◕ᴥ◕ ʔ
+    return GxApi_D3d9;
+#else
     return GxApiSupported(GxApi_Vulkan) ? GxApi_Vulkan : GxApi_D3d9;
+#endif
 #else
     return GxApi_D3d9;
 #endif
@@ -964,7 +969,7 @@ void GxLogClose() {
 void GxLog(const char* format, ...) {
     va_list args;
     va_start(args, format);
-    CGxDevice::Log(format, args);
+    CGxDevice::LogV(format, args);
     va_end(args);
 }
 
@@ -975,9 +980,9 @@ void GxLogCrashInfo(char* buffer, uint32_t size) {
         return;
     }
 
-    SStrPack(buffer, "\r\n----------------------------------------\r\n", STORM_MAX_STR);
-    SStrPack(buffer, "               GxInfo\r\n", STORM_MAX_STR);
-    SStrPack(buffer, "----------------------------------------\r\n", STORM_MAX_STR);
+    SStrPack(buffer, "\r\n----------------------------------------\r\n", size);
+    SStrPack(buffer, "               GxInfo\r\n", size);
+    SStrPack(buffer, "----------------------------------------\r\n", size);
 
     char line[260];
     SStrPrintf(line, sizeof(line), "GxApi: %s\r\n", g_gxApiNames[g_theGxDevicePtr->DeviceApi()]);

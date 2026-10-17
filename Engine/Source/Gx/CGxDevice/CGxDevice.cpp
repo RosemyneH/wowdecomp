@@ -98,7 +98,7 @@ static float kWinAspect;
 C2iVector CGxDevice::s_clientAdjust;
 
 // STATIC: 0x00C60308
-static uint32_t s_nextFrameTime;
+static uint64_t s_nextFrameClock;
 
 void CGxDevice::DeviceEvictResources() {
 }
@@ -1557,16 +1557,19 @@ void CGxDevice::ClampRectRightByAspect(CiRect& windowRect) {
 
 // VERIFY: 5e425514 manual
 // OFFSET: 0x00684BA0
-void CGxDevice::Log(const char* format, va_list args) {
+void CGxDevice::LogV(const char* format, va_list args) {
     if (!CGxDevice::m_log) {
         return;
     }
 
     char buffer[2048];
-    _vsnprintf(buffer, sizeof(buffer), format, args);
+    int written = _vsnprintf(buffer, sizeof(buffer), format, args);
+    if (written < 0 || static_cast<size_t>(written) >= sizeof(buffer)) {
+        buffer[sizeof(buffer) - 1] = '\0';
+    }
 
     if (CGxDevice::m_logBytes < 0x200000) {
-        SLogWrite(CGxDevice::m_log, buffer);
+        SLogWrite(CGxDevice::m_log, "%s", buffer);
         CGxDevice::m_logBytes += static_cast<uint32_t>(strlen(buffer));
     }
 }
@@ -1576,11 +1579,7 @@ void CGxDevice::Log(const char* format, va_list args) {
 void CGxDevice::Log(const char* format, ...) {
     va_list args;
     va_start(args, format);
-
-    if (CGxDevice::m_log) {
-        CGxDevice::Log(format, args);
-    }
-
+    CGxDevice::LogV(format, args);
     va_end(args);
 }
 
@@ -1919,26 +1918,39 @@ void CGxDevice::WaitForFPSCap() {
         maxFps = maxFpsBk;
     }
 
-    if (maxFps <= 8) {
-        maxFps = 8;
-    } else if (maxFps == 0xFFFFFFFF) {
+    if (maxFps == 0xFFFFFFFF) {
         return;
     }
 
-    // ʕ •ᴥ•ʔ✿ Integer 1000/maxFps is 0 above 1000; OsSleep(0) returns immediately ✿ ʕ •ᴥ•ʔ
-    if (maxFps > 1000) {
-        maxFps = 1000;
+    if (maxFps <= 8) {
+        maxFps = 8;
     }
 
-    uint32_t frameMs = 1000 / maxFps;
-    uint32_t now = OsGetAsyncTimeMs();
-
-    if (s_nextFrameTime - now < 1000) {
-        OsSleep(s_nextFrameTime - now);
-        now = OsGetAsyncTimeMs();
+    // ʕ •ᴥ•ʔ✿ Sleep(1) wakes in ~3ms on Windows and pins the counter at 333 ✿ ʕ •ᴥ•ʔ
+    uint64_t clocksPerSecond = static_cast<uint64_t>(OsGetAsyncClocksPerSecond());
+    if (clocksPerSecond < 1000) {
+        clocksPerSecond = 1000;
     }
 
-    s_nextFrameTime = now + frameMs;
+    uint64_t interval = clocksPerSecond / maxFps;
+    if (!interval) {
+        return;
+    }
+
+    uint64_t now = OsGetAsyncTimeClocks();
+    if (s_nextFrameClock > now && s_nextFrameClock - now < clocksPerSecond) {
+        uint64_t remainMs = (s_nextFrameClock - now) * 1000 / clocksPerSecond;
+        if (remainMs > 1) {
+            OsSleep(static_cast<uint32_t>(remainMs - 1));
+        }
+
+        while (OsGetAsyncTimeClocks() < s_nextFrameClock) {
+        }
+
+        now = OsGetAsyncTimeClocks();
+    }
+
+    s_nextFrameClock = now + interval;
 }
 
 // VERIFY: c1bc4801 manual

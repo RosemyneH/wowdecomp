@@ -29,7 +29,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#if defined(_MSC_VER)
+#define strcasecmp _stricmp
+#else
 #include <strings.h>
+#endif
 #include <filesystem>
 #include <fstream>
 #include <map>

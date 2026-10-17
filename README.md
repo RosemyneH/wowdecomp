@@ -119,7 +119,21 @@ If `WoW.mfil` is next to the client, startup calls `SFile::InitializeStreaming` 
 
 His server sources and the GPL-2.0 text are vendored in [`ThirdParty/streamingclient/`](ThirdParty/streamingclient/README.md). The module is not linked into the client. A copy of his example manifest is `ThirdParty/streamingclient/WoW.mfil.example`. `source=` must end with `/`.
 
-The local Docker stack (`Tools/local-server/start-docker.sh`) adds an `ac-cdn` nginx service on port **1119**. It serves `$WOWDECOMP_GAME_SRC/Data` (default `~/Games/WoW335/Data`) at the same `/Data/*.MPQ` paths his module serves from `DataDir/cdn`. He recommends a normal HTTP server for this. The script writes `WoW.mfil` into the acore-docker directory with `source=` set to this machine's LAN address, which is what the Android app should use.
+The local Docker stack (`Tools/local-server/start-docker.sh` on Linux, `Tools/local-server/start-docker.ps1` on Windows) adds an `ac-cdn` nginx service on port **1119**. It serves `$WOWDECOMP_GAME_SRC/Data` (default `~/Games/WoW335/Data` on Linux, `W:\client\Data` on Windows) at the same `/Data/*.MPQ` paths his module serves from `DataDir/cdn`. He recommends a normal HTTP server for this. The script writes `WoW.mfil` into the acore-docker directory with `source=` set to this machine's LAN address, which is what the Android app should use.
+
+### Windows local play (Docker + symlinked client)
+
+1. Install **Docker Desktop** (WSL2 backend) and **Visual Studio 2022** with the C++ workload.
+2. Enable **Developer Mode** (Settings → System → For developers) so directory symlinks work without an elevated shell.
+3. Point at your 3.3.5a install (default `W:\client`):
+
+```powershell
+$env:WOWDECOMP_GAME_SRC = 'W:\client'   # optional if already W:\client
+.\Tools\setup-windows-test-client.ps1   # play tree: test\dev-335 (gitignored)
+.\Tools\local-server\start-docker.ps1   # AzerothCore on :3724 / :8085, CDN on :1119
+```
+
+Or use `.\Tools\dev-station.ps1 all` for scope + server, or `launch` to also start `WowClient64.exe` after a Release build. `dev-station` configures with `-DWOWDECOMP_WASM_ADDONS=OFF` so vanilla local play does not pull in static Wasmtime (which can crash on some Windows setups). Account **a** / **a** (GM). Stop with `.\Tools\local-server\stop-docker.ps1`.
 
 ---
 

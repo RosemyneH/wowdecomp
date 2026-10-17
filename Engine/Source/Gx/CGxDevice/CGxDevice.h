@@ -308,7 +308,8 @@ class CGxDevice {
     static void ClampRectRightByAspect(CiRect& windowRect);
     static void ClampRectTopByAspect(CiRect& windowRect);
     static void Log(const char* format, ...);
-    static void Log(const char* format, va_list args);
+    // ʕ •ᴥ•ʔ✿ Not an overload. Win64 va_list is char*, so Log(fmt, va_list) would steal every %s call ✿ ʕ •ᴥ•ʔ
+    static void LogV(const char* format, va_list args);
     static void LogClose();
     static void LogOpen();
     static void ClampRectLeft(CiRect& windowRect);

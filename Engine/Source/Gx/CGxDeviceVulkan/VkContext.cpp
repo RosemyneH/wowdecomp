@@ -340,6 +340,11 @@ void VkContext::DestroySurface() {
 }
 
 int32_t VkContext::SetSurface(VkSurfaceKHR surface) {
+    if (this->m_surface && this->m_surface != surface) {
+        this->DestroySwapchain();
+        vkDestroySurfaceKHR(this->m_instance, this->m_surface, nullptr);
+    }
+
     this->m_surface = surface;
 
     VkBool32 present = VK_FALSE;
@@ -429,6 +434,9 @@ int32_t VkContext::CreateSwapchain(uint32_t width, uint32_t height, int32_t vsyn
 
     uint32_t formatCount = 0;
     vkGetPhysicalDeviceSurfaceFormatsKHR(this->m_physicalDevice, this->m_surface, &formatCount, nullptr);
+    if (!formatCount) {
+        return 0;
+    }
     std::vector<VkSurfaceFormatKHR> formats(formatCount);
     vkGetPhysicalDeviceSurfaceFormatsKHR(this->m_physicalDevice, this->m_surface, &formatCount, formats.data());
 
@@ -900,8 +908,12 @@ int32_t VkContext::Submit(int32_t present) {
     }
 
     if (present) {
-        submit.signalSemaphoreCount = 1;
-        submit.pSignalSemaphores = &this->m_renderFinished[this->m_imageIndex];
+        if (this->m_imageIndex >= this->m_renderFinished.size() || !this->m_renderFinished[this->m_imageIndex]) {
+            present = 0;
+        } else {
+            submit.signalSemaphoreCount = 1;
+            submit.pSignalSemaphores = &this->m_renderFinished[this->m_imageIndex];
+        }
     }
 
     vkResetFences(this->m_device, 1, &frame.fence);
@@ -935,7 +947,7 @@ int32_t VkContext::EndFrame() {
 
     VkResult result = VK_SUCCESS;
 
-    if (submitted && present) {
+    if (submitted && present && this->m_swapchain && this->m_imageIndex < this->m_renderFinished.size() && this->m_renderFinished[this->m_imageIndex]) {
         VkPresentInfoKHR info = { VK_STRUCTURE_TYPE_PRESENT_INFO_KHR };
         info.waitSemaphoreCount = 1;
         info.pWaitSemaphores = &this->m_renderFinished[this->m_imageIndex];

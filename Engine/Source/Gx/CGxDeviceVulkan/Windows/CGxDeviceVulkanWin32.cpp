@@ -23,19 +23,27 @@ static LRESULT CALLBACK WindowProcVulkan(HWND hwnd, UINT message, WPARAM wparam,
             return 0;
 
         case WM_DESTROY:
-            device->DeviceWM(GxWM_Destroy, 0, 0);
+            if (device) {
+                device->DeviceWM(GxWM_Destroy, 0, 0);
+            }
             return 0;
 
         case WM_SIZE:
-            SendSizeMessage(device, lparam, wparam == SIZE_MINIMIZED ? 1 : wparam == SIZE_MAXHIDE ? 2 : 0);
+            if (device) {
+                SendSizeMessage(device, lparam, wparam == SIZE_MINIMIZED ? 1 : wparam == SIZE_MAXHIDE ? 2 : 0);
+            }
             break;
 
         case WM_SETFOCUS:
-            device->DeviceWM(GxWM_SetFocus, 0, 0);
+            if (device) {
+                device->DeviceWM(GxWM_SetFocus, 0, 0);
+            }
             return 0;
 
         case WM_KILLFOCUS:
-            device->DeviceWM(GxWM_KillFocus, 0, 0);
+            if (device) {
+                device->DeviceWM(GxWM_KillFocus, 0, 0);
+            }
             return 0;
 
         case WM_PAINT: {
@@ -61,7 +69,7 @@ static LRESULT CALLBACK WindowProcVulkan(HWND hwnd, UINT message, WPARAM wparam,
             break;
 
         case WM_DISPLAYCHANGE:
-            if (!device->IDevIsWindowed()) {
+            if (device && !device->IDevIsWindowed()) {
                 CRect rect;
                 rect.minY = 0.0f;
                 rect.minX = 0.0f;
@@ -195,7 +203,6 @@ int32_t CGxDeviceVulkan::ICreateWindow(CGxFormat& format) {
 void CGxDeviceVulkan::IDestroyWindow() {
     if (this->m_ownWindow && this->m_window) {
         HWND hwnd = static_cast<HWND>(this->m_window);
-        SetWindowLongPtrA(hwnd, GWLP_USERDATA, 0);
         DestroyWindow(hwnd);
         this->m_window = nullptr;
     }
@@ -212,19 +219,27 @@ int32_t CGxDeviceVulkan::ICreateInstance() {
 }
 
 VkSurfaceKHR CGxDeviceVulkan::ICreateSurface() {
+    if (!this->m_window || !this->m_vk.m_instance) {
+        return VK_NULL_HANDLE;
+    }
+
     VkWin32SurfaceCreateInfoKHR info = { VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR };
     info.hinstance = GetModuleHandleA(nullptr);
     info.hwnd = static_cast<HWND>(this->m_window);
 
     VkSurfaceKHR surface = VK_NULL_HANDLE;
-    vkCreateWin32SurfaceKHR(this->m_vk.m_instance, &info, nullptr, &surface);
+    if (vkCreateWin32SurfaceKHR(this->m_vk.m_instance, &info, nullptr, &surface) != VK_SUCCESS) {
+        return VK_NULL_HANDLE;
+    }
 
     return surface;
 }
 
 void CGxDeviceVulkan::IClientSize(uint32_t& width, uint32_t& height) {
     RECT rect = {};
-    GetClientRect(static_cast<HWND>(this->m_window), &rect);
+    if (this->m_window) {
+        GetClientRect(static_cast<HWND>(this->m_window), &rect);
+    }
     width = rect.right - rect.left;
     height = rect.bottom - rect.top;
 }

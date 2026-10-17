@@ -81,7 +81,7 @@ int32_t Enabled() {
     if (g_shm) {
         return g_shm->enabled != 0;
     }
-    return 1;
+    return 0;
 }
 
 void Publish() {

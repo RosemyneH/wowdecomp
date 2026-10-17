@@ -5002,11 +5002,11 @@ double World::GetFramerate() {
 
     double average = total * 0.033333335;
 
-    if (average >= 0.001) {
+    if (average > 0.0000001) {
         return 1.0 / average;
     }
 
-    return 1000.0;
+    return 0.0;
 }
 
 // VERIFY: fa93aad1 auto

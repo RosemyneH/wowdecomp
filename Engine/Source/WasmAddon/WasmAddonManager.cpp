@@ -28,17 +28,25 @@ void PutU32(std::vector<uint8_t>& out, uint32_t v) {
 }
 } // namespace
 
+bool WasmAddonManager::EnsureRuntime() {
+    if (m_runtime) return RuntimeAvailable();
+    m_runtime = CreateRuntime();
+    RecordActivity("", "runtime.init", RuntimeAvailable() ? "wasmtime" : "unavailable");
+    if (m_host) {
+        m_host->Log(RuntimeAvailable() ? "[WasmAddon] runtime initialized" : "[WasmAddon] Wasmtime unavailable; addons disabled");
+    }
+    return m_runtime && RuntimeAvailable();
+}
+
 bool WasmAddonManager::Initialize(const std::string& rootDir, IWasmHostServices* host, const std::string& permissionFile) {
     // ʕ ●ᴥ●ʔ✿ Re-initialising must not strand live instances on a destroyed engine ✿ ʕ ●ᴥ●ʔ
     if (m_initialized) Shutdown();
     m_rootDir = rootDir;
     m_permissionFile = permissionFile.empty() ? (fs::path(rootDir) / "wasm-permissions.cfg").string() : permissionFile;
     m_host = host;
-    m_runtime = CreateRuntime();
     LoadPermissionStore();
     m_initialized = true;
-    RecordActivity("", "runtime.init", RuntimeAvailable() ? "wasmtime" : "unavailable");
-    if (m_host) m_host->Log(RuntimeAvailable() ? "[WasmAddon] runtime initialized" : "[WasmAddon] Wasmtime unavailable; addons disabled");
+    RecordActivity("", "runtime.init", "deferred");
     return true;
 }
 
@@ -1058,7 +1066,7 @@ bool WasmAddonManager::LoadAddon(const std::string& directory) {
     addon->info.sha256 = Sha256Hex(moduleBytes.data(), moduleBytes.size());
     addon->info.signaturePresent = fs::exists(fs::path(directory) / "addon.sig");
     addon->limits = manifest.requestedLimits;
-    if (!m_runtime) {
+    if (!EnsureRuntime()) {
         addon->info.state = AddonState::Failed;
         RecordError(*addon, "WASM runtime unavailable");
         store(std::move(addon));

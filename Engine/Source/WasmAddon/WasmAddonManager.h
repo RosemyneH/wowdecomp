@@ -79,6 +79,7 @@ private:
     std::string StorageDir(int scope) const { return scope == 0 ? m_storageAccountDir : m_storageCharacterDir; }
     static bool IsKnownEvent(const std::string& name);
     static std::vector<uint8_t> SerializeInventory(const std::vector<InventoryItem>& items);
+    bool EnsureRuntime();
 
     std::string m_rootDir;
     std::function<bool(const std::string& directory)> m_packageFilter;

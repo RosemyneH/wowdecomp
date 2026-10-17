@@ -521,6 +521,7 @@ int32_t CGxDeviceVulkan::IRecreateSwapchain() {
         }
 
         this->m_pipelines.clear();
+        this->m_lastPipeline = VK_NULL_HANDLE;
     }
 
     this->m_swapchainDirty = 0;
@@ -748,11 +749,23 @@ static const char* SwapShaderModule(VkDevice device, VkShaderModule& slot, const
 }
 
 static void AppendShaderLine(char* report, size_t reportSize, const char* filename, const char* label) {
+    if (!report || reportSize == 0) {
+        return;
+    }
+
     size_t used = strlen(report);
+
+    if (used >= reportSize) {
+        return;
+    }
 
     if (used && used + 1 < reportSize) {
         report[used++] = '\n';
         report[used] = '\0';
+    }
+
+    if (used >= reportSize || reportSize - used < 2) {
+        return;
     }
 
     SStrPrintf(report + used, reportSize - used, "%s: %s", filename, label);
@@ -777,11 +790,12 @@ void CGxDeviceVulkan::IReloadExperimentalShaders() {
     }
 
     this->m_pipelines.clear();
+    this->m_lastPipeline = VK_NULL_HANDLE;
 
     char directory[300];
     char report[512];
     ShaderOverrideDir(directory, sizeof(directory));
-    SStrCopy(report, directory, sizeof(report));
+    report[0] = '\0';
 
     AppendShaderLine(report, sizeof(report), "Ffp.vert.spv", SwapShaderModule(device, this->m_vertexModule, s_ffpVertexCode, sizeof(s_ffpVertexCode), "Ffp.vert.spv"));
     AppendShaderLine(report, sizeof(report), "Ffp.frag.spv", SwapShaderModule(device, this->m_fragmentModule, s_ffpFragmentCode, sizeof(s_ffpFragmentCode), "Ffp.frag.spv"));
@@ -1011,6 +1025,8 @@ int32_t CGxDeviceVulkan::IEnsurePost() {
         moduleInfo.pCode = s_fxaaFragmentCode;
 
         if (vkCreateShaderModule(device, &moduleInfo, nullptr, &this->m_postFragment) != VK_SUCCESS) {
+            vkDestroyShaderModule(device, this->m_postVertex, nullptr);
+            this->m_postVertex = VK_NULL_HANDLE;
             return 0;
         }
     }
@@ -1338,8 +1354,7 @@ void CGxDeviceVulkan::ScenePresent() {
             }
         }
 
-        // ʕ •ᴥ•ʔ✿ Starved or invisible frames pace at the background cap, even when focused ✿ ʕ •ᴥ•ʔ
-        if (this->m_imageStarved || !this->m_windowVisible) {
+        if (!this->m_windowVisible) {
             int32_t savedFocus = this->m_windowFocus;
             this->m_windowFocus = 0;
             this->WaitForFPSCap();
@@ -1348,7 +1363,7 @@ void CGxDeviceVulkan::ScenePresent() {
             if (!GxGetMaxFPSBk()) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(33));
             }
-        } else {
+        } else if (!this->m_imageStarved) {
             this->WaitForFPSCap();
         }
 
@@ -2621,6 +2636,16 @@ void CGxDeviceVulkan::IReleasePool(CGxPool* pool) {
         for (uint32_t i = 0; i < MaxBindings; ++i) {
             if (this->m_boundBuffers[i] == alloc->buffer) {
                 this->m_boundBuffers[i] = VK_NULL_HANDLE;
+            }
+        }
+
+        auto& uploads = this->m_vk.m_residentUploads;
+        for (size_t i = 0; i < uploads.size();) {
+            if (uploads[i].buffer == alloc->buffer) {
+                uploads[i] = uploads.back();
+                uploads.pop_back();
+            } else {
+                ++i;
             }
         }
 
