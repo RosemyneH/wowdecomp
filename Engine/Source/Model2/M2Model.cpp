@@ -1755,6 +1755,17 @@ int32_t CM2Model::IsSequenceLoaded(uint32_t id) {
 // VERIFY: 89cf9cd8 manual
 // OFFSET: 0x008260C0
 uint16_t CM2Model::FindSequenceIndex(const M2Data* data, uint32_t id, int32_t variation) {
+    // ʕ •ᴥ•ʔ✿ Stand and idle hit the same sequence on every bone. The hash probe stays off that path ✿ ʕ •ᴥ•ʔ
+    static const M2Data* cachedData = nullptr;
+    static uint32_t cachedId = 0;
+    static int32_t cachedVar = 0;
+    static uint16_t cachedIndex = 0;
+    static int32_t cachedOk = 0;
+
+    if (cachedOk && cachedData == data && cachedId == id && cachedVar == variation) {
+        return cachedIndex;
+    }
+
     uint32_t hashCount = data->m_sequenceIdxHashById.m_count;
     uint32_t index = 0xFFFF;
 
@@ -1791,11 +1802,18 @@ uint16_t CM2Model::FindSequenceIndex(const M2Data* data, uint32_t id, int32_t va
         variation--;
     }
 
-    if (index >= count || variation) {
-        return 0xFFFF;
+    uint16_t result = 0xFFFF;
+
+    if (index < count && !variation) {
+        result = static_cast<uint16_t>(index);
     }
 
-    return static_cast<uint16_t>(index);
+    cachedData = data;
+    cachedId = id;
+    cachedVar = variation;
+    cachedIndex = result;
+    cachedOk = 1;
+    return result;
 }
 
 // VERIFY: 5546bff4 manual

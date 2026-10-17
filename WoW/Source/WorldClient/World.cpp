@@ -3426,6 +3426,10 @@ void CWorldScene::RenderPortalList(TSGrowableArray<CPortalView>* views, int32_t 
 // VERIFY: 3633b96c manual
 // OFFSET: 0x00797280
 void CWorldScene::RenderOccluders() {
+    if (!(CWorld::enables & Enable_ShowQuery)) {
+        return;
+    }
+
     CWorldOccluder* occluder = CWorldScene::sortTable.m_visibleOccluderList.Head();
 
     if (!occluder) {
