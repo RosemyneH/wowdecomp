@@ -56,7 +56,7 @@ void CWorldView::AddOccluder(const C3Vector& a, const C3Vector& b) {
     int32_t bucketA = CMath::fint_(distA * 0.029999999f - 0.5f);
     int32_t bucketB = CMath::fint_(distB * 0.029999999f - 0.5f);
 
-    if (bucketA >= 64 && bucketB >= 64) {
+    if (bucketA >= static_cast<int32_t>(kSortBuckets) && bucketB >= static_cast<int32_t>(kSortBuckets)) {
         return;
     }
 
@@ -87,8 +87,8 @@ void CWorldView::AddOccluder(const C3Vector& a, const C3Vector& b) {
             first = 0;
         }
 
-        if (last >= 64) {
-            last = 63;
+        if (last >= static_cast<int32_t>(kSortBuckets)) {
+            last = static_cast<int32_t>(kSortBuckets) - 1;
         }
 
         if (first < last) {

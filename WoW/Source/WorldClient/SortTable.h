@@ -12,10 +12,13 @@
 
 class CDetailDoodadInst;
 
+// ʕ •ᴥ•ʔ✿ One bucket is 33 yards. 1024 reaches the far side of a 64-tile continent ✿ ʕ •ᴥ•ʔ
+static constexpr uint32_t kSortBuckets = 1024;
+
 class CSortTable {
     public:
-    /* 0000 */ CSortEntry m_table [64];
-    /* 1B00 */ C4Vector m_bucketPlanes [64];
+    /* 0000 */ CSortEntry m_table [kSortBuckets];
+    /* 1B00 */ C4Vector m_bucketPlanes [kSortBuckets];
     /* 1F00 */ TSList<CMapObjDefGroup, TSGetExplicitLink<CMapObjDefGroup> > m_pendingExteriorGroupList;
     /* 1F0C */ TSList<CDetailDoodadInst, TSGetExplicitLink<CDetailDoodadInst> > m_detailDoodadInstList;
     /* 1F18 */ TSExplicitList<CMapRenderChunk, offsetof(CMapRenderChunk, m_renderChunkLink)> m_renderChunkList [24];

@@ -1181,6 +1181,10 @@ void World::ObjectDestroy(CMapEntity* entity) {
 // VERIFY: a4bfc150 manual
 // OFFSET: 0x00780860
 void World::PrepareAreaOfInterest(const C3Vector& position) {
+    if (CWorldParamSlider::ExtendedViewEnabled() && World::s_farClip < CWorldParamSlider::kFarclipMaxExtended) {
+        World::SetFarClip(CWorldParamSlider::kFarclipMaxExtended);
+    }
+
     World::s_currentWorldPos = position;
 
     CGCamera* camera = CGWorldFrame::GetActiveCamera();
@@ -1199,7 +1203,7 @@ void World::PrepareAreaOfInterest(const C3Vector& position) {
 
     float distance = sqrtf(corners[7].z * corners[7].z + corners[7].y * corners[7].y + corners[7].x * corners[7].x);
     float terrainFar = World::EffectiveFarClip();
-    float farClip = World::s_farClip;
+    float farClip = World::EffectiveFarClip();
     float streamDistance;
 
     if (terrainFar > distance) {
@@ -1210,15 +1214,16 @@ void World::PrepareAreaOfInterest(const C3Vector& position) {
         streamDistance = distance;
     }
 
-    // ʕ •ᴥ•ʔ✿ Full-detail tiles follow the resident terrain ring. The WDL is whatever is still past it ✿ ʕ •ᴥ•ʔ
+    // ʕ •ᴥ•ʔ✿ Retail stays inside the resident ring. Full view asks for every tile on the continent ✿ ʕ •ᴥ•ʔ
     float detailFar = static_cast<float>(CMapRenderChunk::DetailChunkRadius()) * 33.333332f;
 
-    if (streamDistance > detailFar) {
+    if (!CWorldParamSlider::ExtendedViewEnabled() && streamDistance > detailFar) {
         streamDistance = detailFar;
     }
 
-    CWorld::s_groupAreaOfInterest.b = C3Vector(position.x - 150.0f, position.y - 150.0f, position.z - 150.0f);
-    CWorld::s_groupAreaOfInterest.t = C3Vector(position.x + 150.0f, position.y + 150.0f, position.z + 150.0f);
+    float groupReach = CWorldParamSlider::ExtendedViewEnabled() ? farClip : 150.0f;
+    CWorld::s_groupAreaOfInterest.b = C3Vector(position.x - groupReach, position.y - groupReach, position.z - groupReach);
+    CWorld::s_groupAreaOfInterest.t = C3Vector(position.x + groupReach, position.y + groupReach, position.z + groupReach);
     CWorld::s_objectAreaOfInterest.b = C3Vector(position.x - farClip, position.y - farClip, position.z - farClip);
     CWorld::s_objectAreaOfInterest.t = C3Vector(position.x + farClip, position.y + farClip, position.z + farClip);
 
@@ -1908,7 +1913,7 @@ void CWorldScene::GetNearestCornerToCamera(CAaBox* box, C3Vector* outCorner) {
 void CSortTable::BuildPlanes(const C3Vector& dir, const C3Vector& origin) {
     float dist = 0.0f;
 
-    for (uint32_t i = 0; i < 64; i++) {
+    for (uint32_t i = 0; i < kSortBuckets; i++) {
         C3Vector point(dir.x * dist + origin.x, dist * dir.y + origin.y, dist * dir.z + origin.z);
         this->m_bucketPlanes[i].x = dir.x;
         this->m_bucketPlanes[i].y = dir.y;
@@ -2275,7 +2280,7 @@ void CWorldScene::AddMapObjDefGroup(CMapObjDef* mapObjDef, CMapObjDefGroup* mapO
     if (dist > 0.0f) {
         bucket = CMath::fint_(dist * 0.03f - 0.5f);
 
-        if (bucket >= 64) {
+        if (bucket >= static_cast<int32_t>(kSortBuckets)) {
             return;
         }
     }
@@ -2303,7 +2308,7 @@ void CWorldScene::ComputeExteriorSortDistances() {
         if (dist > 0.0f) {
             bucket = CMath::fint_(dist * 0.03f - 0.5f);
 
-            if (bucket >= 64) {
+            if (bucket >= static_cast<int32_t>(kSortBuckets)) {
                 return;
             }
         }
@@ -2319,7 +2324,7 @@ void CWorldScene::AddMapChunkToRenderList(CMapChunk* mapChunk, C3Vector* pos) {
     int32_t bucket = 0;
     float distance = pos->y * CWorldScene::camPlaneXY.n.y + pos->z * CWorldScene::camPlaneXY.n.z + pos->x * CWorldScene::camPlaneXY.n.x + CWorldScene::camPlaneXY.d;
 
-    if (distance <= 0.0f || (bucket = CMath::fint_(distance * 0.029999999f - 0.5f)) < 64) {
+    if (distance <= 0.0f || (bucket = CMath::fint_(distance * 0.029999999f - 0.5f)) < static_cast<int32_t>(kSortBuckets)) {
         CWorldScene::sortTable.m_table[bucket].m_mapChunkList.LinkToTail(mapChunk);
     }
 }
@@ -2334,7 +2339,7 @@ void CWorldScene::AddToDistanceBucket(CChunkLiquid* liquid, const C3Vector& pos)
         float scaled = distance * 0.03f;
         bucket = CMath::fint_(scaled - 0.5f);
 
-        if (bucket >= 64) {
+        if (bucket >= static_cast<int32_t>(kSortBuckets)) {
             return;
         }
     }
@@ -2621,7 +2626,7 @@ struct HorizonCache {
     float maxY;
     int32_t culling;
     int32_t valid;
-    float snap[64][384];
+    float snap[kSortBuckets][384];
 };
 
 HorizonCache s_horizon;
@@ -2853,7 +2858,7 @@ void CWorldScene::PrepareLiquidInstances() {
 // VERIFY: 065faca9 manual
 // OFFSET: 0x00794250
 void CSortTable::Clear() {
-    for (uint32_t i = 0; i < 64; i++) {
+    for (uint32_t i = 0; i < kSortBuckets; i++) {
         CSortEntry& entry = this->m_table[i];
         entry.m_mapChunkList.UnlinkAll();
 
@@ -3958,7 +3963,7 @@ void CWorldScene::AddDoodadDefs(TSList<CMapBaseObjLink, TSGetExplicitLink<CMapBa
         if (dist > 0.0f) {
             bucket = CMath::fint_(dist * 0.03f - 0.5f);
 
-            if (bucket >= 64) {
+            if (bucket >= static_cast<int32_t>(kSortBuckets)) {
                 continue;
             }
 
@@ -4128,7 +4133,7 @@ void CWorldScene::CullDoodadsInterior(TSList<CMapBaseObjLink, TSGetExplicitLink<
 // OFFSET: 0x00799D40
 void CWorldScene::CullChunks(CSortEntry* entry, uint32_t index) {
     C3Vector corner(0.0f, 0.0f, 0.0f);
-    int32_t occlude = (CWorld::enables & Enable_Culling) && index < 63;
+    int32_t occlude = (CWorld::enables & Enable_Culling) && index + 1 < kSortBuckets;
 
     CMapChunk* chunk = entry->m_mapChunkList.Head();
 
@@ -4168,7 +4173,7 @@ void CWorldScene::CullChunks(CSortEntry* entry, uint32_t index) {
                         int32_t bucket = 0;
                         float distance = CWorldScene::DistanceToCamPlaneXY(&corner);
 
-                        if (distance <= 0.0f || (bucket = CMath::fint_(distance * 0.029999999f - 0.5f)) < 64) {
+                        if (distance <= 0.0f || (bucket = CMath::fint_(distance * 0.029999999f - 0.5f)) < static_cast<int32_t>(kSortBuckets)) {
                             CWorldScene::sortTable.m_table[bucket].m_holedChunkList.LinkToTail(chunk);
                         }
                     }
@@ -4262,7 +4267,7 @@ void CWorldScene::CullMapObjDefGroup() {
 // VERIFY: ce664a92 manual
 // OFFSET: 0x0079A320
 CSortTable::CSortTable() {
-    for (uint32_t i = 0; i < 64; i++) {
+    for (uint32_t i = 0; i < kSortBuckets; i++) {
         this->m_bucketPlanes[i].x = 0.0f;
         this->m_bucketPlanes[i].w = 0.0f;
         this->m_bucketPlanes[i].y = 0.0f;
@@ -4292,7 +4297,7 @@ void CWorldScene::CullSortTable(CRect* rect) {
     // -- ʕ •ᴥ•ʔ✿ The horizon is cleared every frame, then painted near-to-far. A still view replays the painted columns. ✿ ʕ •ᴥ•ʔ
     int32_t reuse = HorizonHit(rect);
 
-    for (uint32_t i = 0; i < 64; i++) {
+    for (uint32_t i = 0; i < kSortBuckets; i++) {
         CWorldScene::CullChunks(entry, i);
         CWorldScene::CullMapObjDefGroups(entry, rect, i);
         CWorldScene::CullLiquid(entry);
@@ -4452,7 +4457,7 @@ void CWorldScene::AddEntityToSortTable(CMapEntity* entity) {
     if (distance > 0.0f) {
         bucket = static_cast<int32_t>(distance * 0.029999999f);
 
-        if (bucket >= 64) {
+        if (bucket >= static_cast<int32_t>(kSortBuckets)) {
             return;
         }
     }
@@ -5102,9 +5107,8 @@ void CWorldScene::RenderHorizon() {
     float maxZ = g_theGxDevicePtr->m_viewport.m_z.m_h;
     GxXformSetViewport(minX, maxX, minY, maxY, s_horizonMinZ, s_horizonMaxZ);
     g_theGxDevicePtr->RsPush();
-    GxRsSet(GxRs_Fog, 1);
     GxRsSet(GxRs_DepthTest, 3);
-    // ʕ •ᴥ•ʔ✿ Fog is in yards. 0..1 hid the whole low-detail continent one yard out ✿ ʕ •ᴥ•ʔ
+    // ʕ •ᴥ•ʔ✿ Fog is in yards. Full view leaves the low-detail continent visible instead of fading it into the sky ✿ ʕ •ᴥ•ʔ
     float detailFar = static_cast<float>(CMapRenderChunk::DetailChunkRadius()) * 33.333332f;
     float horizonFar = World::s_horizonFarClipScale * World::EffectiveFarClip();
 
@@ -5112,8 +5116,13 @@ void CWorldScene::RenderHorizon() {
         horizonFar = 48000.0f;
     }
 
-    GxRsSet(GxRs_FogStart, detailFar);
-    GxRsSet(GxRs_FogEnd, horizonFar);
+    if (CWorldParamSlider::ExtendedViewEnabled()) {
+        GxRsSet(GxRs_Fog, 0);
+    } else {
+        GxRsSet(GxRs_Fog, 1);
+        GxRsSet(GxRs_FogStart, detailFar);
+        GxRsSet(GxRs_FogEnd, horizonFar);
+    }
     DayNight::DNInfo* info = DayNight::GetInfo();
     CImVector color = info->m_fog.m_color;
     GxRsSet(GxRs_FogColor, *reinterpret_cast<int32_t*>(&color));
@@ -5157,11 +5166,14 @@ void CWorldScene::RenderHorizon() {
     }
 
     if (!groups.empty()) {
-        DayNight::DNInfo* info = DayNight::GetInfo();
-        GxRsSet(GxRs_FogStart, 0.0f);
-        GxRsSet(GxRs_FogEnd, 1.0f);
-        GxRsSet(GxRs_FogColor, *reinterpret_cast<int32_t*>(&info->m_fog.m_color));
-        GxRsSet(GxRs_Fog, 1);
+        if (!CWorldParamSlider::ExtendedViewEnabled()) {
+            DayNight::DNInfo* info = DayNight::GetInfo();
+            GxRsSet(GxRs_FogStart, 0.0f);
+            GxRsSet(GxRs_FogEnd, 1.0f);
+            GxRsSet(GxRs_FogColor, *reinterpret_cast<int32_t*>(&info->m_fog.m_color));
+            GxRsSet(GxRs_Fog, 1);
+        }
+
         GxRsSet(GxRs_Lighting, 0);
         int32_t a5 = -1;
         CMapObj::RenderMapObjGroupsColor(groups.data(), static_cast<uint32_t>(groups.size()), matrices.data(), &world, &a5);

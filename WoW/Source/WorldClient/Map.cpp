@@ -1,4 +1,5 @@
 #include "Map.h"
+#include "WoW/Source/WorldClient/WorldParam_CVarSlider.h"
 #include "Engine/Source/ShaderEffect/ShadowCache.h"
 #if defined(_MSC_VER)
 #include <malloc.h>
@@ -1997,7 +1998,7 @@ void CMap::PreUpdateAreas(bool addToScene) {
     int32_t minY = CWorld::gbChunkRect.minY >> 4;
     int32_t maxX = CWorld::gbChunkRect.maxX >> 4;
     int32_t entryCount = 0;
-    CMapAreaEntry* entries = static_cast<CMapAreaEntry*>(alloca(1024 * sizeof(CMapAreaEntry)));
+    static CMapAreaEntry entries[64 * 64];
 
     CMap::ClearChunkSortList();
     CMap::ProcessChunkLiquidUpdateList();
@@ -2085,7 +2086,10 @@ void CMap::PreUpdateAreas(bool addToScene) {
         for (int32_t i = lastPending; i >= 0; i--) {
             CMapArea* area = entries[i].m_area;
 
-            if (area->m_asyncObject && (entries[i].m_dist < 1111.1111f || (entries[i].m_dist < 71111.109f && !CWorldScene::FrustumCull(&area->m_bounds)))) {
+            const float urgentDist = CWorldParamSlider::ExtendedViewEnabled() ? 1.0e10f : 1111.1111f;
+            const float viewDist = CWorldParamSlider::ExtendedViewEnabled() ? 1.0e10f : 71111.109f;
+
+            if (area->m_asyncObject && (entries[i].m_dist < urgentDist || (entries[i].m_dist < viewDist && !CWorldScene::FrustumCull(&area->m_bounds)))) {
                 AsyncFileReadLinkObject(area->m_asyncObject, 1);
             }
         }

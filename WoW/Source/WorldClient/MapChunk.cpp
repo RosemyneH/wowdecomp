@@ -447,7 +447,7 @@ static void LinkChunkBucket(CMapChunk* chunk, const C3Vector& pos, const C4Plane
     int32_t bucket = 0;
     float distance = pos.y * planeXY.n.y + pos.z * planeXY.n.z + pos.x * planeXY.n.x + planeXY.d;
 
-    if (distance <= 0.0f || (bucket = CMath::fint_(distance * 0.029999999f - 0.5f)) < 64) {
+    if (distance <= 0.0f || (bucket = CMath::fint_(distance * 0.029999999f - 0.5f)) < static_cast<int32_t>(kSortBuckets)) {
         CWorldScene::sortTable.m_table[bucket].m_mapChunkList.LinkToTail(chunk);
     }
 }
@@ -460,7 +460,7 @@ static void LinkLiquidBucket(CChunkLiquid* liquid, const C3Vector& pos, const C4
         float scaled = distance * 0.03f;
         bucket = CMath::fint_(scaled - 0.5f);
 
-        if (bucket >= 64) {
+        if (bucket >= static_cast<int32_t>(kSortBuckets)) {
             return;
         }
     }
