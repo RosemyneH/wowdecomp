@@ -47,7 +47,7 @@ What **GitHub Actions** exercises on every push/PR, what **releases** ship, and 
 |-----------|---------------|-----------|--------------------|------------------|-------------------|
 | **Windows x64** | [`windows-x64`](.github/workflows/windows.yml) | **WowClient** (Ninja, Release) | `wowdecomp-windows-x64.zip` | Vulkan (default) + D3D9 + OpenGL | Main reference path; closest to “retail-like” on this fork. |
 | **Windows ARM64** | same workflow, job **`build-arm64`** | **WowClient** on `windows-11-arm` | `wowdecomp-windows-arm64.zip` when the ARM job succeeds | **Vulkan only** (no D3D9/NvAPI/OpenGL in the build) | CI job uses `continue-on-error: true` so x64 stays authoritative if ARM regresses; **currently building in CI**. |
-| **Linux x86_64** | [`linux-x64`](.github/workflows/linux.yml) | **WowClient** (Ninja, RelWithDebInfo) | `wowdecomp-linux-x86_64.tar.gz` | Vulkan on a Wayland window | Experimental. The game window is a Wayland surface. Gamepads use SDL3. |
+| **Linux x86_64** | [`linux-x64`](.github/workflows/linux.yml) | **WowClient** (Ninja, RelWithDebInfo) | `wowdecomp-linux-x86_64.tar.gz` | Vulkan on the session window | Experimental. Wayland sessions get a Wayland window. X11 sessions stay on X11. `SDL_VIDEODRIVER` overrides that. Gamepads use SDL3. |
 | **Android arm64** | [`android-arm64`](.github/workflows/android.yml) | **WowClient** as `libmain.so` inside an APK | `wowdecomp-android-arm64.apk` | Vulkan on an SDL surface | Native app, API 33+. First launch writes a starter `WoW.mfil`. Audio and cinematics are not hooked up yet. |
 | **Linux aarch64** | — | *not in CI* | — | Vulkan only (expected) | Cross-build with `cmake/Toolchain-Clang-aarch64-linux.cmake`; treat as untested in automation. |
 | **macOS Apple Silicon** | [`macos-arm64`](.github/workflows/macos.yml) | **Os + Gx** static libs only | *not published* | MoltenVK via **Gx** | Full **WowClient** still fails to link (e.g. `malloc.h`, FMOD codec paths)—CI is a compile smoke test, not a runnable client. |
@@ -92,7 +92,7 @@ The total leaves out 658 functions that IDA identifies as compiler library code 
 
 ### Linux
 
-- SDL3 (Wayland video driver and gamepads), OpenAL (ALSA), libcurl, pthreads
+- SDL3 (X11 and Wayland video, plus gamepads), OpenAL (ALSA), libcurl, pthreads
 - Vulkan loader and drivers (or Mesa); headers are vendored via `ThirdParty/Vulkan-Headers` and volk
 - Optional: system Wasmtime for WASM addons (see `cmake/Wasmtime.cmake`); otherwise addons may be compiled out
 
