@@ -3713,40 +3713,7 @@ void CWorldScene::RenderDetailDoodads() {
 
 // VERIFY: 4aaed5dd manual
 // OFFSET: 0x007987A0
-static void FinishHiddenDoodad(CMapDoodadDef* doodadDef) {
-    C3Vector delta = doodadDef->m_sphere.c - CWorldScene::s_activeWorldView;
-
-    if ((doodadDef->m_staticFlags & 0x400) || delta.x * delta.x + delta.y * delta.y + delta.z * delta.z < 100.0f) {
-        doodadDef->m_model->SetAnimating(1);
-    } else {
-        doodadDef->m_model->SetAnimating(0);
-    }
-}
-
-static void RememberDoodadView(CMapDoodadDef* doodadDef, int32_t shown) {
-    doodadDef->m_viewStamp = CWorldScene::s_cullPassStamp;
-    doodadDef->m_viewVisible = static_cast<uint8_t>((shown ? 1 : 0) | (doodadDef->m_culled == 0 ? 2 : 0));
-}
-
-static int32_t ReplayDoodadView(CMapDoodadDef* doodadDef, int32_t reuse) {
-    if (!reuse || doodadDef->m_viewStamp != CWorldScene::s_cullPassStamp - 1) {
-        return 0;
-    }
-
-    doodadDef->m_cullPassStamp = CWorldScene::s_cullPassStamp;
-    doodadDef->m_culled = (doodadDef->m_viewVisible & 2) ? 0 : 1;
-
-    if (doodadDef->m_viewVisible & 1) {
-        CWorldScene::AddDoodadDefModelToModelScene(doodadDef);
-        CWorldScene::nDoodadsRendered++;
-    } else {
-        FinishHiddenDoodad(doodadDef);
-    }
-
-    return 1;
-}
-
-void CWorldScene::CullDoodads(CSortEntry* entry, uint16_t fadeLevel, int32_t reuse) {
+void CWorldScene::CullDoodads(CSortEntry* entry, uint16_t fadeLevel) {
     CMapDoodadDef* doodadDef = entry->m_doodadDefList.Head();
 
     while (doodadDef) {
@@ -3767,11 +3734,6 @@ void CWorldScene::CullDoodads(CSortEntry* entry, uint16_t fadeLevel, int32_t reu
             continue;
         }
 
-        if (ReplayDoodadView(doodadDef, reuse)) {
-            doodadDef = next;
-            continue;
-        }
-
         doodadDef->m_cullPassStamp = CWorldScene::s_cullPassStamp;
         doodadDef->m_culled = 1;
 
@@ -3785,11 +3747,12 @@ void CWorldScene::CullDoodads(CSortEntry* entry, uint16_t fadeLevel, int32_t reu
         if (visible) {
             CWorldScene::AddDoodadDefModelToModelScene(doodadDef);
             CWorldScene::nDoodadsRendered++;
+        } else if ((doodadDef->m_staticFlags & 0x400) || (doodadDef->m_sphere.c.x - CWorldScene::s_activeWorldView.x) * (doodadDef->m_sphere.c.x - CWorldScene::s_activeWorldView.x) + ((doodadDef->m_sphere.c.y - CWorldScene::s_activeWorldView.y) * (doodadDef->m_sphere.c.y - CWorldScene::s_activeWorldView.y) + (doodadDef->m_sphere.c.z - CWorldScene::s_activeWorldView.z) * (doodadDef->m_sphere.c.z - CWorldScene::s_activeWorldView.z)) < 100.0f) {
+            doodadDef->m_model->SetAnimating(1);
         } else {
-            FinishHiddenDoodad(doodadDef);
+            doodadDef->m_model->SetAnimating(0);
         }
 
-        RememberDoodadView(doodadDef, visible);
         doodadDef = next;
     }
 }
@@ -4051,7 +4014,7 @@ static void CullDoodadRange(Job::Range range, void* user) {
 
 // VERIFY: 9f2071e4 manual
 // OFFSET: 0x00799980
-void CWorldScene::CullDoodadsExterior(TSList<CMapBaseObjLink, TSGetExplicitLink<CMapBaseObjLink> >* linkList, uint8_t fadeLevel, int32_t reuse) {
+void CWorldScene::CullDoodadsExterior(TSList<CMapBaseObjLink, TSGetExplicitLink<CMapBaseObjLink> >* linkList, uint8_t fadeLevel) {
     s_doodadCulls.clear();
 
     for (CMapBaseObjLink* link = linkList->Head(); !linkList->IsEnd(link); link = linkList->RawNext(link)) {
@@ -4074,10 +4037,6 @@ void CWorldScene::CullDoodadsExterior(TSList<CMapBaseObjLink, TSGetExplicitLink<
         }
 
         if (doodadDef->m_cullPassStamp == CWorldScene::s_cullPassStamp) {
-            continue;
-        }
-
-        if (ReplayDoodadView(doodadDef, reuse)) {
             continue;
         }
 
@@ -4109,16 +4068,19 @@ void CWorldScene::CullDoodadsExterior(TSList<CMapBaseObjLink, TSGetExplicitLink<
             doodadDef->m_culled = 0;
         }
 
-        int32_t shown = cull.inFrustum && !cull.occluded;
-
-        if (shown) {
+        if (cull.inFrustum && !cull.occluded) {
             CWorldScene::AddDoodadDefModelToModelScene(doodadDef);
             CWorldScene::nDoodadsRendered++;
-        } else {
-            FinishHiddenDoodad(doodadDef);
+            continue;
         }
 
-        RememberDoodadView(doodadDef, shown);
+        C3Vector delta = doodadDef->m_sphere.c - CWorldScene::s_activeWorldView;
+
+        if ((doodadDef->m_staticFlags & 0x400) || delta.x * delta.x + delta.z * delta.z + delta.y * delta.y < 100.0f) {
+            doodadDef->m_model->SetAnimating(1);
+        } else {
+            doodadDef->m_model->SetAnimating(0);
+        }
     }
 }
 
@@ -4182,7 +4144,7 @@ void CWorldScene::CullDoodadsInterior(TSList<CMapBaseObjLink, TSGetExplicitLink<
 
 // VERIFY: 1b6761ad manual
 // OFFSET: 0x00799D40
-void CWorldScene::CullChunks(CSortEntry* entry, uint32_t index, int32_t reuse) {
+void CWorldScene::CullChunks(CSortEntry* entry, uint32_t index) {
     C3Vector corner(0.0f, 0.0f, 0.0f);
     int32_t occlude = (CWorld::enables & Enable_Culling) && index + 1 < kSortBuckets;
 
@@ -4192,29 +4154,10 @@ void CWorldScene::CullChunks(CSortEntry* entry, uint32_t index, int32_t reuse) {
         CMapChunk* next = entry->m_mapChunkList.Next(chunk);
         chunk->m_sortListLink.Unlink();
 
-        // ʕ •ᴥ•ʔ✿ A still camera keeps last frame's chunk result. The tests are the expensive part ✿ ʕ •ᴥ•ʔ
-        int32_t replay = reuse && chunk->m_cullStamp == CWorldScene::s_cullPassStamp - 1;
-        int32_t outer = 0;
-        int32_t inner = 0;
+        if (CWorldScene::frustumStack[CWorldScene::frustumIndex].Cull(chunk->m_bbox) && !CWorldOcclusion::QueryVolumes(&chunk->m_sphere) && !CWorldOcclusion::QueryBuffer(&chunk->m_bbox, 0)) {
+            CWorldScene::CullDoodadsExterior(&chunk->m_doodadDefLinkList, CWorldView::GetFadeLevelForDistance(chunk->m_distToCamera));
 
-        if (replay) {
-            outer = (chunk->m_cullVisible & 2) != 0;
-            inner = (chunk->m_cullVisible & 1) != 0;
-        } else {
-            outer = CWorldScene::frustumStack[CWorldScene::frustumIndex].Cull(chunk->m_bbox) && !CWorldOcclusion::QueryVolumes(&chunk->m_sphere) && !CWorldOcclusion::QueryBuffer(&chunk->m_bbox, 0);
-
-            if (outer) {
-                inner = CWorldScene::frustumStack[CWorldScene::frustumIndex].Cull(chunk->m_bbox2) && !CWorldOcclusion::QueryBuffer(&chunk->m_bbox2, 0);
-            }
-
-            chunk->m_cullStamp = CWorldScene::s_cullPassStamp;
-            chunk->m_cullVisible = static_cast<uint8_t>((outer ? 2 : 0) | (inner ? 1 : 0));
-        }
-
-        if (outer) {
-            CWorldScene::CullDoodadsExterior(&chunk->m_doodadDefLinkList, CWorldView::GetFadeLevelForDistance(chunk->m_distToCamera), reuse);
-
-            if (inner) {
+            if (CWorldScene::frustumStack[CWorldScene::frustumIndex].Cull(chunk->m_bbox2) && !CWorldOcclusion::QueryBuffer(&chunk->m_bbox2, 0)) {
                 if (chunk->m_header->m_holes != 0xFFFF) {
                     CWorldScene::s_chunksRendered++;
                     chunk->RenderPrep();
@@ -4368,11 +4311,11 @@ void CWorldScene::CullSortTable(CRect* rect) {
     int32_t reuse = HorizonHit(rect);
 
     for (uint32_t i = 0; i < kSortBuckets; i++) {
-        CWorldScene::CullChunks(entry, i, reuse);
+        CWorldScene::CullChunks(entry, i);
         CWorldScene::CullMapObjDefGroups(entry, rect, i);
         CWorldScene::CullLiquid(entry);
         CWorldScene::CullEntitys(entry);
-        CWorldScene::CullDoodads(entry, CWorldView::GetFadeLevelForDistance(i * 33.333332f), reuse);
+        CWorldScene::CullDoodads(entry, CWorldView::GetFadeLevelForDistance(i * 33.333332f));
         CWorldScene::UpdateOcclusion(entry, reuse ? 0 : 1);
 
         if (reuse) {
