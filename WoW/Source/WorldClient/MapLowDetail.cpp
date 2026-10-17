@@ -280,28 +280,27 @@ void CMap::DrawHorizonList() {
         uint32_t maxIndex;
     };
 
-    static std::vector<CMapAreaLow*> key;
     static std::vector<Batch> batches;
+    static char* builtFrom = nullptr;
 
-    std::vector<CMapAreaLow*> solid;
     CMapAreaLow* next = nullptr;
 
     for (CMapAreaLow* area = CWorldScene::sortTable.m_horizonChunkList.Head(); area; area = next) {
         next = CWorldScene::sortTable.m_horizonChunkList.Next(area);
         area->m_horizonLink.Unlink();
+    }
 
-        if (static_cast<int32_t>(area->m_indexCount) > 0) {
-            solid.push_back(area);
+    // ʕ •ᴥ•ʔ✿ Turning changes which tiles are in front. Rebuilding that set every frame is the hitch ✿ ʕ •ᴥ•ʔ
+    if (builtFrom != CMap::s_lowDetail.m_data) {
+        std::vector<CMapAreaLow*> solid;
+
+        for (uint32_t i = 0; i < 4096; ++i) {
+            CMapAreaLow* area = CMap::s_lowDetail.m_areas[i];
+
+            if (area && static_cast<int32_t>(area->m_indexCount) > 0) {
+                solid.push_back(area);
+            }
         }
-    }
-
-    int32_t same = solid.size() == key.size();
-
-    for (size_t i = 0; same && i < solid.size(); ++i) {
-        same = solid[i] == key[i];
-    }
-
-    if (!same) {
         for (Batch& batch : batches) {
             if (batch.verts) {
                 g_theGxDevicePtr->BufDestroy(batch.verts);
@@ -321,7 +320,6 @@ void CMap::DrawHorizonList() {
         }
 
         batches.clear();
-        key = solid;
 
         for (size_t base = 0; base < solid.size(); base += kTiles) {
             uint32_t count = static_cast<uint32_t>(std::min(solid.size() - base, static_cast<size_t>(kTiles)));
@@ -415,6 +413,8 @@ void CMap::DrawHorizonList() {
             batch.maxIndex = count * kVerts - 1;
             batches.push_back(batch);
         }
+
+        builtFrom = CMap::s_lowDetail.m_data;
     }
 
     GxRsSet(GxRs_Culling, 0);
