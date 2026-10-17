@@ -11,9 +11,15 @@
 
 class CGxTex;
 
-// -- ʕ •ᴥ•ʔ✿ 47-bit userspace only. A stripped NVIDIA mapping is not a CGxTex. ✿ ʕ •ᴥ•ʔ
+// -- ʕ •ᴥ•ʔ✿ 47-bit userspace, and aligned. A stripped NVIDIA mapping is not a CGxTex. ✿ ʕ •ᴥ•ʔ
 inline int32_t GxCpuPtrOk(const void* value) {
-    uintptr_t top = reinterpret_cast<uintptr_t>(value) >> 47;
+    uintptr_t bits = reinterpret_cast<uintptr_t>(value);
+
+    if (bits & (alignof(void*) - 1)) {
+        return 0;
+    }
+
+    uintptr_t top = bits >> 47;
     return top == 0 || top == 0x1ffff;
 }
 
