@@ -1,5 +1,6 @@
 #include "World.h"
 #include <cfloat>
+#include <cstring>
 #include <cstdlib>
 #include <new>
 #include "Engine/Source/Base/OsCrt.h"
@@ -2608,9 +2609,55 @@ void CWorldScene::CullLiquid(CSortEntry* entry) {
     }
 }
 
+namespace {
+
+struct HorizonCache {
+    C44Matrix matrix;
+    float nearDepth;
+    float farDepth;
+    float minX;
+    float minY;
+    float maxX;
+    float maxY;
+    int32_t culling;
+    int32_t valid;
+    float snap[64][384];
+};
+
+HorizonCache s_horizon;
+
+int32_t HorizonHit(const CRect* rect) {
+    if (!s_horizon.valid || !rect) {
+        return 0;
+    }
+
+    return s_horizon.culling == ((CWorld::enables & Enable_Culling) != 0)
+        && s_horizon.nearDepth == CWorldScene::s_occlusionNearDepth
+        && s_horizon.farDepth == CWorldScene::s_occlusionFarDepth
+        && s_horizon.minX == rect->minX
+        && s_horizon.minY == rect->minY
+        && s_horizon.maxX == rect->maxX
+        && s_horizon.maxY == rect->maxY
+        && memcmp(&s_horizon.matrix, &CWorldScene::s_clipBufferMatrix, sizeof(C44Matrix)) == 0;
+}
+
+void HorizonRemember(const CRect* rect) {
+    s_horizon.matrix = CWorldScene::s_clipBufferMatrix;
+    s_horizon.nearDepth = CWorldScene::s_occlusionNearDepth;
+    s_horizon.farDepth = CWorldScene::s_occlusionFarDepth;
+    s_horizon.minX = rect->minX;
+    s_horizon.minY = rect->minY;
+    s_horizon.maxX = rect->maxX;
+    s_horizon.maxY = rect->maxY;
+    s_horizon.culling = (CWorld::enables & Enable_Culling) != 0;
+    s_horizon.valid = 1;
+}
+
+}
+
 // VERIFY: 672d50fa manual
 // OFFSET: 0x00793760
-void CWorldScene::UpdateOcclusion(CSortEntry* entry) {
+void CWorldScene::UpdateOcclusion(CSortEntry* entry, int32_t paint) {
     if (!(CWorld::enables & Enable_Culling)) {
         entry->m_holedChunkList.UnlinkAll();
 
@@ -2633,7 +2680,7 @@ void CWorldScene::UpdateOcclusion(CSortEntry* entry) {
         if (!chunk->m_header->m_holes) {
             chunk->m_sortListLink.Unlink();
 
-            if (CWorldScene::s_occlusionFarDepth > chunk->m_distToCamera && CWorldScene::s_occlusionNearDepth < chunk->m_distToCamera) {
+            if (paint && CWorldScene::s_occlusionFarDepth > chunk->m_distToCamera && CWorldScene::s_occlusionNearDepth < chunk->m_distToCamera) {
                 chunk->ClipBufferUpdate();
             }
         }
@@ -2646,7 +2693,11 @@ void CWorldScene::UpdateOcclusion(CSortEntry* entry) {
     while (chunk) {
         CMapChunk* next = entry->m_holedChunkList.Next(chunk);
         chunk->m_sortListLink.Unlink();
-        chunk->ClipBufferUpdate();
+
+        if (paint) {
+            chunk->ClipBufferUpdate();
+        }
+
         chunk = next;
     }
 
@@ -2654,7 +2705,10 @@ void CWorldScene::UpdateOcclusion(CSortEntry* entry) {
 
     while (occluder) {
         CWorldOccluder* next = entry->m_occluderList.Next(occluder);
-        occluder->ClipBufferUpdate();
+
+        if (paint) {
+            occluder->ClipBufferUpdate();
+        }
 
         if (CWorld::enables & Enable_PortalVis) {
             CWorldScene::sortTable.m_visibleOccluderList.LinkToTail(occluder);
@@ -4235,6 +4289,8 @@ void CWorldScene::CullSortTable(CRect* rect) {
     CWorldScene::FrustumSet(rect);
 
     CSortEntry* entry = CWorldScene::sortTable.m_table;
+    // -- ʕ •ᴥ•ʔ✿ The horizon is cleared every frame, then painted near-to-far. A still view replays the painted columns. ✿ ʕ •ᴥ•ʔ
+    int32_t reuse = HorizonHit(rect);
 
     for (uint32_t i = 0; i < 64; i++) {
         CWorldScene::CullChunks(entry, i);
@@ -4242,8 +4298,19 @@ void CWorldScene::CullSortTable(CRect* rect) {
         CWorldScene::CullLiquid(entry);
         CWorldScene::CullEntitys(entry);
         CWorldScene::CullDoodads(entry, CWorldView::GetFadeLevelForDistance(i * 33.333332f));
-        CWorldScene::UpdateOcclusion(entry);
+        CWorldScene::UpdateOcclusion(entry, reuse ? 0 : 1);
+
+        if (reuse) {
+            memcpy(CWorldScene::s_clipBuffer, s_horizon.snap[i], sizeof(CWorldScene::s_clipBuffer));
+        } else {
+            memcpy(s_horizon.snap[i], CWorldScene::s_clipBuffer, sizeof(CWorldScene::s_clipBuffer));
+        }
+
         entry++;
+    }
+
+    if (!reuse) {
+        HorizonRemember(rect);
     }
 
     CWorldScene::CullHorizon(rect);

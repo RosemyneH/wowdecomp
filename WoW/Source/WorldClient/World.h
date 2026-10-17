@@ -242,7 +242,7 @@ class CWorldScene {
     static void CullDoodads(CSortEntry* entry, uint16_t fadeLevel);
     static void CullLiquid(CSortEntry* entry);
     static void CullChunks(CSortEntry* entry, uint32_t index);
-    static void UpdateOcclusion(CSortEntry* entry);
+    static void UpdateOcclusion(CSortEntry* entry, int32_t paint = 1);
     static void CullSortTable(CRect* rect);
     static void CullHorizon(CRect* rect);
     static void BuildHorizonProjection(C44Matrix* projection);
