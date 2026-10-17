@@ -14,15 +14,39 @@ void OsJoystickMapStick(uint32_t index, int32_t stick, int32_t xAxis, int32_t yA
 uint32_t OsJoystickOpen(uint32_t index);
 void OsJoystickSetMouseMode(uint32_t index, int32_t enable);
 
+struct OsGamepadOptions {
+    int32_t layout;
+    float deadzone;
+    float lookSens;
+    float cursorSpeed;
+    int32_t invertY;
+    int32_t strafe;
+    int32_t south;
+    int32_t east;
+    int32_t west;
+    int32_t north;
+    int32_t shoulders;
+    int32_t triggers;
+    int32_t back;
+    int32_t start;
+    int32_t cursorToggle;
+    int32_t autorun;
+    int32_t dpad;
+};
+
 #if defined(WOWDECOMP_LINUX) || defined(WOWDECOMP_ANDROID)
 void OsGamepadCamera(float* x, float* y);
 int32_t OsGamepadCursorMode();
+void OsGamepadSetOptions(const OsGamepadOptions* options);
+const char* OsGamepadConnectedName();
 #else
 inline void OsGamepadCamera(float* x, float* y) {
     if (x) *x = 0.0f;
     if (y) *y = 0.0f;
 }
 inline int32_t OsGamepadCursorMode() { return 0; }
+inline void OsGamepadSetOptions(const OsGamepadOptions*) {}
+inline const char* OsGamepadConnectedName() { return ""; }
 #endif
 void OsPollJoysticks(int32_t active);
 

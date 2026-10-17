@@ -26,6 +26,7 @@
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
 #include "Engine/Source/lua-5.1/src/lauxlib.h"
 #include "Engine/Source/lua-5.1/src/lua.h"
+#include "Engine/Source/Os/Joystick.h"
 #include "Engine/Source/Os/OsFile.h"
 #include "Engine/Source/Os/Time.h"
 #include "Engine/Source/Os/TimeManager.h"
@@ -6262,6 +6263,12 @@ static int32_t Script_ToggleTris(lua_State* L) {
     return 0;
 }
 
+static int32_t Script_GetConnectedController(lua_State* L) {
+    const char* name = OsGamepadConnectedName();
+    lua_pushstring(L, name ? name : "");
+    return 1;
+}
+
 // STATIC: 0x00AC80B0
 static FrameScript_Method s_ScriptFunctions[] = {
     { "FrameXML_Debug", &Script_FrameXML_Debug },
@@ -6297,6 +6304,7 @@ static FrameScript_Method s_ScriptFunctions[] = {
     { "GetCVarInfo", &Script_GetCVarInfo },
     { "SetCVar", &Script_SetCVar },
     { "GetCVar", &Script_GetCVar },
+    { "GetConnectedController", &Script_GetConnectedController },
     { "GetCVarBool", &Script_GetCVarBool },
     { "GetCVarDefault", &Script_GetCVarDefault },
     { "GetCVarMin", &Script_GetCVarMin },

@@ -121,6 +121,68 @@ void ApplyJoystickConfig(XMLNode* config) {
 
 // VERIFY: ff53c0b8 auto
 // OFFSET: 0x005F9C80
+static int32_t PadFlag(const char* name, int32_t fallback) {
+    CVar* var = CVar::Lookup(name);
+    return var ? var->m_intValue : fallback;
+}
+
+static float PadAmount(const char* name, float fallback) {
+    CVar* var = CVar::Lookup(name);
+    return var ? var->m_floatValue : fallback;
+}
+
+static void PushGamepadOptions() {
+    OsGamepadOptions options;
+    options.layout = PadFlag("padLayout", 0);
+    options.deadzone = PadAmount("padDeadzone", 0.18f);
+    options.lookSens = PadAmount("padLookSens", 1.0f);
+    options.cursorSpeed = PadAmount("padCursorSpeed", 16.0f);
+    options.invertY = PadFlag("padInvertY", 0);
+    options.strafe = PadFlag("padStrafe", 1);
+    options.south = PadFlag("padSouth", 1);
+    options.east = PadFlag("padEast", 1);
+    options.west = PadFlag("padWest", 1);
+    options.north = PadFlag("padNorth", 1);
+    options.shoulders = PadFlag("padShoulders", 1);
+    options.triggers = PadFlag("padTriggers", 1);
+    options.back = PadFlag("padBack", 1);
+    options.start = PadFlag("padStart", 1);
+    options.cursorToggle = PadFlag("padCursorToggle", 1);
+    options.autorun = PadFlag("padAutorun", 1);
+    options.dpad = PadFlag("padDpad", 1);
+    OsGamepadSetOptions(&options);
+}
+
+static bool PadOptionsCallback(CVar*, const char*, const char*, void*) {
+    PushGamepadOptions();
+    return true;
+}
+
+static void RegisterPadCVar(const char* name, const char* help, const char* value) {
+    CVar::Register(name, help, 0, value, PadOptionsCallback, 5, false, nullptr, false);
+}
+
+void RegisterGamepadCVars() {
+    RegisterPadCVar("padLayout", "0 retail gamepad layout, 1 Steam Input passthrough", "0");
+    RegisterPadCVar("padDeadzone", "gamepad stick deadzone", "0.18");
+    RegisterPadCVar("padLookSens", "gamepad look sensitivity", "1");
+    RegisterPadCVar("padCursorSpeed", "gamepad cursor speed", "16");
+    RegisterPadCVar("padInvertY", "invert gamepad look", "0");
+    RegisterPadCVar("padStrafe", "left stick strafes instead of turning", "1");
+    RegisterPadCVar("padSouth", "A jumps, or clicks while the cursor is out", "1");
+    RegisterPadCVar("padEast", "B cancels", "1");
+    RegisterPadCVar("padWest", "X interacts", "1");
+    RegisterPadCVar("padNorth", "Y sheathes", "1");
+    RegisterPadCVar("padShoulders", "shoulders change target", "1");
+    RegisterPadCVar("padTriggers", "triggers press action bar slots 1 and 2", "1");
+    RegisterPadCVar("padBack", "Select opens the map", "1");
+    RegisterPadCVar("padStart", "Start opens the menu", "1");
+    RegisterPadCVar("padCursorToggle", "right stick click toggles the cursor", "1");
+    RegisterPadCVar("padAutorun", "left stick click toggles autorun", "1");
+    RegisterPadCVar("padDpad", "d-pad opens character, bags, spellbook, and quests", "1");
+    PushGamepadOptions();
+}
+
 bool JoystickCallback(CVar* var, const char* oldValue, const char* value, void* arg) {
     if (*value == '1') {
         if (GetJoystick() == 0xFFFFFFFF) {

@@ -103,6 +103,7 @@ CGInputControl::CGInputControl() : m_flags(INPUT_NONE), m_lookStartTime(0), m_pe
 void InputControlInitialize() {
     CVar::Register("Joystick", "enable joystick control", 0, "1", JoystickCallback, 5, false, nullptr, false);
     s_cvCinematicJoystick = CVar::Register("CinematicJoystick", "enable cinematic joystick control", 0, "0", nullptr, 5, false, nullptr, false);
+    RegisterGamepadCVars();
     CGInputControl::s_inputControl = new (SMemAlloc(sizeof(CGInputControl), __FILE__, __LINE__, 0)) CGInputControl();
     s_cvEnableWowMouse = CVar::Register("enableWowMouse", "Enable Steelseries World of Warcraft Mouse", 1, "0", WowMouseCVarCallback, 5, false, nullptr, false);
 }

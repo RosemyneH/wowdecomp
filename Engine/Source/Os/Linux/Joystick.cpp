@@ -438,10 +438,42 @@ static void ReadState(LnxJoystick* joystick, LnxJoystickState* state) {
 static float g_lookX;
 static float g_lookY;
 static int32_t g_cursor;
+static char g_padName[128];
+static OsGamepadOptions g_options = { 0, 0.18f, 1.0f, 16.0f, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
+
+void OsGamepadSetOptions(const OsGamepadOptions* options) {
+    if (!options) {
+        return;
+    }
+
+    g_options = *options;
+    if (g_options.deadzone < 0.0f) {
+        g_options.deadzone = 0.0f;
+    }
+    if (g_options.deadzone > 0.9f) {
+        g_options.deadzone = 0.9f;
+    }
+    if (g_options.lookSens < 0.05f) {
+        g_options.lookSens = 0.05f;
+    }
+    if (g_options.cursorSpeed < 1.0f) {
+        g_options.cursorSpeed = 1.0f;
+    }
+}
+
+const char* OsGamepadConnectedName() {
+    int32_t count = 0;
+    SDL_JoystickID* pads = SDL_GetGamepads(&count);
+    const char* name = pads && count > 0 ? SDL_GetGamepadNameForID(pads[0]) : nullptr;
+    SDL_free(pads);
+    SStrCopy(g_padName, name ? name : "", sizeof(g_padName));
+    return g_padName;
+}
 
 static float Stick(SDL_Gamepad* pad, SDL_GamepadAxis axis) {
     float value = SDL_GetGamepadAxis(pad, axis) / 32767.0f;
-    return value < 0.18f && value > -0.18f ? 0.0f : value;
+    float deadzone = g_options.deadzone;
+    return value < deadzone && value > -deadzone ? 0.0f : value;
 }
 
 static void HoldKey(LnxJoystick* joystick, int slot, KEY key, int down) {
@@ -458,24 +490,59 @@ static void EdgeKey(LnxJoystick* joystick, int slot, int down, KEY key) {
     OsQueuePut(OS_INPUT_KEY_UP, key, 1, 0, 0);
 }
 
-// ʕ •ᴥ•ʔ✿ Xbox layout, the same places retail uses: move, camera, cursor, jump, cancel, target ✿ ʕ •ᴥ•ʔ
+static void ReleaseMove(LnxJoystick* joystick) {
+    HoldKey(joystick, 0, KEY_W, 0);
+    HoldKey(joystick, 1, KEY_S, 0);
+    HoldKey(joystick, 2, KEY_Q, 0);
+    HoldKey(joystick, 22, KEY_A, 0);
+    HoldKey(joystick, 3, KEY_E, 0);
+    HoldKey(joystick, 23, KEY_D, 0);
+    HoldKey(joystick, 5, KEY_SPACE, 0);
+    HoldKey(joystick, 6, KEY_ESCAPE, 0);
+    HoldKey(joystick, 19, KEY_Z, 0);
+    HoldKey(joystick, 20, KEY_2, 0);
+    HoldKey(joystick, 21, KEY_1, 0);
+    if (joystick->m_held[9]) {
+        int32_t x = 0;
+        int32_t y = 0;
+        OsInputGetMousePosition(&x, &y);
+        OsQueuePut(OS_INPUT_MOUSE_UP, MOUSE_BUTTON_LEFT, x, y, 0);
+        joystick->m_held[9] = 0;
+    }
+}
+
+// ʕ •ᴥ•ʔ✿ Retail layout, or nothing when Steam Input is already sending keys ✿ ʕ •ᴥ•ʔ
 static void ApplyRetail(LnxJoystick* joystick) {
     SDL_Gamepad* pad = joystick->m_pad;
+    if (g_options.layout == 1) {
+        ReleaseMove(joystick);
+        joystick->m_cursor = 0;
+        g_cursor = 0;
+        g_lookX = 0.0f;
+        g_lookY = 0.0f;
+        return;
+    }
+
     float lx = Stick(pad, SDL_GAMEPAD_AXIS_LEFTX);
     float ly = Stick(pad, SDL_GAMEPAD_AXIS_LEFTY);
     float rx = Stick(pad, SDL_GAMEPAD_AXIS_RIGHTX);
     float ry = Stick(pad, SDL_GAMEPAD_AXIS_RIGHTY);
     HoldKey(joystick, 0, KEY_W, ly < 0);
     HoldKey(joystick, 1, KEY_S, ly > 0);
-    HoldKey(joystick, 2, KEY_Q, lx < 0);
-    HoldKey(joystick, 3, KEY_E, lx > 0);
+    int32_t strafe = g_options.strafe;
+    HoldKey(joystick, 2, KEY_Q, strafe && lx < 0);
+    HoldKey(joystick, 22, KEY_A, !strafe && lx < 0);
+    HoldKey(joystick, 3, KEY_E, strafe && lx > 0);
+    HoldKey(joystick, 23, KEY_D, !strafe && lx > 0);
 
-    int stick = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_RIGHT_STICK);
-    if (stick && !joystick->m_held[4]) joystick->m_cursor = !joystick->m_cursor;
+    int stick = g_options.cursorToggle && SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_RIGHT_STICK);
+    if (stick && !joystick->m_held[4]) {
+        joystick->m_cursor = !joystick->m_cursor;
+    }
     joystick->m_held[4] = static_cast<uint8_t>(stick);
     g_cursor = joystick->m_cursor;
 
-    int south = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_SOUTH);
+    int south = g_options.south && SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_SOUTH);
     if (joystick->m_cursor) {
         g_lookX = 0.0f;
         g_lookY = 0.0f;
@@ -483,37 +550,62 @@ static void ApplyRetail(LnxJoystick* joystick) {
             int32_t x = 0;
             int32_t y = 0;
             OsInputGetMousePosition(&x, &y);
-            OsInputSetMousePosition(x + static_cast<int32_t>(rx * 16.0f), y + static_cast<int32_t>(ry * 16.0f));
+            OsInputSetMousePosition(x + static_cast<int32_t>(rx * g_options.cursorSpeed), y + static_cast<int32_t>(ry * g_options.cursorSpeed));
         }
-        if (south != joystick->m_held[5]) {
+        HoldKey(joystick, 5, KEY_SPACE, 0);
+        if (south != joystick->m_held[9]) {
             int32_t x = 0;
             int32_t y = 0;
             OsInputGetMousePosition(&x, &y);
             OsQueuePut(south ? OS_INPUT_MOUSE_DOWN : OS_INPUT_MOUSE_UP, MOUSE_BUTTON_LEFT, x, y, 0);
         }
-        joystick->m_held[5] = static_cast<uint8_t>(south);
+        joystick->m_held[9] = static_cast<uint8_t>(south);
     } else {
-        g_lookX = rx;
-        g_lookY = ry;
+        float lookY = g_options.invertY ? -ry : ry;
+        g_lookX = rx * g_options.lookSens;
+        g_lookY = lookY * g_options.lookSens;
+        if (joystick->m_held[9]) {
+            int32_t x = 0;
+            int32_t y = 0;
+            OsInputGetMousePosition(&x, &y);
+            OsQueuePut(OS_INPUT_MOUSE_UP, MOUSE_BUTTON_LEFT, x, y, 0);
+            joystick->m_held[9] = 0;
+        }
         HoldKey(joystick, 5, KEY_SPACE, south);
     }
 
-    HoldKey(joystick, 6, KEY_ESCAPE, SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_EAST));
-    EdgeKey(joystick, 7, SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER), KEY_TAB);
-    if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER) && !joystick->m_held[8]) {
+    HoldKey(joystick, 6, KEY_ESCAPE, g_options.east && SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_EAST));
+    if (g_options.west && SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_WEST) && !joystick->m_held[18]) {
+        int32_t x = 0;
+        int32_t y = 0;
+        OsInputGetMousePosition(&x, &y);
+        OsQueuePut(OS_INPUT_MOUSE_DOWN, MOUSE_BUTTON_RIGHT, x, y, 0);
+        OsQueuePut(OS_INPUT_MOUSE_UP, MOUSE_BUTTON_RIGHT, x, y, 0);
+    }
+    joystick->m_held[18] = static_cast<uint8_t>(g_options.west && SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_WEST));
+    HoldKey(joystick, 19, KEY_Z, g_options.north && SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_NORTH));
+
+    EdgeKey(joystick, 7, g_options.shoulders && SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER), KEY_TAB);
+    if (g_options.shoulders && SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER) && !joystick->m_held[8]) {
         OsQueuePut(OS_INPUT_KEY_DOWN, KEY_LSHIFT, 1, 0, 0);
         OsQueuePut(OS_INPUT_KEY_DOWN, KEY_TAB, 1, 0, 0);
         OsQueuePut(OS_INPUT_KEY_UP, KEY_TAB, 1, 0, 0);
         OsQueuePut(OS_INPUT_KEY_UP, KEY_LSHIFT, 1, 0, 0);
     }
-    joystick->m_held[8] = static_cast<uint8_t>(SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER));
-    EdgeKey(joystick, 11, SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_BACK), KEY_M);
-    EdgeKey(joystick, 12, SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_START), KEY_ESCAPE);
-    EdgeKey(joystick, 13, SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_LEFT_STICK), KEY_NUMLOCK);
-    EdgeKey(joystick, 14, SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_UP), KEY_C);
-    EdgeKey(joystick, 15, SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN), KEY_B);
-    EdgeKey(joystick, 16, SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_LEFT), KEY_P);
-    EdgeKey(joystick, 17, SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT), KEY_L);
+    joystick->m_held[8] = static_cast<uint8_t>(g_options.shoulders && SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER));
+
+    int rightTrigger = g_options.triggers && SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > 16000;
+    int leftTrigger = g_options.triggers && SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > 16000;
+    HoldKey(joystick, 21, KEY_1, rightTrigger);
+    HoldKey(joystick, 20, KEY_2, leftTrigger);
+
+    EdgeKey(joystick, 11, g_options.back && SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_BACK), KEY_M);
+    EdgeKey(joystick, 12, g_options.start && SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_START), KEY_ESCAPE);
+    EdgeKey(joystick, 13, g_options.autorun && SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_LEFT_STICK), KEY_NUMLOCK);
+    EdgeKey(joystick, 14, g_options.dpad && SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_UP), KEY_C);
+    EdgeKey(joystick, 15, g_options.dpad && SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN), KEY_B);
+    EdgeKey(joystick, 16, g_options.dpad && SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_LEFT), KEY_P);
+    EdgeKey(joystick, 17, g_options.dpad && SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT), KEY_L);
 }
 
 // OFFSET: 0x00870B80
@@ -542,6 +634,14 @@ static void PollJoystick(uint32_t index, int32_t active) {
         ReadState(joystick, state);
     } else {
         ResetState(state);
+    }
+
+    // ʕ •ᴥ•ʔ✿ Steam Input already emits the keys. Don't also turn the pad into buttons. ✿ ʕ •ᴥ•ʔ
+    if (joystick->m_pad && g_options.layout == 1) {
+        if (active) {
+            ApplyRetail(joystick);
+        }
+        return;
     }
 
     for (int32_t i = 0; i < 4; i++) {
