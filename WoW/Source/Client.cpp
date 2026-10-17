@@ -1770,7 +1770,13 @@ bool InitializeGlobal() {
 
     Startup_StringsRec* title = g_startup_StringsDB.GetRecord(1);
     char windowTitle[260];
-    SStrCopy(windowTitle, title ? title->m_message : "World of Warcraft", STORM_MAX_STR);
+    const char* benchTitle = std::getenv("WOWDECOMP_WINDOW_TITLE");
+
+    if (benchTitle && benchTitle[0]) {
+        SStrCopy(windowTitle, benchTitle, STORM_MAX_STR);
+    } else {
+        SStrCopy(windowTitle, title ? title->m_message : "World of Warcraft", STORM_MAX_STR);
+    }
     ConsoleDeviceInitialize(windowTitle, 1, 1);
 
     OsIMEInitialize();

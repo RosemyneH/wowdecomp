@@ -1,6 +1,7 @@
 #include "CGlueMgr.h"
 #include <cmath>
 #include <cstdarg>
+#include <cstdlib>
 #include <cstring>
 #include <new>
 #include "Engine/Source/Base/CDataStore.h"
@@ -1089,9 +1090,93 @@ void CGlueMgr::Initialize() {
     AccountDataInitializeBasicSystem();
 }
 
+// -- ʕ •ᴥ•ʔ✿ WOWDECOMP_AUTOLOGIN=user:pass[:character] presses login without a keyboard ✿ ʕ •ᴥ•ʔ
+static void MaybeAutoLogin() {
+    const char* spec = std::getenv("WOWDECOMP_AUTOLOGIN");
+
+    if (!spec || !spec[0]) {
+        return;
+    }
+
+    static int32_t started = 0;
+    static char wantName[64];
+
+    if (!started) {
+        if (CGlueMgr::m_idleState != IDLE_NONE || !ClientServices::LoginConnection()) {
+            return;
+        }
+
+        if (CGlueMgr::m_currentScreen[0] && SStrCmpI(CGlueMgr::m_currentScreen, "login", STORM_MAX_STR)) {
+            return;
+        }
+
+        const char* colon = strchr(spec, ':');
+
+        if (!colon || colon == spec) {
+            return;
+        }
+
+        char user[64];
+        char pass[64];
+        size_t userLen = static_cast<size_t>(colon - spec);
+
+        if (userLen >= sizeof(user)) {
+            return;
+        }
+
+        memcpy(user, spec, userLen);
+        user[userLen] = '\0';
+        const char* name = strchr(colon + 1, ':');
+
+        if (name) {
+            size_t passLen = static_cast<size_t>(name - (colon + 1));
+
+            if (!passLen || passLen >= sizeof(pass)) {
+                return;
+            }
+
+            memcpy(pass, colon + 1, passLen);
+            pass[passLen] = '\0';
+            SStrCopy(wantName, name + 1, sizeof(wantName));
+        } else {
+            SStrCopy(pass, colon + 1, sizeof(pass));
+            wantName[0] = '\0';
+        }
+
+        started = 1;
+        CGlueMgr::LoginServerLogin(user, pass);
+        return;
+    }
+
+    if (CGlueMgr::m_idleState != IDLE_NONE || !CCharacterSelection::s_characterList.Count()) {
+        return;
+    }
+
+    if (CGlueMgr::m_currentScreen[0] && SStrCmpI(CGlueMgr::m_currentScreen, "charselect", STORM_MAX_STR)) {
+        return;
+    }
+
+    int32_t index = 0;
+    uint32_t count = CCharacterSelection::s_characterList.Count();
+
+    if (wantName[0]) {
+        for (uint32_t i = 0; i < count; ++i) {
+            if (!SStrCmpI(CCharacterSelection::s_characterList[i].m_characterInfo.m_name, wantName, 48)) {
+                index = static_cast<int32_t>(i);
+                break;
+            }
+        }
+    }
+
+    CCharacterSelection::s_selectionIndex = index;
+    CGlueMgr::EnterWorld();
+}
+
 // VERIFY: 5e7db3b8 manual
 // OFFSET: 0x004DAB40
 int32_t CGlueMgr::Idle(const void* data, void* param) {
+    MaybeAutoLogin();
+
     if (g_theGxDevicePtr->StereoEnabled()) {
         CGlueMgr::SetUIDepth(g_theGxDevicePtr->StereoGetConvergence());
     }
