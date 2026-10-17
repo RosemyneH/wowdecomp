@@ -90,6 +90,8 @@ float g_indentPixelWidth;
 // STATIC: 0x00C7D2C0
 uint8_t g_fontStatsEnabled;
 
+int32_t g_fontMsdf;
+
 // STATIC: 0x00C7D2C4
 uint32_t g_heightPixels;
 
@@ -894,6 +896,28 @@ int32_t GxuFontCreateFont(const char* name, float fontHeight, CGxFont*& face, ui
     face = newFace;
 
     return result;
+}
+
+void GxuFontSetMsdfEnabled(int32_t enabled) {
+    g_fontMsdf = enabled != 0;
+
+    for (CGxFont* font = g_fonts.Head(); font; font = g_fonts.Next(font)) {
+        uint32_t flags = font->m_fontFlags;
+        uint32_t next = flags;
+
+        if (g_fontMsdf && !(flags & GxFontFlag_Monochrome)) {
+            next |= GxFontFlag_Msdf;
+        } else if (!(flags & GxFontFlag_MsdfExplicit)) {
+            next &= ~GxFontFlag_Msdf;
+        }
+
+        if (next == flags) {
+            continue;
+        }
+
+        font->m_fontFlags = next;
+        font->HandleScreenSizeChange();
+    }
 }
 
 // VERIFY: 96f05107 auto

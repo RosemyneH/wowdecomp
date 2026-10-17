@@ -4,10 +4,12 @@
 #include <cstdlib>
 #include "Engine/Source/Gxu/GxuFontFont.h"
 #include "Engine/Source/Base/ConvertUTF.h"
+#include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
 #include "Engine/Source/Gxu/GxuFontFace.h"
 #include "Engine/Source/Gxu/GxuFont.h"
 #include "Engine/Source/Gxu/GxuFontUtil.h"
 #include "Engine/Source/Gxu/IGxuFontGlyph.h"
+#include "Engine/Source/Gxu/Msdf.h"
 #include "Engine/Source/Services/Texture.h"
 #include "Engine/Source/Storm/H/storm.h"
 
@@ -35,6 +37,10 @@ const char* CGxFont::GetName() {
 // OFFSET: 0x006C2270
 uint32_t CGxFont::GetPixelSize() {
     return this->m_pixelSize;
+}
+
+bool CGxFont::UsesMsdf() const {
+    return (this->m_fontFlags & GxFontFlag_Msdf) && g_theGxDevicePtr && g_theGxDevicePtr->m_api == GxApi_Vulkan;
 }
 
 // VERIFY: 3c5dbf73 manual
@@ -87,7 +93,9 @@ int32_t CGxFont::UpdateDimensions() {
     float baseline = static_cast<float>(pixelSize * face->ascender) / units;
     this->m_baseline = static_cast<uint32_t>(baseline + 0.5);
 
-    if (this->m_fontFlags & 8) {
+    if (this->UsesMsdf()) {
+        this->m_cellHeight = pixelSize + static_cast<uint32_t>(kGxFontMsdfRange * 2.0f);
+    } else if (this->m_fontFlags & 8) {
         this->m_cellHeight = pixelSize + 4;
     } else if (this->m_fontFlags & 1) {
         this->m_cellHeight = pixelSize + 2;
@@ -105,6 +113,26 @@ int32_t CGxFont::UpdateDimensions() {
 bool CGxFont::GetGlyphData(GLYPHBITMAPDATA* data, uint32_t code) {
     FT_Face face = FontFaceGetFace(this->m_fontFaceHandle);
     FT_Set_Pixel_Sizes(face, this->m_pixelSize, 0);
+
+    if (this->UsesMsdf()) {
+        MsdfGlyph glyph;
+
+        if (!MsdfRasterizeGlyph(face, this->m_pixelSize, code, this->m_baseline, this->m_cellHeight, &glyph)) {
+            return false;
+        }
+
+        data->m_data = glyph.m_rgba;
+        data->m_dataSize = glyph.m_size;
+        data->m_glyphWidth = glyph.m_width;
+        data->m_glyphHeight = glyph.m_height;
+        data->m_glyphCellWidth = glyph.m_width;
+        data->m_glyphPitch = glyph.m_pitch;
+        data->m_glyphAdvance = glyph.m_advance;
+        data->m_glyphBearing = glyph.m_bearing;
+        data->m_yOffset = 0;
+        data->m_yStart = 0;
+        return true;
+    }
 
     uint32_t padding = 0;
 
@@ -224,6 +252,15 @@ int32_t CGxFont::Initialize(const char* name, uint32_t fontFlags, float fontHeig
 
     this->m_fontFaceHandle = nullptr;
     this->ClearGlyphs();
+
+    if (fontFlags & GxFontFlag_Msdf) {
+        fontFlags |= GxFontFlag_MsdfExplicit;
+    }
+
+    if (g_fontMsdf && !(fontFlags & GxFontFlag_Monochrome)) {
+        fontFlags |= GxFontFlag_Msdf;
+    }
+
     this->m_fontFlags = fontFlags;
 
     if (this->m_fontFaceHandle) {
@@ -302,27 +339,28 @@ float CGxFont::ComputeStepFixedWidth(uint32_t code, uint32_t nextCode) {
         return 0.0f;
     }
 
+    uint32_t em = this->UsesMsdf() ? this->m_pixelSize : this->m_cellHeight;
     uint32_t advance = static_cast<uint32_t>(this->GetGlyphAdvance(code));
 
-    if (advance >= this->m_cellHeight) {
-        return this->m_cellHeight;
+    if (advance >= em) {
+        return em;
     }
 
-    uint32_t padding = this->m_cellHeight - advance;
+    uint32_t padding = em - advance;
 
     if (padding & 1) {
         padding--;
     }
 
-    uint32_t step = this->m_cellHeight - padding / 2;
+    uint32_t step = em - padding / 2;
 
     uint32_t nextAdvance = static_cast<uint32_t>(this->GetGlyphAdvance(nextCode));
 
-    if (nextAdvance >= this->m_cellHeight) {
+    if (nextAdvance >= em) {
         return step;
     }
 
-    uint32_t nextPadding = this->m_cellHeight - nextAdvance;
+    uint32_t nextPadding = em - nextAdvance;
 
     if (nextPadding & 1) {
         nextPadding--;
@@ -355,7 +393,8 @@ CHARCODEDESC* CGxFont::NewCodeDesc(uint32_t code) {
 
         if (!current->m_texture || !TextureGetGxTex(current->m_texture, 1, nullptr)) {
             cache = current;
-            cache->CreateTexture(this->m_fontFlags & 4);
+            cache->m_theFace = this;
+            cache->CreateTexture((this->m_fontFlags & GxFontFlag_Filter) || this->UsesMsdf());
             cache->Initialize(this, this->m_cellHeight);
             desc = cache->AllocateNewGlyph(&data);
             break;

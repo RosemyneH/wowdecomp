@@ -82,6 +82,7 @@ static const XMLENUMVALUE s_fontFlags[] = {
     { 0x1, "OUTLINE" },
     { 0x4, "THICKOUTLINE" },
     { 0x2, "MONOCHROME" },
+    { 0x8, "MSDF" },
 };
 
 // STATIC: 0x00A44068

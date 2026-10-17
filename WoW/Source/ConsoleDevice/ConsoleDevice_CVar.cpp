@@ -9,6 +9,7 @@
 #include "Engine/Source/Gx/CGxDevice/Types.h"
 #include "Engine/Source/Gx/CGxFormat.h"
 #include "Engine/Source/Gx/Gx.h"
+#include "Engine/Source/Gxu/GxuFont.h"
 #include "Engine/Source/Os/Input.h"
 #include "Engine/Source/Storm/H/storm.h"
 #include "WoW/Source/Client.h"
@@ -584,6 +585,11 @@ static bool CVVideoOptionsVersionCallback(CVar* var, const char* oldValue, const
     return true;
 }
 
+static bool CVGxMsdfFontsCallback(CVar* var, const char* oldValue, const char* value, void* arg) {
+    GxuFontSetMsdfEnabled(SStrToInt(value) != 0);
+    return true;
+}
+
 // VERIFY: 62bcef94 auto
 // OFFSET: 0x00769C90
 void RegisterStereoCVars() {
@@ -634,4 +640,5 @@ void RegisterGxCVars() {
     s_cvVideoOptionsVersion = CVar::Register("videoOptionsVersion", "Video options version", 3, "0", CVVideoOptionsVersionCallback, CATEGORY_GRAPHICS, false, nullptr, false);
     s_cvWindowResizeLock = CVar::Register("windowResizeLock", "prevent resizing in windowed mode", 1, "0", CVGxWindowResizeLockCallback, CATEGORY_GRAPHICS, false, nullptr, false);
     s_cvFixedFunction = CVar::Register("fixedFunction", "Force fixed function rendering", 3, "0", nullptr, CATEGORY_GRAPHICS, false, nullptr, false);
+    CVar::Register("gxMsdfFonts", "sample UI fonts as multi-channel distance fields", 1, "0", CVGxMsdfFontsCallback, CATEGORY_GRAPHICS, false, nullptr, false);
 }

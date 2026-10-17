@@ -16,6 +16,7 @@ struct CGxFont;
 struct CGxStringBatch;
 
 extern FT_Library g_FTLibrary;
+extern int32_t g_fontMsdf;
 extern CGxShader* g_fontPixelShader;
 extern uint8_t g_fontStatsEnabled;
 extern CGxShader* g_fontVertexShader[2];
@@ -47,6 +48,7 @@ C3Vector GxuFontGetStringPosition(CGxString* string);
 void GxuFontGetTextExtent(CGxFont* face, const char* text, uint32_t numBytes, float fontHeight, float* extent, float shadowWidth, float scale, float unused, uint32_t flags);
 float GxuFontGetWrappedTextHeight(CGxFont* face, const char* text, float fontHeight, float blockWidth, const C2Vector& shadowOffset, float scale, float spacing, uint32_t flags);
 void GxuFontInitialize();
+void GxuFontSetMsdfEnabled(int32_t enabled);
 void GxuFontRemoveShadow(CGxString* string);
 void GxuFontRenderBatch(CGxStringBatch* batch);
 int32_t GxuFontSetStringColor(CGxString* string, const CImVector& color);

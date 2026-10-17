@@ -257,11 +257,13 @@ void CGxString::InitializeTextLine(const char* text, uint32_t numBytes, CImVecto
     float fontPixelHeight = ScreenToPixelHeight((this->m_flags >> 7) & 1, this->m_currentFontHeight);
     double pixelHeight = fontPixelHeight;
     float scale = pixelHeight / this->m_currentFace->GetPixelSize();
+    bool msdf = this->m_currentFace->UsesMsdf();
+    float msdfPad = msdf ? kGxFontMsdfRange * scale : 0.0f;
     float cellHeight = ScreenToPixelHeight((this->m_flags >> 7) & 1, this->m_currentFontHeight);
 
-    if (this->m_currentFace->m_fontFlags & 8) {
+    if (!msdf && (this->m_currentFace->m_fontFlags & 8)) {
         cellHeight = cellHeight + 4.0;
-    } else if (this->m_currentFace->m_fontFlags & 1) {
+    } else if (!msdf && (this->m_currentFace->m_fontFlags & 1)) {
         cellHeight = cellHeight + 2.0;
     }
 
@@ -391,9 +393,9 @@ void CGxString::InitializeTextLine(const char* text, uint32_t numBytes, CImVecto
                             x = 0.0;
                         }
 
-                        if (this->m_currentFace->m_fontFlags & 8) {
+                        if (!msdf && (this->m_currentFace->m_fontFlags & 8)) {
                             x = 4.0 * scale + x;
-                        } else if (this->m_currentFace->m_fontFlags & 1) {
+                        } else if (!msdf && (this->m_currentFace->m_fontFlags & 1)) {
                             x = scale + scale + x;
                         }
                     }
@@ -500,10 +502,12 @@ void CGxString::InitializeTextLine(const char* text, uint32_t numBytes, CImVecto
                         width = floor(width);
                     }
 
-                    if (this->m_currentFace->m_fontFlags & 8) {
+                    if (!msdf && (this->m_currentFace->m_fontFlags & 8)) {
                         vert.m_vc.y = vert.m_vc.y - 2.0;
-                    } else if (this->m_currentFace->m_fontFlags & 1) {
+                    } else if (!msdf && (this->m_currentFace->m_fontFlags & 1)) {
                         vert.m_vc.y = vert.m_vc.y - 1.0;
+                    } else if (msdf) {
+                        vert.m_vc.y = vert.m_vc.y - msdfPad;
                     }
 
                     vert.m_vc.y = desc->m_bitmapData.m_yOffset * scale + vert.m_vc.y;
@@ -517,14 +521,20 @@ void CGxString::InitializeTextLine(const char* text, uint32_t numBytes, CImVecto
                     verts[3].m_vc.x = width;
                     verts[2].m_vc.x = width;
 
-                    float top = (this->m_flags & 0x80 ? fontPixelHeight : cellHeight) + verts[3].m_vc.y;
+                    float quadHeight = this->m_flags & 0x80 ? fontPixelHeight : cellHeight;
+
+                    if (msdf) {
+                        quadHeight = quadHeight + msdfPad + msdfPad;
+                    }
+
+                    float top = quadHeight + verts[3].m_vc.y;
                     verts[3].m_vc.y = top;
                     verts[1].m_vc.y = top;
                     verts[0].m_vc.y = verts[2].m_vc.y;
 
                     CRect coords = desc->m_bitmapData.m_textureCoords;
 
-                    if (this->m_flags & 0x80) {
+                    if ((this->m_flags & 0x80) && !msdf) {
                         coords.minY = coords.minY + pixelAdjustments.minY;
                         coords.minX = coords.minX + pixelAdjustments.minX;
                         coords.maxY = coords.maxY + pixelAdjustments.maxY;

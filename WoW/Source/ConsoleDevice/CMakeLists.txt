@@ -9,3 +9,8 @@ target_include_directories(ConsoleDevice
     PUBLIC
         ${CMAKE_SOURCE_DIR}
 )
+
+target_link_libraries(ConsoleDevice
+    PUBLIC
+        Gxu
+)

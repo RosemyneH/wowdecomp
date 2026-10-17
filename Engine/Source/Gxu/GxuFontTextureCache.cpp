@@ -12,6 +12,18 @@
 
 // STATIC: 0x00C7D328
 static uint16_t s_textureData[256 * 256];
+static uint32_t s_msdfAtlas[256 * 256];
+
+void TEXTURECACHE::PasteGlyphMsdf(const GLYPHBITMAPDATA& data, uint32_t* dest) {
+    const uint8_t* source = static_cast<const uint8_t*>(data.m_data);
+    dest += static_cast<uint32_t>(data.m_yStart) * 256;
+
+    for (uint32_t y = 0; y < data.m_glyphHeight; y++) {
+        memcpy(dest, source, data.m_glyphWidth * sizeof(uint32_t));
+        source += data.m_glyphPitch;
+        dest += 256;
+    }
+}
 
 // VERIFY: 7a9fdc75 manual
 // OFFSET: 0x006C8E70
@@ -368,6 +380,11 @@ void TEXTURECACHE::TextureCallback(EGxTexCommand command, uint32_t width, uint32
     }
 
     TEXTURECACHE* cache = static_cast<TEXTURECACHE*>(userArg);
+    int32_t msdf = cache->m_theFace && cache->m_theFace->UsesMsdf();
+
+    if (msdf) {
+        memset(s_msdfAtlas, 0, sizeof(s_msdfAtlas));
+    }
 
     for (uint32_t row = cache->m_textureRows.m_count; row > 0; row--) {
         TEXTURECACHEROW& cacheRow = cache->m_textureRows.m_data[row - 1];
@@ -378,6 +395,13 @@ void TEXTURECACHE::TextureCallback(EGxTexCommand command, uint32_t width, uint32
             }
 
             CGxFont* font = cache->m_theFace;
+
+            if (msdf) {
+                uint32_t* dest = &s_msdfAtlas[glyph->m_glyphStartPixel + ((glyph->m_rowNumber * font->m_cellHeight) << 8)];
+                cache->PasteGlyphMsdf(glyph->m_bitmapData, dest);
+                continue;
+            }
+
             uint16_t* dest = &s_textureData[glyph->m_glyphStartPixel + ((glyph->m_rowNumber * font->m_cellHeight) << 8)];
 
             if (font->m_fontFlags & 1) {
@@ -394,6 +418,12 @@ void TEXTURECACHE::TextureCallback(EGxTexCommand command, uint32_t width, uint32
         }
     }
 
+    if (msdf) {
+        texelStrideInBytes = 1024;
+        texels = s_msdfAtlas;
+        return;
+    }
+
     texelStrideInBytes = 512;
     texels = s_textureData;
 }
@@ -401,8 +431,10 @@ void TEXTURECACHE::TextureCallback(EGxTexCommand command, uint32_t width, uint32
 // VERIFY: 0f656a97 auto
 // OFFSET: 0x006CA050
 void TEXTURECACHE::CreateTexture(int32_t filter) {
+    int32_t msdf = this->m_theFace && this->m_theFace->UsesMsdf();
+    EGxTexFormat format = msdf ? GxTex_Argb8888 : GxTex_Argb4444;
     CGxTexFlags flags(static_cast<EGxTexFilter>(filter != 0), 0, 0, 0, 0, 0, 1, 0, 0, 0);
-    this->m_texture = TextureCreate(256, 256, GxTex_Argb4444, GxTex_Argb4444, flags, this, TEXTURECACHE::TextureCallback, "GxuFont", 0);
+    this->m_texture = TextureCreate(256, 256, format, format, flags, this, TEXTURECACHE::TextureCallback, "GxuFont", 0);
 }
 
 // VERIFY: ba005b39 manual

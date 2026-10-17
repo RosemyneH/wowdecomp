@@ -115,6 +115,10 @@ uint32_t TextBlockGetFontFlags(HTEXTFONT font) {
         flags |= 0x2;
     }
 
+    if (fontFlags & 0x10) {
+        flags |= 0x8;
+    }
+
     return flags;
 }
 
@@ -368,6 +372,10 @@ HTEXTFONT TextBlockGenerateFont(const char* fontName, uint32_t fontFlags, float 
 
     if (fontFlags & 0x2) {
         gxFlags |= 0x2;
+    }
+
+    if (fontFlags & 0x8) {
+        gxFlags |= 0x10;
     }
 
     if (GxuFontCreateFont(fontName, height, hashObj->m_font, gxFlags)) {

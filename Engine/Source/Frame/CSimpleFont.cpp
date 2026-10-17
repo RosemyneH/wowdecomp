@@ -248,6 +248,12 @@ void CSimpleFont::LoadXML(XMLNode* node, CStatus* status) {
                 fontFlags |= 2;
             }
 
+            const char* msdf = node->GetAttributeByName("msdf");
+
+            if (msdf && *msdf && StringToBOOL(msdf)) {
+                fontFlags |= 0x8;
+            }
+
             if (this->m_attributes.SetFont(fontName, fontHeight, fontFlags)) {
                 this->m_fontableFlags &= ~0x1u;
             } else {

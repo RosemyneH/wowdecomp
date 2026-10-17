@@ -544,12 +544,15 @@ void CGxStringBatch::RenderBatch() {
         }
     }
 
+    bool fixedFunction = true;
+
     if (vertexShader && vertexShader->Valid() && g_fontPixelShader && g_fontPixelShader->Valid()) {
         C44Matrix viewProj;
         GxRsSet(GxRs_VertexShader, vertexShader);
         GxRsSet(GxRs_PixelShader, g_fontPixelShader);
         GxXformViewProjNativeTranspose(viewProj);
         GxShaderConstantsSet(GxSh_Vertex, 0, reinterpret_cast<const float*>(&viewProj), 4);
+        fixedFunction = false;
     } else {
         GxRsSet(GxRs_Lighting, 0);
         GxRsSet(GxRs_ColorOp0, 0);
@@ -560,6 +563,22 @@ void CGxStringBatch::RenderBatch() {
         if (!desc->m_strings.Head()) {
             desc = this->m_fontBatch.DeleteNode(desc);
             continue;
+        }
+
+        if (fixedFunction) {
+            int32_t colorOp = 0;
+
+            if (desc->m_face->UsesMsdf()) {
+                if (desc->m_face->m_fontFlags & GxFontFlag_ThickOutline) {
+                    colorOp = 8;
+                } else if (desc->m_face->m_fontFlags & GxFontFlag_Outline) {
+                    colorOp = 7;
+                } else {
+                    colorOp = 6;
+                }
+            }
+
+            GxRsSet(GxRs_ColorOp0, colorOp);
         }
 
         desc->RenderBatch();
