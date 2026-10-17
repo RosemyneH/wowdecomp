@@ -47,7 +47,7 @@ What **GitHub Actions** exercises on every push/PR, what **releases** ship, and 
 |-----------|---------------|-----------|--------------------|------------------|-------------------|
 | **Windows x64** | [`windows-x64`](.github/workflows/windows.yml) | **WowClient** (Ninja, Release) | `wowdecomp-windows-x64.zip` | Vulkan (default) + D3D9 + OpenGL | Main reference path; closest to “retail-like” on this fork. |
 | **Windows ARM64** | same workflow, job **`build-arm64`** | **WowClient** on `windows-11-arm` | `wowdecomp-windows-arm64.zip` when the ARM job succeeds | **Vulkan only** (no D3D9/NvAPI/OpenGL in the build) | CI job uses `continue-on-error: true` so x64 stays authoritative if ARM regresses; **currently building in CI**. |
-| **Linux x86_64** | [`linux-x64`](.github/workflows/linux.yml) | **WowClient** (Ninja, RelWithDebInfo) | `wowdecomp-linux-x86_64.tar.gz` | Vulkan only | Experimental; needs Vulkan loader/drivers. |
+| **Linux x86_64** | [`linux-x64`](.github/workflows/linux.yml) | **WowClient** (Ninja, RelWithDebInfo) | `wowdecomp-linux-x86_64.tar.gz` | Vulkan on a Wayland window | Experimental. The game window is a Wayland surface. |
 | **Linux aarch64** | — | *not in CI* | — | Vulkan only (expected) | Cross-build with `cmake/Toolchain-Clang-aarch64-linux.cmake`; treat as untested in automation. |
 | **macOS Apple Silicon** | [`macos-arm64`](.github/workflows/macos.yml) | **Os + Gx** static libs only | *not published* | MoltenVK via **Gx** | Full **WowClient** still fails to link (e.g. `malloc.h`, FMOD codec paths)—CI is a compile smoke test, not a runnable client. |
 | **macOS Intel** | — | *not in CI* | — | Same stack as arm64 locally | No automated build; use `-DCMAKE_OSX_ARCHITECTURES=x86_64` if you try it. |
@@ -91,7 +91,7 @@ The total leaves out 658 functions that IDA identifies as compiler library code 
 
 ### Linux
 
-- SDL2, X11, OpenAL (ALSA), libcurl, pthreads
+- SDL2 (Wayland video driver), OpenAL (ALSA), libcurl, pthreads
 - Vulkan loader and drivers (or Mesa); headers are vendored via `ThirdParty/Vulkan-Headers` and volk
 - Optional: system Wasmtime for WASM addons (see `cmake/Wasmtime.cmake`); otherwise addons may be compiled out
 
@@ -140,7 +140,7 @@ cmake --build build/win32 --config Release --target WowClient --parallel
 
 Matches CI (`linux-x64` workflow). This builds **only the game client**. It does not compile the wasm addon packages, the addon test host, or stage anything under `Interface/WasmAddOns`.
 
-Packages: `ninja-build`, `g++`, `libsdl2-dev`, `libx11-dev`, `libcurl4-openssl-dev`, `libasound2-dev`, `libvulkan-dev`, `libxvidcore-dev`.
+Packages: `ninja-build`, `g++`, `libsdl2-dev`, `libwayland-dev`, `libcurl4-openssl-dev`, `libasound2-dev`, `libvulkan-dev`, `libxvidcore-dev`.
 
 ```bash
 cmake -S . -B build/linux -G Ninja \

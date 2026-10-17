@@ -254,6 +254,7 @@ void* OsGuiCreateGxWindow(const char* title, int32_t width, int32_t height, int3
         return nullptr;
     }
 
+    SdlUseWayland();
     if (SDL_InitSubSystem(SDL_INIT_VIDEO)) {
         return nullptr;
     }

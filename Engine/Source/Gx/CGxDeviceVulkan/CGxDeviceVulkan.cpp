@@ -3380,7 +3380,7 @@ int32_t CGxDeviceVulkan::DeviceWM(EGxWM wm, uintptr_t param1, uintptr_t param2) 
 
             this->m_windowVisible = 1;
             {
-                // ʕ •ᴥ•ʔ✿ Expose is delivered every frame on X11. Rebuilding the swapchain for the same drawable is the 30fps cap ✿ ʕ •ᴥ•ʔ
+                // ʕ •ᴥ•ʔ✿ A size message can repeat for the same drawable. Rebuilding the swapchain for that is the frame cap ✿ ʕ •ᴥ•ʔ
                 const CRect& next = *reinterpret_cast<const CRect*>(param1);
                 uint32_t width = next.maxX > next.minX ? static_cast<uint32_t>(next.maxX - next.minX) : 0;
                 uint32_t height = next.maxY > next.minY ? static_cast<uint32_t>(next.maxY - next.minY) : 0;

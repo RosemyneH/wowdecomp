@@ -6,6 +6,7 @@
 #include "Engine/Source/Os/Linux/SdlDisplay.h"
 
 static int32_t InitVideo() {
+    SdlUseWayland();
     return SDL_WasInit(SDL_INIT_VIDEO) || SDL_InitSubSystem(SDL_INIT_VIDEO) == 0;
 }
 

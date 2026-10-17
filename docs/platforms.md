@@ -19,7 +19,7 @@ A separate workflow rebuilds the embedded Vulkan SPIR-V when the GLSL under `Eng
 
 ## What you need
 
-A 3.3.5a (12340) client for the `Data` folder, CMake 3.24 or newer, and a C++17 compiler. Visual Studio 2022 on Windows, including the ARM64 toolset if you are building for Windows on ARM. Clang or GCC on Linux and macOS. Linux wants SDL2, X11, OpenAL, libcurl, pthreads, a Vulkan loader, and the Xvid library. Headers for Vulkan itself are in the tree.
+A 3.3.5a (12340) client for the `Data` folder, CMake 3.24 or newer, and a C++17 compiler. Visual Studio 2022 on Windows, including the ARM64 toolset if you are building for Windows on ARM. Clang or GCC on Linux and macOS. Linux wants SDL2 with its Wayland driver, OpenAL, libcurl, pthreads, a Vulkan loader, and the Xvid library. Headers for Vulkan itself are in the tree. The game window is created on Wayland. Set `SDL_VIDEODRIVER` yourself only if you mean to override that.
 
 `WOWDECOMP_DISABLE_SIGNATURE_CHECKS=ON` skips MPQ and `.toc.sig` checks. You want that for a modified `Data` or a modified `Interface`.
 

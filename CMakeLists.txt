@@ -51,10 +51,6 @@ if (WOWDECOMP_UNIX)
     find_package(SDL2 REQUIRED)
 endif ()
 
-if (WOWDECOMP_LINUX)
-    find_package(X11 REQUIRED)
-endif ()
-
 if (WOWDECOMP_APPLE)
     find_library(COCOA_FRAMEWORK Cocoa REQUIRED)
     find_library(IOKIT_FRAMEWORK IOKit REQUIRED)

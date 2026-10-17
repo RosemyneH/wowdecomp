@@ -3,6 +3,18 @@
 #include <SDL.h>
 #include <cstdint>
 
+// ʕ •ᴥ•ʔ✿ SDL still tries X11 first when DISPLAY is set, which is XWayland on a Wayland desktop ✿ ʕ •ᴥ•ʔ
+inline void SdlUseWayland() {
+#if defined(WOWDECOMP_LINUX)
+    const char* chosen = SDL_getenv("SDL_VIDEODRIVER");
+    if (!chosen || !chosen[0]) {
+        SDL_setenv("SDL_VIDEODRIVER", "wayland", 0);
+    }
+#else
+    (void)0;
+#endif
+}
+
 // ʕ •ᴥ•ʔ✿ SDL display 0 is connector order, not the desktop origin ✿ ʕ •ᴥ•ʔ
 inline int32_t SdlPrimaryDisplay() {
     int32_t count = SDL_GetNumVideoDisplays();

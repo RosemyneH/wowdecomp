@@ -3,6 +3,7 @@
 #include "Engine/Source/Event/Types.h"
 #include "Engine/Source/Os/Gui.h"
 #include "Engine/Source/Os/Input.h"
+#include "Engine/Source/Os/Linux/SdlDisplay.h"
 #include "Engine/Source/Os/WaylandEmbed.h"
 #include "Engine/Source/Os/Joystick.h"
 #include "Engine/Source/Os/TimeManager.h"
@@ -378,6 +379,7 @@ int32_t OsInputIsMouseButtonDown(MOUSEBUTTON button) {
 }
 
 void OsInputInitialize() {
+    SdlUseWayland();
     SDL_SetHint(SDL_HINT_QUIT_ON_LAST_WINDOW_CLOSE, "0");
     SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
