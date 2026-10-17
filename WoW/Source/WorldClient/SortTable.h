@@ -12,8 +12,8 @@
 
 class CDetailDoodadInst;
 
-// ʕ •ᴥ•ʔ✿ One bucket is 33 yards. 1024 reaches the far side of a 64-tile continent ✿ ʕ •ᴥ•ʔ
-static constexpr uint32_t kSortBuckets = 1024;
+// ʕ •ᴥ•ʔ✿ One bucket is 33 yards. Past this ring the WDL draws the continent ✿ ʕ •ᴥ•ʔ
+static constexpr uint32_t kSortBuckets = 64;
 
 class CSortTable {
     public:

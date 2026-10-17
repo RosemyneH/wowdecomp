@@ -112,6 +112,8 @@ class CGxDeviceVulkan : public CGxDevice {
     uint32_t m_terrainCount = 0;
     int32_t m_bindless = 0;
     std::unordered_map<VkPipelineKey, VkPipeline, VkPipelineKeyHash> m_pipelines;
+    VkPipelineKey m_lastPipelineKey = {};
+    VkPipeline m_lastPipeline = VK_NULL_HANDLE;
     std::unordered_map<uint32_t, VkSampler> m_samplers;
     VkBufferAlloc m_dummyVertices = {};
     VkImageAlloc m_offscreenDepth = {};

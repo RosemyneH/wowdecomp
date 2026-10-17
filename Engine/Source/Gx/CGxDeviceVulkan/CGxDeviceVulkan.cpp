@@ -1715,9 +1715,15 @@ void CGxDeviceVulkan::IRsSendToHw(EGxRenderState which) {
 }
 
 VkPipeline CGxDeviceVulkan::IPipeline(const VkPipelineKey& key) {
+    if (this->m_lastPipeline && this->m_lastPipelineKey == key) {
+        return this->m_lastPipeline;
+    }
+
     auto it = this->m_pipelines.find(key);
 
     if (it != this->m_pipelines.end()) {
+        this->m_lastPipelineKey = key;
+        this->m_lastPipeline = it->second;
         return it->second;
     }
 
@@ -1814,6 +1820,8 @@ VkPipeline CGxDeviceVulkan::IPipeline(const VkPipelineKey& key) {
         return VK_NULL_HANDLE;
     }
     this->m_pipelines[key] = pipeline;
+    this->m_lastPipelineKey = key;
+    this->m_lastPipeline = pipeline;
 
     return pipeline;
 }
@@ -2467,6 +2475,14 @@ uint32_t CGxDeviceVulkan::TerrainTextureSlot(CGxTex* tex) {
         return ~0u;
     }
 
+    // ʕ •ᴥ•ʔ✿ The slot for this frame is already written. Skip the sampler and descriptor walk ✿ ʕ •ᴥ•ʔ
+    VkTexture* cached = static_cast<VkTexture*>(tex->m_apiSpecificData);
+    uint32_t frame = this->m_vk.m_frameIndex;
+
+    if (cached && !tex->m_needsUpdate && cached->terrainEpoch == this->m_terrainEpoch && cached->terrainSlot != ~0u && (cached->terrainFrames & (1u << frame))) {
+        return cached->terrainSlot;
+    }
+
     this->ITexMarkAsUpdated(tex);
     VkTexture* texture = this->ITexReady(tex);
 
@@ -2480,7 +2496,6 @@ uint32_t CGxDeviceVulkan::TerrainTextureSlot(CGxTex* tex) {
         return ~0u;
     }
 
-    uint32_t frame = this->m_vk.m_frameIndex;
     // -- ʕ •ᴥ•ʔ✿ Two frames are in flight, and each has its own set. A slot written on one is empty on the other. ✿ ʕ •ᴥ•ʔ
     int32_t sameSlot = texture->terrainEpoch == this->m_terrainEpoch && texture->terrainSlot != ~0u && texture->terrainView == texture->image.view && texture->terrainSampler == sampler;
 

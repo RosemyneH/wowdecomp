@@ -239,9 +239,9 @@ class CWorldScene {
     static C3Vector* GetCamTarget();
     static void ApplyFogState();
     static void RenderLiquidPass();
-    static void CullDoodads(CSortEntry* entry, uint16_t fadeLevel);
+    static void CullDoodads(CSortEntry* entry, uint16_t fadeLevel, int32_t reuse = 0);
     static void CullLiquid(CSortEntry* entry);
-    static void CullChunks(CSortEntry* entry, uint32_t index);
+    static void CullChunks(CSortEntry* entry, uint32_t index, int32_t reuse = 0);
     static void UpdateOcclusion(CSortEntry* entry, int32_t paint = 1);
     static void CullSortTable(CRect* rect);
     static void CullHorizon(CRect* rect);
@@ -255,7 +255,7 @@ class CWorldScene {
     static void AddToDistanceBucket(CChunkLiquid* liquid, const C3Vector& pos);
     static void AddDoodadDefModelToModelScene(CMapDoodadDef* doodadDef);
     static void AddDoodadDefs(TSList<CMapBaseObjLink, TSGetExplicitLink<CMapBaseObjLink> >* linkList, uint32_t index);
-    static void CullDoodadsExterior(TSList<CMapBaseObjLink, TSGetExplicitLink<CMapBaseObjLink> >* linkList, uint8_t fadeLevel);
+    static void CullDoodadsExterior(TSList<CMapBaseObjLink, TSGetExplicitLink<CMapBaseObjLink> >* linkList, uint8_t fadeLevel, int32_t reuse = 0);
     static void CullMapObjDefGroup();
     static void CullMapObjDefGroups(CSortEntry* entry, CRect* a2, uint32_t a3);
     static void CullEntitys(CSortEntry* entry);

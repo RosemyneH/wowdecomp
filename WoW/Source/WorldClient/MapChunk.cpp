@@ -1146,6 +1146,8 @@ CMapChunk::CMapChunk() {
     this->m_liquid = nullptr;
     this->m_soundEmitters = nullptr;
     this->m_bLoaded = 0;
+    this->m_cullStamp = -1;
+    this->m_cullVisible = 0;
 }
 
 // VERIFY: ecd160bb manual

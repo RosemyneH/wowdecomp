@@ -279,6 +279,7 @@ class CMap {
     static void NewFootprint(int32_t textureId, const float* size, const C3Vector* position, float facing, int32_t left, int32_t terrainType, int32_t activePlayer);
     static void FreeAreaLow(CMapAreaLow* areaLow);
     static void RenderLowDetail(CMapAreaLow* area);
+    static void DrawHorizonList();
     static void BuildLowDetailGridVertices(CMapAreaLow* area, CGxBuf* buf);
     static void BuildLowDetailGridIndices(uint16_t* holes, int32_t pass, CGxBuf* buf);
     static void FreeArea(CMapArea* area);

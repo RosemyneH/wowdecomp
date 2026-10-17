@@ -1,6 +1,8 @@
 #include "MapLowDetail.h"
+#include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <vector>
 #include "Engine/Source/BlizzardCore/SFile2-Core.h"
 #include "Engine/Source/Storm/H/storm.h"
 #include "Engine/Source/Tempest/CMath.h"
@@ -8,9 +10,11 @@
 #include "WoW/Source/WorldClient/FVBBList.h"
 #include "WoW/Source/WorldClient/Map.h"
 #include "WoW/Source/WorldClient/MapArea.h"
+#include "WoW/Source/WorldClient/SortTable.h"
 #include "WoW/Source/WorldClient/MapObj.h"
 #include "WoW/Source/WorldClient/MapObjDef.h"
 #include "WoW/Source/WorldClient/World.h"
+#include "WoW/Source/WorldClient/WorldParam_CVarSlider.h"
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
 #include "Engine/Source/Gx/Gx.h"
 #include "Engine/Source/Gx/CGxVertexPC.h"
@@ -97,11 +101,21 @@ void CMapLowDetail::CullHorizonAreas(const C3Vector* pos) {
         for (int32_t c = minCol; c <= maxCol; c++) {
             CMapAreaLow* area = this->m_areas[64 * r + c];
 
-            if (!area || CWorldScene::FrustumCull(&area->m_bbox) || CWorldOcclusion::QueryVolumes(&area->m_sphere)) {
+            if (!area) {
                 continue;
             }
 
-            if (World::s_farClip > 300.0f && CWorldOcclusion::QueryBuffer(&area->m_bbox, 40)) {
+            // ʕ •ᴥ•ʔ✿ Full view keeps the high-detail frustum short and only drops WDL tiles behind the camera ✿ ʕ •ᴥ•ʔ
+            if (CWorldParamSlider::ExtendedViewEnabled()) {
+                const C4Plane& plane = CWorldScene::camPlane;
+                float forward = area->m_sphere.c.x * plane.n.x + area->m_sphere.c.y * plane.n.y + area->m_sphere.c.z * plane.n.z + plane.d;
+
+                if (forward < -area->m_sphere.r) {
+                    continue;
+                }
+            } else if (CWorldScene::FrustumCull(&area->m_bbox) || CWorldOcclusion::QueryVolumes(&area->m_sphere)) {
+                continue;
+            } else if (World::s_farClip > 300.0f && CWorldOcclusion::QueryBuffer(&area->m_bbox, 40)) {
                 continue;
             }
 
@@ -249,6 +263,175 @@ void CMapLowDetail::Load(const char* mapPath, const char* mapName) {
         mapObjDef->m_refCount++;
         this->m_mapObjDefList.m_data[i] = mapObjDef;
     }
+}
+
+// ʕ •ᴥ•ʔ✿ Full view used to draw every WDL tile on its own. A still view keeps one mesh per hundred tiles ✿ ʕ •ᴥ•ʔ
+void CMap::DrawHorizonList() {
+    constexpr uint32_t kTiles = 100;
+    constexpr uint32_t kVerts = 545;
+    constexpr uint32_t kIndices = 3072;
+
+    struct Batch {
+        CGxPool* vpool;
+        CGxPool* ipool;
+        CGxBuf* verts;
+        CGxBuf* indices;
+        uint32_t indexCount;
+        uint32_t maxIndex;
+    };
+
+    static std::vector<CMapAreaLow*> key;
+    static std::vector<Batch> batches;
+
+    std::vector<CMapAreaLow*> solid;
+    CMapAreaLow* next = nullptr;
+
+    for (CMapAreaLow* area = CWorldScene::sortTable.m_horizonChunkList.Head(); area; area = next) {
+        next = CWorldScene::sortTable.m_horizonChunkList.Next(area);
+        area->m_horizonLink.Unlink();
+
+        if (static_cast<int32_t>(area->m_indexCount) > 0) {
+            solid.push_back(area);
+        }
+    }
+
+    int32_t same = solid.size() == key.size();
+
+    for (size_t i = 0; same && i < solid.size(); ++i) {
+        same = solid[i] == key[i];
+    }
+
+    if (!same) {
+        for (Batch& batch : batches) {
+            if (batch.verts) {
+                g_theGxDevicePtr->BufDestroy(batch.verts);
+            }
+
+            if (batch.indices) {
+                g_theGxDevicePtr->BufDestroy(batch.indices);
+            }
+
+            if (batch.vpool) {
+                g_theGxDevicePtr->PoolDestroy(batch.vpool);
+            }
+
+            if (batch.ipool) {
+                g_theGxDevicePtr->PoolDestroy(batch.ipool);
+            }
+        }
+
+        batches.clear();
+        key = solid;
+
+        for (size_t base = 0; base < solid.size(); base += kTiles) {
+            uint32_t count = static_cast<uint32_t>(std::min(solid.size() - base, static_cast<size_t>(kTiles)));
+            Batch batch = {};
+            uint32_t indexTotal = 0;
+
+            for (uint32_t tile = 0; tile < count; ++tile) {
+                indexTotal += solid[base + tile]->m_indexCount;
+            }
+
+            batch.vpool = g_theGxDevicePtr->PoolCreate(GxPoolTarget_Vertex, GxPoolUsage_Static, static_cast<int32_t>(count * kVerts * sizeof(CGxVertexPC)), static_cast<EGxPoolHintBits>(0), "HorizonVerts");
+            batch.ipool = g_theGxDevicePtr->PoolCreate(GxPoolTarget_Index, GxPoolUsage_Static, static_cast<int32_t>(indexTotal * sizeof(uint16_t)), static_cast<EGxPoolHintBits>(0), "HorizonIdx");
+            batch.verts = g_theGxDevicePtr->BufCreate(batch.vpool, sizeof(CGxVertexPC), count * kVerts, 0);
+            batch.indices = g_theGxDevicePtr->BufCreate(batch.ipool, sizeof(uint16_t), indexTotal, 0);
+
+            CGxVertexPC* vertex = reinterpret_cast<CGxVertexPC*>(g_theGxDevicePtr->BufLock(batch.verts));
+            uint16_t* indices = reinterpret_cast<uint16_t*>(g_theGxDevicePtr->BufLock(batch.indices));
+
+            for (uint32_t tile = 0; tile < count; ++tile) {
+                CMapAreaLow* area = solid[base + tile];
+                uint32_t height = 0;
+                float x = area->m_topLeft.x;
+
+                for (int32_t row = 0; row < 17; ++row) {
+                    float y = area->m_topLeft.y;
+
+                    for (int32_t col = 0; col < 17; ++col) {
+                        vertex->p.x = x;
+                        vertex->p.y = y;
+                        vertex->p.z = area->m_heights[height++];
+                        vertex->c = CImVector(0xFF, 0xFF, 0xFF, 0xFF);
+                        vertex++;
+                        y -= 33.333332f;
+                    }
+
+                    x -= 33.333332f;
+                }
+
+                x = area->m_topLeft.x - 16.666666f;
+
+                for (int32_t row = 0; row < 16; ++row) {
+                    float y = area->m_topLeft.y - 16.666666f;
+
+                    for (int32_t col = 0; col < 16; ++col) {
+                        vertex->p.x = x;
+                        vertex->p.y = y;
+                        vertex->p.z = area->m_heights[height++];
+                        vertex->c = CImVector(0xFF, 0xFF, 0xFF, 0xFF);
+                        vertex++;
+                        y -= 33.333332f;
+                    }
+
+                    x -= 33.333332f;
+                }
+
+                uint32_t origin = tile * kVerts;
+                uint32_t outer = origin;
+                uint32_t inner = origin + 289;
+                const uint16_t* holeRow = area->m_holes;
+
+                for (uint32_t row = 0; row < 16; ++row) {
+                    for (int32_t col = 0; col < 16; ++col) {
+                        if (!holeRow || (holeRow[row] & (1 << col)) == 0) {
+                            *indices++ = static_cast<uint16_t>(inner);
+                            *indices++ = static_cast<uint16_t>(outer + 1);
+                            *indices++ = static_cast<uint16_t>(outer);
+                            *indices++ = static_cast<uint16_t>(inner);
+                            *indices++ = static_cast<uint16_t>(outer + 18);
+                            *indices++ = static_cast<uint16_t>(outer + 1);
+                            *indices++ = static_cast<uint16_t>(inner);
+                            *indices++ = static_cast<uint16_t>(outer + 17);
+                            *indices++ = static_cast<uint16_t>(outer + 18);
+                            *indices++ = static_cast<uint16_t>(inner);
+                            *indices++ = static_cast<uint16_t>(outer);
+                            *indices++ = static_cast<uint16_t>(outer + 17);
+                        }
+
+                        outer++;
+                        inner++;
+                    }
+
+                    outer++;
+                }
+            }
+
+            g_theGxDevicePtr->BufUnlock(batch.verts, 0);
+            g_theGxDevicePtr->BufUnlock(batch.indices, 0);
+            batch.verts->m_hasData = 1;
+            batch.indices->m_hasData = 1;
+            batch.indexCount = indexTotal;
+            batch.maxIndex = count * kVerts - 1;
+            batches.push_back(batch);
+        }
+    }
+
+    GxRsSet(GxRs_Culling, 0);
+
+    for (const Batch& batch : batches) {
+        GxPrimVertexPtr(batch.verts, GxVBF_PC);
+        g_theGxDevicePtr->PrimIndexPtr(batch.indices);
+
+        CGxBatch draw;
+        draw.m_primType = GxPrim_Triangles;
+        draw.m_start = 0;
+        draw.m_count = batch.indexCount;
+        draw.m_minIndex = 0;
+        draw.m_maxIndex = batch.maxIndex;
+        g_theGxDevicePtr->Draw(&draw, 1);
+    }
+
 }
 
 // VERIFY: c20afbce manual

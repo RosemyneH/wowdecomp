@@ -31,6 +31,8 @@ class CMapDoodadDef : public CMapStaticEntity, public TSHashObject<CMapDoodadDef
     /* 0158 */ SE2SoundKitObject m_soundKitObject;
     /* 016C */ uint16_t m_doodadSet;
     /* 016E */ uint8_t unused_016E[2];
+    int32_t m_viewStamp;
+    uint8_t m_viewVisible;
 
     virtual void SelectLights(CM2Lighting* lighting);
     virtual void SelectUnderwater(CM2Lighting* lighting);

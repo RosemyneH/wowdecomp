@@ -145,6 +145,8 @@ CMapDoodadDef::CMapDoodadDef() {
     this->m_model = nullptr;
     this->m_collisionGuid = WOWGUID();
     this->m_doodadSet = 0;
+    this->m_viewStamp = -1;
+    this->m_viewVisible = 0;
 }
 
 // VERIFY: cf40d12f manual

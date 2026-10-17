@@ -479,8 +479,8 @@ bool CWorldParam::ExtendedViewCallback(CVar* var, const char* oldValue, const ch
     if (CWorldParam::cvar_farClip) {
         float farClip = CWorldParam::cvar_farClip->m_floatValue;
 
-        if (full) {
-            farClip = CWorldParamSlider::kFarclipMaxExtended;
+        if (farClip > CWorldParamSlider::kFarclipMaxRetail) {
+            farClip = CWorldParamSlider::kFarclipMaxRetail;
         }
 
         World::SetFarClip(farClip);

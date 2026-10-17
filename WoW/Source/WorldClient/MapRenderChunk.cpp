@@ -2888,7 +2888,8 @@ static int32_t FillChunkLayers(GxTerrainDraw& draw, const TerrainCapture& cap, c
 
     for (uint32_t i = 0; i < count; ++i) {
         CMapRenderChunkLayer* layer = &cap.chunk->m_layers[i];
-        CGxTex* color = TextureGetGxTex(layer->m_texture, 0, nullptr);
+        CTexture* texture = layer->m_texture;
+        CGxTex* color = texture && !(texture->m_flags & 4) && texture->m_gxTex ? texture->m_gxTex : TextureGetGxTex(texture, 0, nullptr);
 
         if (color) {
             GxTexSetWrap(color, GxTex_Wrap, GxTex_Wrap);
