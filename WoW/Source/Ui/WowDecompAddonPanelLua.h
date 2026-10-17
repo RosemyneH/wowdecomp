@@ -8,6 +8,23 @@ local glue = GlueParent and not UIParent
 local parent = UIParent or GlueParent
 if not parent or not GetNumAddOns then return end
 
+local function FontObject(kind)
+    if kind == "title" then
+        return (not glue and GameFontNormal) or GlueFontNormal or GameFontNormal or GlueFontNormalSmall
+    end
+    if kind == "dim" then
+        return (not glue and GameFontDisableSmall) or GlueFontDisableSmall or GlueFontNormalSmall
+    end
+    return (not glue and GameFontHighlightSmall) or GlueFontHighlightSmall or GlueFontNormalSmall or GameFontNormal
+end
+
+local function FontString(owner, kind)
+    local text = owner:CreateFontString(nil, "OVERLAY")
+    local font = FontObject(kind)
+    if font then text:SetFontObject(font) else text:SetFont("Fonts\\FRIZQT__.TTF", kind == "title" and 12 or 10) end
+    return text
+end
+
 local function button(parentFrame, text, width)
     local frame = CreateFrame("Button", nil, parentFrame)
     frame:SetWidth(width)
@@ -20,7 +37,7 @@ local function button(parentFrame, text, width)
     })
     frame:SetBackdropColor(0.14, 0.11, 0.08, 1)
     frame:SetBackdropBorderColor(0.72, 0.55, 0.22, 1)
-    local label = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local label = FontString(frame, "small")
     label:SetPoint("CENTER")
     label:SetText(text)
     frame.label = label
@@ -49,14 +66,14 @@ panel:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
 panel:Hide()
 if UISpecialFrames then tinsert(UISpecialFrames, "WowdecompAddonPanel") end
 
-local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+local title = FontString(panel, "title")
 title:SetPoint("TOPLEFT", 16, -12)
 title:SetText("AddOns")
-local who = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+local who = FontString(panel, "small")
 who:SetPoint("TOPLEFT", 16, -30)
 who:SetWidth(280)
 who:SetJustifyH("LEFT")
-local note = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+local note = FontString(panel, "dim")
 note:SetPoint("BOTTOMLEFT", 16, 12)
 note:SetWidth(300)
 note:SetJustifyH("LEFT")
@@ -67,7 +84,8 @@ search:SetWidth(160)
 search:SetHeight(20)
 search:SetPoint("TOPRIGHT", -16, -12)
 search:SetAutoFocus(false)
-search:SetFontObject(GameFontHighlightSmall)
+local searchFont = FontObject("small")
+if searchFont then search:SetFontObject(searchFont) else search:SetFont("Fonts\\FRIZQT__.TTF", 10) end
 search:SetBackdrop({
     bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
     edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -197,7 +215,7 @@ local function Refresh()
             })
             box:SetBackdropColor(0.08, 0.08, 0.08, 1)
             box:SetBackdropBorderColor(0.55, 0.42, 0.18, 1)
-            local mark = box:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            local mark = FontString(box, "small")
             mark:SetPoint("CENTER", 0, 1)
             box.mark = mark
             box:SetScript("OnClick", function(self)
@@ -206,11 +224,11 @@ local function Refresh()
                 SetOn(self:GetParent().index, on and true or false)
                 Refresh()
             end)
-            local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            local nameText = FontString(row, "small")
             nameText:SetPoint("LEFT", box, "RIGHT", 8, 0)
             nameText:SetWidth(230)
             nameText:SetJustifyH("LEFT")
-            local stateText = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+            local stateText = FontString(row, "dim")
             stateText:SetPoint("LEFT", nameText, "RIGHT", 6, 0)
             stateText:SetWidth(70)
             stateText:SetJustifyH("LEFT")
@@ -293,16 +311,33 @@ if glue then
     end)
 end
 
-local launcher = button(parent, "AddOns", 72)
-launcher:SetFrameStrata("HIGH")
-if CharSelectEnterWorldButton then
-    launcher:SetPoint("BOTTOMLEFT", CharSelectEnterWorldButton, "TOPLEFT", 0, 6)
-else
-    launcher:SetPoint("TOPLEFT", parent, "TOPLEFT", 18, -18)
-end
-launcher:SetScript("OnClick", function()
+local function ShowPanel()
     if panel:IsShown() then panel:Hide() else panel:Show() end
-end)
+end
+
+if GameMenuFrame and GameMenuButtonMacros and not GameMenuButtonWowdecompAddons then
+    local menuButton = CreateFrame("Button", "GameMenuButtonWowdecompAddons", GameMenuFrame, "GameMenuButtonTemplate")
+    menuButton:SetText("AddOns")
+    menuButton:SetScript("OnClick", function()
+        if HideUIPanel then HideUIPanel(GameMenuFrame) else GameMenuFrame:Hide() end
+        ShowPanel()
+    end)
+    local function PlaceMenuButton()
+        menuButton:ClearAllPoints()
+        menuButton:SetPoint("TOP", GameMenuButtonMacros, "BOTTOM", 0, -1)
+        if GameMenuButtonLogout then
+            GameMenuButtonLogout:ClearAllPoints()
+            GameMenuButtonLogout:SetPoint("TOP", menuButton, "BOTTOM", 0, -1)
+        end
+    end
+    PlaceMenuButton()
+    GameMenuFrame:SetHeight(GameMenuFrame:GetHeight() + menuButton:GetHeight() + 1)
+    if GameMenuFrame.HookScript then GameMenuFrame:HookScript("OnShow", PlaceMenuButton) end
+elseif CharSelectEnterWorldButton then
+    local glueButton = button(parent, "AddOns", 110)
+    glueButton:SetPoint("RIGHT", CharSelectEnterWorldButton, "LEFT", -8, 0)
+    glueButton:SetScript("OnClick", ShowPanel)
+end
 
 if SlashCmdList then
     SLASH_WOWADDONS1 = "/addons"
