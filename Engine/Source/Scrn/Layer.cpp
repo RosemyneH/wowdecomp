@@ -130,9 +130,10 @@ static int32_t CaptureScreen() {
         }
 
         char fileName[260];
+        int32_t wrote = 0;
 
         if (!SStrCmpI(s_screenshotFormat, "tga", STORM_MAX_STR)) {
-            SStrPrintf(fileName, sizeof(fileName), "%s\\WoWScrnShot_%s.tga", "Screenshots", timeStamp);
+            SStrPrintf(fileName, sizeof(fileName), "%s/WoWScrnShot_%s.tga", "Screenshots", timeStamp);
 
             CTgaFile tga;
             tga.SetImage(pixels, width, height, 32, 0, 1, 0);
@@ -140,8 +141,14 @@ static int32_t CaptureScreen() {
             tga.Compress();
             tga.Write(fileName);
             tga.Close();
-        } else {
-            SStrPrintf(fileName, sizeof(fileName), "%s\\WoWScrnShot_%s.jpg", "Screenshots", timeStamp);
+            wrote = 1;
+        } else if (!SStrCmpI(s_screenshotFormat, "jxl", STORM_MAX_STR)) {
+            SStrPrintf(fileName, sizeof(fileName), "%s/WoWScrnShot_%s.jxl", "Screenshots", timeStamp);
+            wrote = ImageWriterWriteJxl(fileName, pixels, width, height, 4, s_screenshotQuality);
+        }
+
+        if (!wrote) {
+            SStrPrintf(fileName, sizeof(fileName), "%s/WoWScrnShot_%s.jpg", "Screenshots", timeStamp);
             ImageWriterWriteJpeg(fileName, pixels, width, height, 4, s_screenshotQuality);
         }
 

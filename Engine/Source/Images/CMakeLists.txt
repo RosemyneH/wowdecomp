@@ -14,3 +14,13 @@ target_link_libraries(Images
     PRIVATE
         jpeg
 )
+
+find_package(PkgConfig QUIET)
+if (PKG_CONFIG_FOUND)
+    pkg_check_modules(LIBJXL IMPORTED_TARGET libjxl)
+endif ()
+
+if (TARGET PkgConfig::LIBJXL)
+    target_compile_definitions(Images PRIVATE WOW_HAS_JXL=1)
+    target_link_libraries(Images PRIVATE PkgConfig::LIBJXL)
+endif ()

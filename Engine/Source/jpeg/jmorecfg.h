@@ -155,10 +155,16 @@ typedef unsigned int UINT16;
 typedef short INT16;
 #endif
 
-/* INT32 must hold at least signed 32-bit values. */
+/* INT32 must hold at least signed 32-bit values. The color tables are sized as
+ * 8 * (MAXJSAMPLE+1) * sizeof(INT32). On LP64, long is 8 bytes, so that table
+ * is 16384 bytes and alloc_small rejects it against MAX_ALLOC_CHUNK. */
 
 #ifndef XMD_H			/* X11/xmd.h correctly defines INT32 */
+#if defined(__LP64__) || defined(_WIN64)
+typedef int INT32;
+#else
 typedef long INT32;
+#endif
 #endif
 
 /* Datatype used for image dimensions.  The JPEG standard only supports

@@ -15,7 +15,13 @@
 #undef NEED_SHORT_EXTERNAL_NAMES
 #undef INCOMPLETE_TYPES_BROKEN
 
+/* 16384 matched the 32-bit client. A screenshot row wider than that, and the
+ * LP64 RGB->YCC table, both come back as a null alloc and then a write at 0x2800. */
+#if defined(__LP64__) || defined(_WIN64)
+#define MAX_ALLOC_CHUNK 1000000000L
+#else
 #define MAX_ALLOC_CHUNK 16384L
+#endif
 
 
 #ifdef JPEG_INTERNALS

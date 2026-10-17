@@ -9,6 +9,11 @@
 #include "Engine/Source/jpeg/jmemnobs.h"
 #include "Engine/Source/jpeg/jmemsrc.h"
 
+#if defined(WOW_HAS_JXL)
+#include <vector>
+#include <jxl/encode.h>
+#endif
+
 // STATIC: 0x009EE118
 static const int32_t s_luminanceTables[11][64] = {
     {
@@ -1671,6 +1676,128 @@ int32_t ImageWriterWriteJpeg(const char* fileName, const void* pixels, uint32_t 
     params.m_comment = nullptr;
     params.unused_0020 = 0;
     return WriteJpegFile(&params) != 0;
+}
+
+#if defined(WOW_HAS_JXL)
+// ʕ •ᴥ•ʔ✿ BGRA in, packed RGB out. libjxl only takes channels in R,G,B order ✿ ʕ •ᴥ•ʔ
+static int32_t PackRgb(const void* pixels, uint32_t width, uint32_t height, uint32_t bytesPerPixel, std::vector<uint8_t>& rgb) {
+    uint64_t count = static_cast<uint64_t>(width) * height;
+
+    if (!pixels || !count || count > rgb.max_size() / 3 || (bytesPerPixel != 3 && bytesPerPixel != 4)) {
+        return 0;
+    }
+
+    rgb.resize(static_cast<size_t>(count * 3));
+    const uint8_t* src = static_cast<const uint8_t*>(pixels);
+
+    for (uint64_t i = 0; i < count; i++) {
+        const uint8_t* pixel = src + i * bytesPerPixel;
+        rgb[static_cast<size_t>(i * 3)] = pixel[2];
+        rgb[static_cast<size_t>(i * 3 + 1)] = pixel[1];
+        rgb[static_cast<size_t>(i * 3 + 2)] = pixel[0];
+    }
+
+    return 1;
+}
+#endif
+
+int32_t ImageWriterWriteJxl(const char* fileName, const void* pixels, uint32_t width, uint32_t height, uint32_t bytesPerPixel, uint32_t quality) {
+#if !defined(WOW_HAS_JXL)
+    (void)fileName;
+    (void)pixels;
+    (void)width;
+    (void)height;
+    (void)bytesPerPixel;
+    (void)quality;
+    return 0;
+#else
+    if (!fileName || width < 8 || height < 8 || quality > 100) {
+        return 0;
+    }
+
+    std::vector<uint8_t> rgb;
+
+    if (!PackRgb(pixels, width, height, bytesPerPixel, rgb)) {
+        return 0;
+    }
+
+    JxlEncoder* encoder = JxlEncoderCreate(nullptr);
+
+    if (!encoder) {
+        return 0;
+    }
+
+    JxlEncoderUseContainer(encoder, JXL_TRUE);
+
+    JxlBasicInfo info;
+    JxlEncoderInitBasicInfo(&info);
+    info.xsize = width;
+    info.ysize = height;
+    info.bits_per_sample = 8;
+    info.num_color_channels = 3;
+    info.uses_original_profile = JXL_FALSE;
+
+    JxlColorEncoding color;
+    JxlColorEncodingSetToSRGB(&color, JXL_FALSE);
+
+    JxlEncoderFrameSettings* frame = JxlEncoderFrameSettingsCreate(encoder, nullptr);
+    float distance = JxlEncoderDistanceFromQuality(static_cast<float>(quality));
+    int32_t ok = frame && JxlEncoderSetBasicInfo(encoder, &info) == JXL_ENC_SUCCESS && JxlEncoderSetColorEncoding(encoder, &color) == JXL_ENC_SUCCESS && JxlEncoderFrameSettingsSetOption(frame, JXL_ENC_FRAME_SETTING_EFFORT, 5) == JXL_ENC_SUCCESS;
+
+    if (ok && distance <= 0.0f) {
+        ok = JxlEncoderSetFrameLossless(frame, JXL_TRUE) == JXL_ENC_SUCCESS;
+    } else if (ok) {
+        ok = JxlEncoderSetFrameDistance(frame, distance) == JXL_ENC_SUCCESS;
+    }
+
+    JxlPixelFormat format = { 3, JXL_TYPE_UINT8, JXL_NATIVE_ENDIAN, 0 };
+
+    if (ok) {
+        ok = JxlEncoderAddImageFrame(frame, &format, rgb.data(), rgb.size()) == JXL_ENC_SUCCESS;
+    }
+
+    std::vector<uint8_t> encoded;
+
+    if (ok) {
+        JxlEncoderCloseInput(encoder);
+        encoded.resize(64 * 1024);
+        uint8_t* next = encoded.data();
+        size_t avail = encoded.size();
+        JxlEncoderStatus status = JXL_ENC_NEED_MORE_OUTPUT;
+
+        while (status == JXL_ENC_NEED_MORE_OUTPUT) {
+            status = JxlEncoderProcessOutput(encoder, &next, &avail);
+
+            if (status != JXL_ENC_NEED_MORE_OUTPUT) {
+                break;
+            }
+
+            size_t written = encoded.size() - avail;
+            encoded.resize(encoded.size() * 2);
+            next = encoded.data() + written;
+            avail = encoded.size() - written;
+        }
+
+        ok = status == JXL_ENC_SUCCESS;
+        encoded.resize(encoded.size() - avail);
+    }
+
+    JxlEncoderDestroy(encoder);
+
+    if (!ok || encoded.empty()) {
+        return 0;
+    }
+
+    FILE* file = fopen(fileName, "wb");
+
+    if (!file) {
+        return 0;
+    }
+
+    size_t wrote = fwrite(encoded.data(), 1, encoded.size(), file);
+    fclose(file);
+    return wrote == encoded.size();
+#endif
 }
 
 // VERIFY: dfdf6b42 auto

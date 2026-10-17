@@ -666,7 +666,7 @@ void ClientRegisterConsoleCommands() {
     g_readTerminationWithoutNoticeVar = CVar::Register("readTerminationWithoutNotice", "Status of the Termination without Notice notice", 0, "0", nullptr, CATEGORY_GAME, false, nullptr, false);
     g_readScanningVar = CVar::Register("readScanning", "Status of the Scanning notice", 0, "0", nullptr, CATEGORY_GAME, false, nullptr, false);
     g_readContestVar = CVar::Register("readContest", "Status of the Contest notice", 0, "0", nullptr, CATEGORY_GAME, false, nullptr, false);
-    s_cvScreenshotFormat = CVar::Register("screenshotFormat", "Set the format of screenshots", 1, "jpeg", ScreenshotFormatCallback, CATEGORY_GRAPHICS, false, nullptr, false);
+    s_cvScreenshotFormat = CVar::Register("screenshotFormat", "Set the format of screenshots (jpeg, tga, jxl)", 1, "jpeg", ScreenshotFormatCallback, CATEGORY_GRAPHICS, false, nullptr, false);
     s_cvScreenshotQuality = CVar::Register("screenshotQuality", "Set the quality of screenshots (1 - 10)", 1, "3", ScreenshotQualityCallback, CATEGORY_GRAPHICS, false, nullptr, false);
 
     CVar* showToolsUI = CVar::Register("showToolsUI", "Display the launcher when starting the game", 0, "-1", nullptr, CATEGORY_GAME, false, nullptr, false);
