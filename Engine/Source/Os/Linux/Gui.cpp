@@ -252,6 +252,9 @@ void* OsGuiCreateGxWindow(const char* title, int32_t width, int32_t height, int3
 
     SDL_Window* window = SDL_CreateWindow(title ? title : "", width, height, flags);
 #if !defined(__ANDROID__)
+    if (window) SDL_StartTextInput(window);
+#endif
+#if !defined(__ANDROID__)
     if (window) {
         SDL_DisplayID display = SdlPrimaryDisplay();
         SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED_DISPLAY(display), SDL_WINDOWPOS_CENTERED_DISPLAY(display));

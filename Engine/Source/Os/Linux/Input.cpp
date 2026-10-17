@@ -379,6 +379,20 @@ int32_t OsInputIsMouseButtonDown(MOUSEBUTTON button) {
     }
 }
 
+static void EnsureTextInput(SDL_Window* window) {
+#if defined(__ANDROID__)
+    (void)window;
+#else
+    if (!window || SDL_TextInputActive(window)) return;
+    SDL_StartTextInput(window);
+    int width = 0;
+    int height = 0;
+    SDL_GetWindowSize(window, &width, &height);
+    SDL_Rect area = { 0, 0, width, height };
+    SDL_SetTextInputArea(window, &area, 0);
+#endif
+}
+
 void OsInputInitialize() {
     SdlUseWayland();
 #if defined(__ANDROID__)
@@ -389,9 +403,7 @@ void OsInputInitialize() {
     SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
     SDL_InitSubSystem(SDL_INIT_EVENTS);
-    if (SDL_Window* window = GxWindow()) {
-        SDL_StartTextInput(window);
-    }
+    EnsureTextInput(GxWindow());
 }
 
 void OsInputDestroy() {
@@ -482,6 +494,7 @@ static void HandleWindowEvent(const SDL_WindowEvent& event) {
             s_appActive = event.type == SDL_EVENT_WINDOW_FOCUS_GAINED;
             s_osButtonState = 0;
             if (!s_appActive) SDL_CaptureMouse(false);
+            else EnsureTextInput(GxWindow());
             OsQueuePut(OS_INPUT_FOCUS, s_appActive, 0, 0, 0);
             break;
 
@@ -506,6 +519,7 @@ int32_t OsInputGet(OSINPUT* id, int32_t* param0, int32_t* param1, int32_t* param
 
     WaylandEmbedService();
     SDL_Window* window = GxWindow();
+    EnsureTextInput(window);
     ApplyOsCursor(window);
 
     // ʕ ◕ᴥ◕ ʔ✿ Compare every call: Wayland scale changes may not arrive as SIZE_CHANGED ✿ ʕ ◕ᴥ◕ ʔ
@@ -664,8 +678,9 @@ intptr_t OsWindowProc(void* window, uint32_t message, uintptr_t wparam, intptr_t
 
         case SDL_EVENT_KEY_DOWN:
         case SDL_EVENT_KEY_UP: {
-            int32_t sym = (int32_t)event.key.key;
-            switch (event.key.key) {
+            SDL_Keycode code = event.key.key ? event.key.key : SDL_GetKeyFromScancode(event.key.scancode, SDL_KMOD_NONE, true);
+            int32_t sym = (int32_t)code;
+            switch (code) {
                 case SDLK_RETURN: case SDLK_KP_ENTER: sym = 0xff0d; break;
                 case SDLK_ESCAPE: sym = 0xff1b; break;
                 case SDLK_BACKSPACE: sym = 0xff08; break;
@@ -683,8 +698,14 @@ intptr_t OsWindowProc(void* window, uint32_t message, uintptr_t wparam, intptr_t
             }
             if (WaylandEmbedTakeKey(sym, message == SDL_EVENT_KEY_DOWN)) break;
             KEY key;
-            if (ConvertKeyCode(event.key.key, &key)) {
-                OsQueuePut(message == SDL_EVENT_KEY_DOWN ? OS_INPUT_KEY_DOWN : OS_INPUT_KEY_UP, key, 1, 0, 0);
+            if (ConvertKeyCode(code, &key)) {
+                OsQueuePut(message == SDL_EVENT_KEY_DOWN ? OS_INPUT_KEY_DOWN : OS_INPUT_KEY_UP, key, event.key.repeat ? 1 : 0, 0, 0);
+            }
+            if (message == SDL_EVENT_KEY_DOWN && GxWindow() && !SDL_TextInputActive(GxWindow()) && !(event.key.mod & (SDL_KMOD_CTRL | SDL_KMOD_ALT | SDL_KMOD_GUI))) {
+                int32_t ch = 0;
+                if (code >= SDLK_A && code <= SDLK_Z) ch = (event.key.mod & SDL_KMOD_SHIFT) ? static_cast<int32_t>(code - SDLK_A + 'A') : static_cast<int32_t>(code);
+                else if (code > 32 && code < 127) ch = static_cast<int32_t>(code);
+                if (ch >= 0x20) OsQueuePut(OS_INPUT_CHAR, ch, event.key.repeat ? 1 : 0, 0, 0);
             }
             break;
         }
