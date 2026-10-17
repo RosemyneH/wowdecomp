@@ -1102,7 +1102,7 @@ static void MaybeAutoLogin() {
     static char wantName[64];
 
     if (!started) {
-        if (CGlueMgr::m_idleState != IDLE_NONE || !ClientServices::LoginConnection()) {
+        if (CGlueMgr::m_idleState != IDLE_NONE) {
             return;
         }
 
