@@ -311,6 +311,8 @@ static void RestoreMouse() {
     WarpMouse(s_mousePos.x, s_mousePos.y);
 }
 
+static int32_t s_typedChar;
+
 static void QueueText(const char* text) {
     const uint8_t* p = reinterpret_cast<const uint8_t*>(text);
 
@@ -672,9 +674,16 @@ intptr_t OsWindowProc(void* window, uint32_t message, uintptr_t wparam, intptr_t
             OsQueuePut(OS_INPUT_IME, 0, 0, 0, 0);
             break;
 
-        case SDL_EVENT_TEXT_INPUT:
-            QueueText(event.text.text);
+        case SDL_EVENT_TEXT_INPUT: {
+            const char* text = event.text.text;
+            if (text && s_typedChar && text[0] == static_cast<char>(s_typedChar) && text[1] == '\0') {
+                s_typedChar = 0;
+                break;
+            }
+            s_typedChar = 0;
+            if (text) QueueText(text);
             break;
+        }
 
         case SDL_EVENT_KEY_DOWN:
         case SDL_EVENT_KEY_UP: {
@@ -701,11 +710,14 @@ intptr_t OsWindowProc(void* window, uint32_t message, uintptr_t wparam, intptr_t
             if (ConvertKeyCode(code, &key)) {
                 OsQueuePut(message == SDL_EVENT_KEY_DOWN ? OS_INPUT_KEY_DOWN : OS_INPUT_KEY_UP, key, event.key.repeat ? 1 : 0, 0, 0);
             }
-            if (message == SDL_EVENT_KEY_DOWN && GxWindow() && !SDL_TextInputActive(GxWindow()) && !(event.key.mod & (SDL_KMOD_CTRL | SDL_KMOD_ALT | SDL_KMOD_GUI))) {
-                int32_t ch = 0;
-                if (code >= SDLK_A && code <= SDLK_Z) ch = (event.key.mod & SDL_KMOD_SHIFT) ? static_cast<int32_t>(code - SDLK_A + 'A') : static_cast<int32_t>(code);
-                else if (code > 32 && code < 127) ch = static_cast<int32_t>(code);
-                if (ch >= 0x20) OsQueuePut(OS_INPUT_CHAR, ch, event.key.repeat ? 1 : 0, 0, 0);
+            // ʕ •ᴥ•ʔ✿ Chat inserts from character events. SDL3 often marks text input active and then never sends the text ✿ ʕ •ᴥ•ʔ
+            if (message == SDL_EVENT_KEY_DOWN && !(event.key.mod & (SDL_KMOD_CTRL | SDL_KMOD_ALT | SDL_KMOD_GUI))) {
+                SDL_Keycode typed = SDL_GetKeyFromScancode(event.key.scancode, event.key.mod, false);
+                if (typed < 0x20 || typed >= 0x7F) typed = code;
+                if (typed >= 0x20 && typed < 0x7F) {
+                    s_typedChar = static_cast<int32_t>(typed);
+                    OsQueuePut(OS_INPUT_CHAR, s_typedChar, event.key.repeat ? 1 : 0, 0, 0);
+                }
             }
             break;
         }
