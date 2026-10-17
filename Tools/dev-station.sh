@@ -43,7 +43,7 @@ Usage: $0 [all|deps|addons|scope|build|test|launch|release|smoke]
   smoke    start the client, require it to stay up, then stop it
 
 Env: WOWDECOMP_GAME_SRC WOWDECOMP_PLAY_DIR WOWDECOMP_BUILD_DIR WOWDECOMP_RELEASE_BUILD_DIR WOWDECOMP_REALM_HOST
-     WOWDECOMP_PROFILE (on|off, default on — CPU zones in $PROFILE_SHM for wowdecomp-profile MCP)
+     WOWDECOMP_PROFILE (on|off, default on; release defaults off — CPU zones in $PROFILE_SHM)
 EOF
 }
 
@@ -260,6 +260,8 @@ launch_release() {
         exit 1
     fi
     WOWDECOMP_SERVER_BACKEND=docker "$ROOT/Tools/local-server/start.sh"
+    # ʕ •ᴥ•ʔ✿ Release play is the fps path. Leave the zone sampler off unless asked ✿ ʕ •ᴥ•ʔ
+    : "${WOWDECOMP_PROFILE:=off}"
     apply_profiler_env
     profiler_launch_note
     # ʕ •ᴥ•ʔ✿ /proc/self/exe is the Data root. A symlink resolves back to bin/Linux ✿ ʕ •ᴥ•ʔ
