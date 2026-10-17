@@ -135,9 +135,8 @@ start_client() {
         echo "missing $BIN" >&2
         exit 1
     fi
-    if [[ ! -e "$PLAY/WowClient64.release" || "$(stat -c %i "$BIN")" != "$(stat -c %i "$PLAY/WowClient64.release")" ]]; then
-        ln -f "$BIN" "$PLAY/WowClient64.release"
-    fi
+    # -- ʕ •ᴥ•ʔ✿ A hardlink is the build output. The linker truncates it and the live client jumps to null. ✿ ʕ •ᴥ•ʔ
+    cp -f "$BIN" "$PLAY/WowClient64.release"
     ensure_awesome_cvars
     sway_rule
     (

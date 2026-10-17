@@ -1157,6 +1157,7 @@ static void MaybeAutoLogin() {
     }
 
     static int32_t realmSent = 0;
+    static int32_t entered = 0;
 
     if (!realmSent && CGlueMgr::m_idleState == IDLE_NONE && !CCharacterSelection::s_characterList.Count()) {
         LoginResponse* response = ClientServices::CreateLoginResponse();
@@ -1178,9 +1179,11 @@ static void MaybeAutoLogin() {
         }
     }
 
-    if (CGlueMgr::m_idleState != IDLE_NONE || !CCharacterSelection::s_characterList.Count()) {
+    if (entered || CGlueMgr::m_idleState != IDLE_NONE || !CCharacterSelection::s_characterList.Count()) {
         return;
     }
+
+    entered = 1;
 
     int32_t index = 0;
     uint32_t count = CCharacterSelection::s_characterList.Count();
