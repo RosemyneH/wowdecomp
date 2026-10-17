@@ -18,9 +18,12 @@ if (MSVC)
     endif ()
 endif ()
 
-# ʕ •ᴥ•ʔ✿ Vendored C/C++ uses 'register', an error under Clang C++17 (MSVC/GCC only warn) ✿ ʕ •ᴥ•ʔ
+# ʕ •ᴥ•ʔ✿ Storm offsetof, FourCC literals, and vendored register are intentional. Clang C++17 rejects register ✿ ʕ •ᴥ•ʔ
+if (NOT MSVC)
+    add_compile_options(-Wno-invalid-offsetof -Wno-register -Wno-multichar)
+endif ()
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    add_compile_options(-Wno-register -Wno-c++11-narrowing)
+    add_compile_options(-Wno-c++11-narrowing)
 endif ()
 
 set(CMAKE_CXX_STANDARD 17)
