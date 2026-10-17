@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <unordered_map>
+#include <vector>
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
 #include "Engine/Source/Gx/CGxDeviceVulkan/VkContext.h"
 
@@ -117,6 +118,19 @@ class CGxDeviceVulkan : public CGxDevice {
     VkExtent2D m_offscreenDepthExtent = {};
     uint32_t m_offscreenDepthGeneration = 0;
     CGxTex* m_defaultTexture = nullptr;
+    VkRenderPass m_postPass = VK_NULL_HANDLE;
+    VkPipeline m_postPipeline = VK_NULL_HANDLE;
+    VkPipelineLayout m_postLayout = VK_NULL_HANDLE;
+    VkDescriptorSetLayout m_postSetLayout = VK_NULL_HANDLE;
+    VkShaderModule m_postVertex = VK_NULL_HANDLE;
+    VkShaderModule m_postFragment = VK_NULL_HANDLE;
+    VkSampler m_postSampler = VK_NULL_HANDLE;
+    VkImageAlloc m_postColor = {};
+    VkImageLayout m_postColorLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    VkExtent2D m_postExtent = {};
+    VkFormat m_postFormat = VK_FORMAT_UNDEFINED;
+    VkSwapchainKHR m_postSwapchain = VK_NULL_HANDLE;
+    std::vector<VkFramebuffer> m_postFramebuffers;
     int32_t m_swapchainDirty = 0;
     VkExtent2D m_clientExtent = {};
     int32_t m_imageStarved = 0;
@@ -251,6 +265,10 @@ class CGxDeviceVulkan : public CGxDevice {
     void ISceneBegin();
     void IReloadExperimentalShaders();
     void ISceneEnd();
+    void IApplyPost();
+    int32_t IEnsurePost();
+    void IReleasePostTargets();
+    void IDestroyPost();
     void ISceneAbort();
     void IInvalidateCmdState();
     void IBeginPass();

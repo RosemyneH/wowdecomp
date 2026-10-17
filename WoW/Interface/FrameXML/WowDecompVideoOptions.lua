@@ -138,59 +138,143 @@ end
 
 WowDecompAdvancedOptions = {
     extendedView = { text = "Full view", tooltip = "Unlocks the far view used for map-wide playtests and disables the view distance slider." },
+    vkFxaa = { text = "Anti-aliasing", tooltip = "Smooths jagged edges with a fullscreen shader after the frame is drawn." },
+    vkSharpen = { text = "Sharpen", minValue = 0, maxValue = 4, valueStep = 1, tooltip = "Crisps the image. Zero is off. Useful after anti-aliasing." },
     vkWireframe = { text = "Wireframe", tooltip = "Draws depth-tested world geometry as lines through the Vulkan shaders." },
     vkUnlit = { text = "Unlit", tooltip = "Turns off fixed-function lighting in the Vulkan vertex shader." },
 };
 
-local function WowDecomp_InstallOnAdvanced()
-    local panel = VideoOptionsAdvancedEffectsPanel;
+local function WowDecomp_Font(large)
+    if large then
+        if GameFontNormalLarge then
+            return "GameFontNormalLarge";
+        end
+        if GlueFontNormalLarge then
+            return "GlueFontNormalLarge";
+        end
+    end
+    if GameFontHighlightSmall then
+        return "GameFontHighlightSmall";
+    end
+    if GlueFontHighlightSmall then
+        return "GlueFontHighlightSmall";
+    end
+    return nil;
+end
 
-    if not panel or panel.wowDecompInstalled then
+local function WowDecomp_InstallAdvanced()
+    if VideoOptionsAdvancedPanel or not VideoOptionsFramePanelContainer or not VideoOptionsPanel_OnLoad then
         return;
     end
 
-    panel.wowDecompInstalled = true;
-    panel.options = panel.options or {};
+    local panel = CreateFrame("Frame", "VideoOptionsAdvancedPanel", VideoOptionsFramePanelContainer);
+    panel:Hide();
+    panel.name = "Advanced";
+    panel.options = WowDecompAdvancedOptions;
+    VideoOptionsPanel_OnLoad(panel);
 
-    for key, entry in pairs(WowDecompAdvancedOptions) do
-        panel.options[key] = entry;
+    local titleFont = WowDecomp_Font(true);
+    local smallFont = WowDecomp_Font(false);
+    local title = titleFont and panel:CreateFontString(nil, "ARTWORK", titleFont);
+
+    if title then
+        title:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -16);
+        title:SetJustifyH("LEFT");
+        title:SetText("Advanced");
     end
 
-    local anchor = VideoOptionsAdvancedEffectsPanelAerialFog
-        or VideoOptionsAdvancedEffectsPanelPostAA
-        or VideoOptionsAdvancedEffectsPanelAmbientOcclusion
-        or VideoOptionsAdvancedEffectsPanelSunshafts
-        or panel;
+    if smallFont and title then
+        local subText = panel:CreateFontString(nil, "ARTWORK", smallFont);
+        subText:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8);
+        subText:SetPoint("RIGHT", panel, "RIGHT", -32, 0);
+        subText:SetJustifyH("LEFT");
+        subText:SetJustifyV("TOP");
+        subText:SetHeight(32);
+        subText:SetText("Playtest settings. Full view, image effects, and Vulkan shader experiments.");
+    end
 
-    local fullView = WowDecomp_RegisterCheckbox(
+    local view = CreateFrame("Frame", "VideoOptionsAdvancedPanelView", panel, "OptionsBoxTemplate");
+    view:SetWidth(380);
+    view:SetHeight(44);
+    view:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -72);
+    _G[view:GetName() .. "Title"]:SetText("View");
+
+    WowDecomp_RegisterCheckbox(
         panel,
-        panel,
+        view,
         "VideoOptionsAdvancedPanelFullView",
         "Full view",
         "extendedView",
         WowDecompAdvancedOptions.extendedView.tooltip,
-        anchor,
-        anchor == panel and 16 or 0,
-        anchor == panel and -80 or -28,
+        view,
+        12,
+        -10,
         WowDecomp_OnPlaytestCVarChanged
     );
 
+    local image = CreateFrame("Frame", "VideoOptionsAdvancedPanelImage", panel, "OptionsBoxTemplate");
+    image:SetWidth(380);
+    image:SetHeight(96);
+    image:SetPoint("TOPLEFT", view, "BOTTOMLEFT", 0, -28);
+    _G[image:GetName() .. "Title"]:SetText("Image");
+
+    local antiAlias = WowDecomp_RegisterCheckbox(
+        panel,
+        image,
+        "VideoOptionsAdvancedPanelAntiAlias",
+        "Anti-aliasing",
+        "vkFxaa",
+        WowDecompAdvancedOptions.vkFxaa.tooltip,
+        image,
+        12,
+        -8,
+        nil
+    );
+    antiAlias:SetHitRectInsets(0, -140, 0, 0);
+
+    local sharpen = CreateFrame("Slider", "VideoOptionsAdvancedPanelSharpen", image, "OptionsSliderTemplate");
+    sharpen:SetWidth(200);
+    sharpen:SetPoint("TOPLEFT", image, "TOPLEFT", 16, -52);
+    sharpen.type = CONTROLTYPE_SLIDER;
+    sharpen.cvar = "vkSharpen";
+    sharpen.tooltipText = WowDecompAdvancedOptions.vkSharpen.tooltip;
+    _G[sharpen:GetName() .. "Low"]:SetText("Off");
+    _G[sharpen:GetName() .. "High"]:SetText("High");
+    sharpen:SetScript("OnValueChanged", function(self, value)
+        if not self.wowDecompReady then
+            return;
+        end
+        BlizzardOptionsPanel_Slider_OnValueChanged(self, math.floor(value + 0.5));
+        if VideoOptionsFrameApply then
+            VideoOptionsFrameApply:Enable();
+        end
+    end);
+    BlizzardOptionsPanel_RegisterControl(sharpen, panel);
+    WowDecomp_SetupRegisteredControl(sharpen, panel, WowDecompAdvancedOptions.vkSharpen);
+    sharpen.wowDecompReady = true;
+
+    local shaders = CreateFrame("Frame", "VideoOptionsAdvancedPanelShaders", panel, "OptionsBoxTemplate");
+    shaders:SetWidth(380);
+    shaders:SetHeight(150);
+    shaders:SetPoint("TOPLEFT", image, "BOTTOMLEFT", 0, -28);
+    _G[shaders:GetName() .. "Title"]:SetText("Shaders");
+
     local wireframe = WowDecomp_RegisterCheckbox(
         panel,
-        panel,
+        shaders,
         "VideoOptionsAdvancedPanelWireframe",
         "Wireframe",
         "vkWireframe",
         WowDecompAdvancedOptions.vkWireframe.tooltip,
-        fullView,
-        0,
-        -28,
+        shaders,
+        12,
+        -10,
         nil
     );
 
     local unlit = WowDecomp_RegisterCheckbox(
         panel,
-        panel,
+        shaders,
         "VideoOptionsAdvancedPanelUnlit",
         "Unlit",
         "vkUnlit",
@@ -201,7 +285,7 @@ local function WowDecomp_InstallOnAdvanced()
         nil
     );
 
-    local reload = CreateFrame("Button", "VideoOptionsAdvancedPanelReloadShaders", panel, "UIPanelButtonTemplate");
+    local reload = CreateFrame("Button", "VideoOptionsAdvancedPanelReloadShaders", shaders, "UIPanelButtonTemplate");
     reload:SetWidth(148);
     reload:SetHeight(22);
     reload:SetPoint("TOPLEFT", unlit, "BOTTOMLEFT", 0, -8);
@@ -214,15 +298,16 @@ local function WowDecomp_InstallOnAdvanced()
         WowDecomp_RefreshShaderStatus();
     end);
 
-    local font = GameFontHighlightSmall and "GameFontHighlightSmall" or (OptionsFontHighlightSmall and "OptionsFontHighlightSmall" or nil);
-    local status = panel:CreateFontString("VideoOptionsAdvancedPanelShaderStatus", "ARTWORK", font);
-    status:SetPoint("TOPLEFT", reload, "BOTTOMLEFT", 0, -8);
-    status:SetWidth(348);
-    status:SetJustifyH("LEFT");
-    status:SetJustifyV("TOP");
-    status:SetText(GetVulkanShaderStatus and GetVulkanShaderStatus() or "");
+    if smallFont then
+        local status = shaders:CreateFontString("VideoOptionsAdvancedPanelShaderStatus", "ARTWORK", smallFont);
+        status:SetPoint("TOPLEFT", reload, "BOTTOMLEFT", 0, -6);
+        status:SetWidth(348);
+        status:SetJustifyH("LEFT");
+        status:SetJustifyV("TOP");
+        status:SetText(GetVulkanShaderStatus and GetVulkanShaderStatus() or "");
+    end
 
-    panel:HookScript("OnUpdate", function(self, elapsed)
+    panel:SetScript("OnUpdate", function(self, elapsed)
         self.wowDecompStatusTimer = (self.wowDecompStatusTimer or 0) + elapsed;
         if self.wowDecompStatusTimer < 0.25 then
             return;
@@ -234,9 +319,9 @@ end
 
 if VideoOptionsFrame then
     VideoOptionsFrame:HookScript("OnShow", function()
-        WowDecomp_InstallOnAdvanced();
+        WowDecomp_InstallAdvanced();
         WowDecomp_OnPlaytestCVarChanged();
     end);
 end
 
-WowDecomp_InstallOnAdvanced();
+WowDecomp_InstallAdvanced();

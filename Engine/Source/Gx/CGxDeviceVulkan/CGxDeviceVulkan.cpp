@@ -26,6 +26,14 @@ static const uint32_t s_ffpTerrainCode[] =
 #include "FfpTerrain.frag.inc"
 ;
 
+static const uint32_t s_fxaaVertexCode[] =
+#include "Fxaa.vert.inc"
+;
+
+static const uint32_t s_fxaaFragmentCode[] =
+#include "Fxaa.frag.inc"
+;
+
 static_assert(sizeof(GpuDrawItem) == 448, "GpuDrawItem must match Ffp.vert");
 static_assert(offsetof(GpuDrawItem, tex0) == 64, "GpuDrawItem.tex0");
 static_assert(offsetof(GpuDrawItem, tex1) == 128, "GpuDrawItem.tex1");
@@ -406,6 +414,7 @@ void CGxDeviceVulkan::IDestroyVulkan() {
     if (device) {
         this->ISceneAbort();
         vkDeviceWaitIdle(device);
+        this->IDestroyPost();
 
         for (uint32_t i = 0; i < 2; i++) {
             if (CGxDevice::s_uiVertexShader[i]) {
@@ -488,6 +497,12 @@ void CGxDeviceVulkan::IDestroyVulkan() {
 }
 
 int32_t CGxDeviceVulkan::IRecreateSwapchain() {
+    if (this->m_vk.m_device) {
+        vkDeviceWaitIdle(this->m_vk.m_device);
+    }
+
+    this->IReleasePostTargets();
+
     uint32_t width;
     uint32_t height;
     this->IClientSize(width, height);
@@ -838,13 +853,393 @@ void CGxDeviceVulkan::ISceneBegin() {
     this->ShaderConstantsClear();
 }
 
+void CGxDeviceVulkan::IReleasePostTargets() {
+    VkDevice device = this->m_vk.m_device;
+
+    if (!device) {
+        this->m_postFramebuffers.clear();
+        this->m_postColor = {};
+        this->m_postColorLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        this->m_postExtent = {};
+        this->m_postSwapchain = VK_NULL_HANDLE;
+        return;
+    }
+
+    for (VkFramebuffer framebuffer : this->m_postFramebuffers) {
+        vkDestroyFramebuffer(device, framebuffer, nullptr);
+    }
+
+    this->m_postFramebuffers.clear();
+
+    if (this->m_postColor.image) {
+        vkDestroyImageView(device, this->m_postColor.view, nullptr);
+        vkDestroyImage(device, this->m_postColor.image, nullptr);
+        this->m_vk.m_heap.Free(this->m_postColor.alloc);
+        this->m_postColor = {};
+    }
+
+    this->m_postColorLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    this->m_postExtent = {};
+    this->m_postSwapchain = VK_NULL_HANDLE;
+}
+
+void CGxDeviceVulkan::IDestroyPost() {
+    VkDevice device = this->m_vk.m_device;
+    this->IReleasePostTargets();
+
+    if (!device) {
+        return;
+    }
+
+    if (this->m_postPipeline) {
+        vkDestroyPipeline(device, this->m_postPipeline, nullptr);
+    }
+
+    if (this->m_postLayout) {
+        vkDestroyPipelineLayout(device, this->m_postLayout, nullptr);
+    }
+
+    if (this->m_postSetLayout) {
+        vkDestroyDescriptorSetLayout(device, this->m_postSetLayout, nullptr);
+    }
+
+    if (this->m_postVertex) {
+        vkDestroyShaderModule(device, this->m_postVertex, nullptr);
+    }
+
+    if (this->m_postFragment) {
+        vkDestroyShaderModule(device, this->m_postFragment, nullptr);
+    }
+
+    if (this->m_postSampler) {
+        vkDestroySampler(device, this->m_postSampler, nullptr);
+    }
+
+    if (this->m_postPass) {
+        vkDestroyRenderPass(device, this->m_postPass, nullptr);
+    }
+
+    this->m_postPipeline = VK_NULL_HANDLE;
+    this->m_postLayout = VK_NULL_HANDLE;
+    this->m_postSetLayout = VK_NULL_HANDLE;
+    this->m_postVertex = VK_NULL_HANDLE;
+    this->m_postFragment = VK_NULL_HANDLE;
+    this->m_postSampler = VK_NULL_HANDLE;
+    this->m_postPass = VK_NULL_HANDLE;
+    this->m_postFormat = VK_FORMAT_UNDEFINED;
+}
+
+int32_t CGxDeviceVulkan::IEnsurePost() {
+    VkDevice device = this->m_vk.m_device;
+    VkExtent2D extent = this->m_vk.m_extent;
+
+    if (!device || !extent.width || !extent.height || this->m_vk.m_colorFormat == VK_FORMAT_UNDEFINED) {
+        return 0;
+    }
+
+    VkSurfaceCapabilitiesKHR caps = {};
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(this->m_vk.m_physicalDevice, this->m_vk.m_surface, &caps);
+
+    if (!(caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)) {
+        return 0;
+    }
+
+    if (this->m_postFormat != this->m_vk.m_colorFormat) {
+        this->IDestroyPost();
+    }
+
+    if (this->m_postSwapchain != this->m_vk.m_swapchain || this->m_postExtent.width != extent.width || this->m_postExtent.height != extent.height) {
+        this->IReleasePostTargets();
+    }
+
+    if (!this->m_postPass) {
+        VkAttachmentDescription color = {};
+        color.format = this->m_vk.m_colorFormat;
+        color.samples = VK_SAMPLE_COUNT_1_BIT;
+        color.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        color.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        color.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        color.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        color.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+        VkAttachmentReference colorRef = { 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
+        VkSubpassDescription subpass = {};
+        subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        subpass.colorAttachmentCount = 1;
+        subpass.pColorAttachments = &colorRef;
+
+        VkSubpassDependency dependencies[2] = {};
+        dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+        dependencies[0].dstSubpass = 0;
+        dependencies[0].srcStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependencies[0].srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        dependencies[1].srcSubpass = 0;
+        dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+        dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependencies[1].dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+        dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+        VkRenderPassCreateInfo passInfo = { VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO };
+        passInfo.attachmentCount = 1;
+        passInfo.pAttachments = &color;
+        passInfo.subpassCount = 1;
+        passInfo.pSubpasses = &subpass;
+        passInfo.dependencyCount = 2;
+        passInfo.pDependencies = dependencies;
+
+        if (vkCreateRenderPass(device, &passInfo, nullptr, &this->m_postPass) != VK_SUCCESS) {
+            this->m_postPass = VK_NULL_HANDLE;
+            return 0;
+        }
+
+        this->m_postFormat = this->m_vk.m_colorFormat;
+    }
+
+    if (!this->m_postVertex) {
+        VkShaderModuleCreateInfo moduleInfo = { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
+        moduleInfo.codeSize = sizeof(s_fxaaVertexCode);
+        moduleInfo.pCode = s_fxaaVertexCode;
+
+        if (vkCreateShaderModule(device, &moduleInfo, nullptr, &this->m_postVertex) != VK_SUCCESS) {
+            return 0;
+        }
+
+        moduleInfo.codeSize = sizeof(s_fxaaFragmentCode);
+        moduleInfo.pCode = s_fxaaFragmentCode;
+
+        if (vkCreateShaderModule(device, &moduleInfo, nullptr, &this->m_postFragment) != VK_SUCCESS) {
+            return 0;
+        }
+    }
+
+    if (!this->m_postSampler) {
+        VkSamplerCreateInfo samplerInfo = { VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+        samplerInfo.magFilter = VK_FILTER_LINEAR;
+        samplerInfo.minFilter = VK_FILTER_LINEAR;
+        samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+
+        if (vkCreateSampler(device, &samplerInfo, nullptr, &this->m_postSampler) != VK_SUCCESS) {
+            return 0;
+        }
+    }
+
+    if (!this->m_postSetLayout) {
+        VkDescriptorSetLayoutBinding binding = { 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
+        VkDescriptorSetLayoutCreateInfo setInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+        setInfo.bindingCount = 1;
+        setInfo.pBindings = &binding;
+
+        if (vkCreateDescriptorSetLayout(device, &setInfo, nullptr, &this->m_postSetLayout) != VK_SUCCESS) {
+            return 0;
+        }
+    }
+
+    if (!this->m_postLayout) {
+        VkPushConstantRange push = {};
+        push.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        push.size = sizeof(float) * 4;
+
+        VkPipelineLayoutCreateInfo layoutInfo = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+        layoutInfo.setLayoutCount = 1;
+        layoutInfo.pSetLayouts = &this->m_postSetLayout;
+        layoutInfo.pushConstantRangeCount = 1;
+        layoutInfo.pPushConstantRanges = &push;
+
+        if (vkCreatePipelineLayout(device, &layoutInfo, nullptr, &this->m_postLayout) != VK_SUCCESS) {
+            return 0;
+        }
+    }
+
+    if (!this->m_postPipeline) {
+        VkPipelineShaderStageCreateInfo stages[2] = {
+            { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_VERTEX_BIT, this->m_postVertex, "main", nullptr },
+            { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_FRAGMENT_BIT, this->m_postFragment, "main", nullptr },
+        };
+
+        VkPipelineVertexInputStateCreateInfo vertexInput = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
+        VkPipelineInputAssemblyStateCreateInfo inputAssembly = { VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
+        inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+        VkPipelineViewportStateCreateInfo viewport = { VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO };
+        viewport.viewportCount = 1;
+        viewport.scissorCount = 1;
+
+        VkPipelineRasterizationStateCreateInfo raster = { VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
+        raster.polygonMode = VK_POLYGON_MODE_FILL;
+        raster.cullMode = VK_CULL_MODE_NONE;
+        raster.lineWidth = 1.0f;
+
+        VkPipelineMultisampleStateCreateInfo multisample = { VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
+        multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+        VkPipelineDepthStencilStateCreateInfo depth = { VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
+
+        VkPipelineColorBlendAttachmentState attachment = {};
+        attachment.colorWriteMask = 0xF;
+
+        VkPipelineColorBlendStateCreateInfo blend = { VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
+        blend.attachmentCount = 1;
+        blend.pAttachments = &attachment;
+
+        VkDynamicState dynamicStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+        VkPipelineDynamicStateCreateInfo dynamic = { VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
+        dynamic.dynamicStateCount = 2;
+        dynamic.pDynamicStates = dynamicStates;
+
+        VkGraphicsPipelineCreateInfo info = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
+        info.stageCount = 2;
+        info.pStages = stages;
+        info.pVertexInputState = &vertexInput;
+        info.pInputAssemblyState = &inputAssembly;
+        info.pViewportState = &viewport;
+        info.pRasterizationState = &raster;
+        info.pMultisampleState = &multisample;
+        info.pDepthStencilState = &depth;
+        info.pColorBlendState = &blend;
+        info.pDynamicState = &dynamic;
+        info.layout = this->m_postLayout;
+        info.renderPass = this->m_postPass;
+
+        if (vkCreateGraphicsPipelines(device, this->m_pipelineCache, 1, &info, nullptr, &this->m_postPipeline) != VK_SUCCESS) {
+            this->m_postPipeline = VK_NULL_HANDLE;
+            return 0;
+        }
+    }
+
+    if (!this->m_postColor.image) {
+        VkImageCreateInfo imageInfo = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+        imageInfo.imageType = VK_IMAGE_TYPE_2D;
+        imageInfo.format = this->m_vk.m_colorFormat;
+        imageInfo.extent = { extent.width, extent.height, 1 };
+        imageInfo.mipLevels = 1;
+        imageInfo.arrayLayers = 1;
+        imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+
+        if (!this->m_vk.CreateImage(imageInfo, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D, {}, this->m_postColor)) {
+            return 0;
+        }
+
+        this->m_postColorLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        this->m_postExtent = extent;
+        this->m_postSwapchain = this->m_vk.m_swapchain;
+    }
+
+    if (this->m_postFramebuffers.size() != this->m_vk.m_swapViews.size()) {
+        for (VkFramebuffer framebuffer : this->m_postFramebuffers) {
+            vkDestroyFramebuffer(device, framebuffer, nullptr);
+        }
+
+        this->m_postFramebuffers.clear();
+        this->m_postFramebuffers.reserve(this->m_vk.m_swapViews.size());
+
+        for (VkImageView view : this->m_vk.m_swapViews) {
+            VkFramebufferCreateInfo framebufferInfo = { VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO };
+            framebufferInfo.renderPass = this->m_postPass;
+            framebufferInfo.attachmentCount = 1;
+            framebufferInfo.pAttachments = &view;
+            framebufferInfo.width = extent.width;
+            framebufferInfo.height = extent.height;
+            framebufferInfo.layers = 1;
+
+            VkFramebuffer framebuffer = VK_NULL_HANDLE;
+
+            if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &framebuffer) != VK_SUCCESS) {
+                this->IReleasePostTargets();
+                return 0;
+            }
+
+            this->m_postFramebuffers.push_back(framebuffer);
+        }
+    }
+
+    return this->m_postPipeline && this->m_postColor.image && this->m_vk.m_imageIndex < this->m_postFramebuffers.size();
+}
+
+void CGxDeviceVulkan::IApplyPost() {
+    if ((!WowDecompVk_Fxaa() && !WowDecompVk_Sharpen()) || !this->m_vk.Frame().recording || !this->IEnsurePost()) {
+        return;
+    }
+
+    VkCommandBuffer cmd = this->m_vk.Frame().cmd;
+    VkImage swap = this->m_vk.m_swapImages[this->m_vk.m_imageIndex];
+    uint32_t width = this->m_vk.m_extent.width;
+    uint32_t height = this->m_vk.m_extent.height;
+
+    // ʕ •ᴥ•ʔ✿ The scene pass leaves the swap image in PRESENT_SRC. Copy it, then draw over it ✿ ʕ •ᴥ•ʔ
+    VkContext::Barrier(cmd, swap, VK_IMAGE_ASPECT_COLOR_BIT, 1, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    VkContext::Barrier(cmd, this->m_postColor.image, VK_IMAGE_ASPECT_COLOR_BIT, 1, this->m_postColorLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    this->m_postColorLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+
+    VkImageCopy region = {};
+    region.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+    region.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+    region.extent = { width, height, 1 };
+    vkCmdCopyImage(cmd, swap, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, this->m_postColor.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+    VkContext::Barrier(cmd, this->m_postColor.image, VK_IMAGE_ASPECT_COLOR_BIT, 1, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    this->m_postColorLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    VkContext::Barrier(cmd, swap, VK_IMAGE_ASPECT_COLOR_BIT, 1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+    VkDescriptorSet set = this->m_vk.AllocateSet(this->m_postSetLayout);
+
+    if (!set) {
+        VkContext::Barrier(cmd, swap, VK_IMAGE_ASPECT_COLOR_BIT, 1, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+        return;
+    }
+
+    VkDescriptorImageInfo imageInfo = { this->m_postSampler, this->m_postColor.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+    VkWriteDescriptorSet write = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+    write.dstSet = set;
+    write.dstBinding = 0;
+    write.descriptorCount = 1;
+    write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    write.pImageInfo = &imageInfo;
+    vkUpdateDescriptorSets(this->m_vk.m_device, 1, &write, 0, nullptr);
+
+    VkRenderPassBeginInfo begin = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
+    begin.renderPass = this->m_postPass;
+    begin.framebuffer = this->m_postFramebuffers[this->m_vk.m_imageIndex];
+    begin.renderArea.extent = { width, height };
+    vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
+
+    VkViewport viewport = {};
+    viewport.width = static_cast<float>(width);
+    viewport.height = static_cast<float>(height);
+    viewport.maxDepth = 1.0f;
+    VkRect2D scissor = {};
+    scissor.extent = { width, height };
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+    float push[4] = { 1.0f / static_cast<float>(width), 1.0f / static_cast<float>(height), WowDecompVk_Fxaa() ? 1.0f : 0.0f, WowDecompVk_Sharpen() * 0.3f };
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->m_postPipeline);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->m_postLayout, 0, 1, &set, 0, nullptr);
+    vkCmdPushConstants(cmd, this->m_postLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), push);
+    vkCmdDraw(cmd, 3, 1, 0, 0);
+    vkCmdEndRenderPass(cmd);
+    this->m_dynamicValid = 0;
+}
+
 void CGxDeviceVulkan::ISceneEnd() {
     if (!this->m_frameActive) {
         return;
     }
 
+    int32_t drew = this->m_frameCleared;
     this->IEnsureFrameImage();
     this->IEndPass();
+
+    if (drew) {
+        this->IApplyPost();
+    }
 
     if (!this->m_vk.EndFrame()) {
         this->m_swapchainDirty = 1;

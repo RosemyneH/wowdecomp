@@ -1,5 +1,6 @@
 #include "WorldParam.h"
 #include "WorldParam_CVarSlider.h"
+#include <cstdint>
 #include <cstdio>
 #include <new>
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
@@ -707,12 +708,30 @@ static bool VkExperimentCallback(CVar*, const char*, const char* value, void* ar
 
     int32_t enabled = SStrToInt(value) != 0;
 
-    if (arg) {
-        WowDecompVk_SetUnlit(enabled);
-    } else {
-        WowDecompVk_SetWireframe(enabled);
+    switch (reinterpret_cast<uintptr_t>(arg)) {
+        case 1:
+            WowDecompVk_SetUnlit(enabled);
+            break;
+        case 2:
+            WowDecompVk_SetFxaa(enabled);
+            break;
+        default:
+            WowDecompVk_SetWireframe(enabled);
+            break;
     }
 
+    return true;
+}
+
+static bool VkSharpenCallback(CVar*, const char*, const char* value, void*) {
+    int32_t amount = SStrToInt(value);
+
+    if (amount < 0 || amount > 4) {
+        ConsoleWrite("vkSharpen must be 0-4.", DEFAULT_COLOR);
+        return false;
+    }
+
+    WowDecompVk_SetSharpen(amount);
     return true;
 }
 
@@ -755,6 +774,8 @@ void CWorldParam::Initialize() {
     CVar::Register("spellEffectLevel", "Video Option: Spell Effects", 1, "9", nullptr, CATEGORY_GRAPHICS, false, nullptr, false);
     CVar::Register("vkWireframe", "Vulkan experiment: wireframe world geometry", 1, "0", VkExperimentCallback, CATEGORY_GRAPHICS, false, nullptr, false);
     CVar::Register("vkUnlit", "Vulkan experiment: disable fixed-function lighting", 1, "0", VkExperimentCallback, CATEGORY_GRAPHICS, false, reinterpret_cast<void*>(1), false);
+    CVar::Register("vkFxaa", "Vulkan experiment: fullscreen anti-aliasing", 1, "0", VkExperimentCallback, CATEGORY_GRAPHICS, false, reinterpret_cast<void*>(2), false);
+    CVar::Register("vkSharpen", "Vulkan experiment: sharpen the resolved image", 1, "0", VkSharpenCallback, CATEGORY_GRAPHICS, false, nullptr, false);
 
     AddConsoleDeviceDefaultCallback(CWorldParam::SetDefaults);
 

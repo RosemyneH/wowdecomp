@@ -3,6 +3,8 @@
 
 static int32_t s_wireframe;
 static int32_t s_unlit;
+static int32_t s_fxaa;
+static int32_t s_sharpen;
 static int32_t s_reload;
 static char s_status[512] = "Built-in Vulkan shaders. Drop SPIR-V in Shaders/Vulkan and reload.";
 
@@ -20,6 +22,28 @@ void WowDecompVk_SetUnlit(int32_t enabled) {
 
 int32_t WowDecompVk_Unlit() {
     return s_unlit;
+}
+
+void WowDecompVk_SetFxaa(int32_t enabled) {
+    s_fxaa = enabled != 0;
+}
+
+int32_t WowDecompVk_Fxaa() {
+    return s_fxaa;
+}
+
+void WowDecompVk_SetSharpen(int32_t amount) {
+    if (amount < 0) {
+        amount = 0;
+    } else if (amount > 4) {
+        amount = 4;
+    }
+
+    s_sharpen = amount;
+}
+
+int32_t WowDecompVk_Sharpen() {
+    return s_sharpen;
 }
 
 void WowDecompVk_RequestShaderReload() {
