@@ -2674,9 +2674,106 @@ TerrainGroupKey MakeTerrainGroupKey(const TerrainCapture& cap, uint32_t layer, i
 }
 
 std::vector<GxTerrainDraw> s_terrainDraws;
-std::vector<TerrainGroupKey> s_terrainGroupKeys;
-std::vector<std::vector<size_t>> s_terrainGroupMembers;
 std::vector<uint8_t> s_meshTaken;
+std::vector<size_t> s_terrainQueued;
+
+struct TerrainLayerPlan {
+    std::vector<TerrainGroupKey> keys;
+    std::vector<std::vector<size_t>> members;
+};
+
+std::vector<TerrainLayerPlan> s_layerPlans;
+std::vector<CMapRenderChunk*> s_planChunks;
+std::vector<uint32_t> s_planLayerCounts;
+std::vector<CTexture*> s_planTextures;
+std::vector<CTexture*> s_planAlphas;
+std::vector<int32_t> s_planFog;
+std::vector<uint32_t> s_planFogColor;
+std::vector<float> s_planFogStart;
+std::vector<float> s_planFogEnd;
+int32_t s_planBindless = -1;
+int32_t s_planValid = 0;
+
+static int32_t TerrainPlanMatches(int32_t bindless) {
+    if (!s_planValid || s_planBindless != bindless || s_planChunks.size() != s_terrainBatch.size()) {
+        return 0;
+    }
+
+    size_t tex = 0;
+
+    for (size_t i = 0; i < s_terrainBatch.size(); ++i) {
+        const TerrainCapture& cap = s_terrainBatch[i];
+        uint32_t layers = cap.chunk->m_layersCount;
+
+        if (s_planChunks[i] != cap.chunk || s_planLayerCounts[i] != layers || s_planFog[i] != cap.fog || s_planFogColor[i] != cap.fogColor || s_planFogStart[i] != cap.fogStart || s_planFogEnd[i] != cap.fogEnd) {
+            return 0;
+        }
+
+        for (uint32_t layer = 0; layer < layers; ++layer, ++tex) {
+            if (tex >= s_planTextures.size() || s_planTextures[tex] != cap.chunk->m_layers[layer].m_texture || s_planAlphas[tex] != cap.chunk->m_layers[layer].m_layerTexture) {
+                return 0;
+            }
+        }
+    }
+
+    return tex == s_planTextures.size();
+}
+
+static void BuildTerrainPlans(uint32_t maxLayers, int32_t bindless) {
+    s_layerPlans.clear();
+    s_layerPlans.resize(maxLayers);
+    s_planChunks.resize(s_terrainBatch.size());
+    s_planLayerCounts.resize(s_terrainBatch.size());
+    s_planTextures.clear();
+    s_planAlphas.clear();
+    s_planFog.resize(s_terrainBatch.size());
+    s_planFogColor.resize(s_terrainBatch.size());
+    s_planFogStart.resize(s_terrainBatch.size());
+    s_planFogEnd.resize(s_terrainBatch.size());
+
+    for (size_t i = 0; i < s_terrainBatch.size(); ++i) {
+        s_planChunks[i] = s_terrainBatch[i].chunk;
+        s_planLayerCounts[i] = s_terrainBatch[i].chunk->m_layersCount;
+        s_planFog[i] = s_terrainBatch[i].fog;
+        s_planFogColor[i] = s_terrainBatch[i].fogColor;
+        s_planFogStart[i] = s_terrainBatch[i].fogStart;
+        s_planFogEnd[i] = s_terrainBatch[i].fogEnd;
+
+        for (uint32_t layer = 0; layer < s_planLayerCounts[i]; ++layer) {
+            s_planTextures.push_back(s_terrainBatch[i].chunk->m_layers[layer].m_texture);
+            s_planAlphas.push_back(s_terrainBatch[i].chunk->m_layers[layer].m_layerTexture);
+        }
+    }
+
+    for (uint32_t layer = 0; layer < maxLayers; ++layer) {
+        TerrainLayerPlan& plan = s_layerPlans[layer];
+
+        for (size_t index = 0; index < s_terrainBatch.size(); ++index) {
+            const TerrainCapture& cap = s_terrainBatch[index];
+
+            if (layer >= cap.chunk->m_layersCount) {
+                continue;
+            }
+
+            TerrainGroupKey key = MakeTerrainGroupKey(cap, layer, bindless);
+            size_t group = 0;
+
+            while (group < plan.keys.size() && !(plan.keys[group] == key)) {
+                ++group;
+            }
+
+            if (group == plan.keys.size()) {
+                plan.keys.push_back(key);
+                plan.members.emplace_back();
+            }
+
+            plan.members[group].push_back(index);
+        }
+    }
+
+    s_planBindless = bindless;
+    s_planValid = 1;
+}
 
 }
 
@@ -2794,50 +2891,19 @@ void CMapRenderChunk::FlushMultiPass() {
         s_terrainDraws.reserve(s_terrainBatch.size());
     }
 
-    if (s_terrainGroupKeys.capacity() < s_terrainBatch.size()) {
-        s_terrainGroupKeys.reserve(s_terrainBatch.size());
-    }
-
-    if (s_terrainGroupMembers.capacity() < s_terrainBatch.size()) {
-        s_terrainGroupMembers.reserve(s_terrainBatch.size());
-    }
-
     int32_t bindless = g_theGxDevicePtr->TerrainBindless();
     g_theGxDevicePtr->IRsSync(0);
 
+    // -- ʕ •ᴥ•ʔ✿ Grouping is the chunk set. Matrices still refresh every flush. ✿ ʕ •ᴥ•ʔ
+    if (!TerrainPlanMatches(bindless) || s_layerPlans.size() < maxLayers) {
+        BuildTerrainPlans(maxLayers, bindless);
+    }
+
     for (uint32_t layer = 0; layer < maxLayers; ++layer) {
-        s_terrainGroupKeys.clear();
+        TerrainLayerPlan& plan = s_layerPlans[layer];
 
-        // -- ʕ •ᴥ•ʔ✿ First-seen keys stay in order. A map clear would free every node each layer. ✿ ʕ •ᴥ•ʔ
-        for (size_t index = 0; index < s_terrainBatch.size(); ++index) {
-            const TerrainCapture& cap = s_terrainBatch[index];
-
-            if (layer >= cap.chunk->m_layersCount) {
-                continue;
-            }
-
-            TerrainGroupKey key = MakeTerrainGroupKey(cap, layer, bindless);
-            size_t group = 0;
-
-            while (group < s_terrainGroupKeys.size() && !(s_terrainGroupKeys[group] == key)) {
-                ++group;
-            }
-
-            if (group == s_terrainGroupKeys.size()) {
-                s_terrainGroupKeys.push_back(key);
-
-                if (s_terrainGroupMembers.size() == group) {
-                    s_terrainGroupMembers.emplace_back();
-                } else {
-                    s_terrainGroupMembers[group].clear();
-                }
-            }
-
-            s_terrainGroupMembers[group].push_back(index);
-        }
-
-        for (size_t group = 0; group < s_terrainGroupKeys.size(); ++group) {
-            const std::vector<size_t>& members = s_terrainGroupMembers[group];
+        for (size_t group = 0; group < plan.keys.size(); ++group) {
+            const std::vector<size_t>& members = plan.members[group];
             const TerrainCapture& groupFirst = s_terrainBatch[members[0]];
             CMapRenderChunkLayer* key = &groupFirst.chunk->m_layers[layer];
 
@@ -2856,7 +2922,7 @@ void CMapRenderChunk::FlushMultiPass() {
                 CGxPool* vertexPool = first.chunk->m_chunkBuf->m_vertexBuf->m_pool;
                 CGxPool* indexPool = first.chunk->m_chunkBuf->m_indexBuf->m_pool;
                 s_terrainDraws.clear();
-                std::vector<size_t> queued;
+                s_terrainQueued.clear();
 
                 for (size_t n = start; n < members.size(); ++n) {
                     if (s_meshTaken[n]) {
@@ -2899,7 +2965,7 @@ void CMapRenderChunk::FlushMultiPass() {
                     }
 
                     s_terrainDraws.push_back(draw);
-                    queued.push_back(members[n]);
+                    s_terrainQueued.push_back(members[n]);
                 }
 
                 if (s_terrainDraws.empty()) {
@@ -2944,7 +3010,7 @@ void CMapRenderChunk::FlushMultiPass() {
 
                     if (!g_theGxDevicePtr->DrawTerrainBatch(s_terrainDraws.data() + offset, n)) {
                         for (uint32_t i = 0; i < n; i++) {
-                            DrawTerrainChunk(s_terrainBatch[queued[offset + i]]);
+                            DrawTerrainChunk(s_terrainBatch[s_terrainQueued[offset + i]]);
                         }
                     }
 
@@ -2974,7 +3040,6 @@ void CMapRenderChunk::FlushMultiPass() {
 
     s_terrainBatch.clear();
     s_terrainDraws.clear();
-    s_terrainGroupKeys.clear();
 }
 
 // VERIFY: 18189b69 manual
