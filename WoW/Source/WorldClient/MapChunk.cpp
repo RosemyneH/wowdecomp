@@ -46,7 +46,6 @@
 #include "WoW/Source/WorldClient/DayNight__DNInfo.h"
 #include "WoW/Source/WorldClient/DayNight.h"
 #include "WoW/Source/WorldClient/SortTable.h"
-#include "Engine/Source/Base/Job/JobSystem.h"
 #include "Engine/Source/Model2/M2Light.h"
 #include <vector>
 
@@ -361,8 +360,6 @@ struct VisSnapshot {
 struct VisJob {
     CMapChunk* chunk;
     int32_t linkChunk;
-    int32_t wantLiquids;
-    int32_t rejected;
     float dist;
     C3Vector corner;
     uint32_t liquidBegin;
@@ -371,19 +368,7 @@ struct VisJob {
 
 struct LiquidOut {
     CChunkLiquid* liquid;
-    int32_t visible;
     C3Vector corner;
-};
-
-struct VisBatch {
-    CFrustum frustum;
-    C4Plane camPlane;
-    C3Vector camTarget;
-    C3Vector activeView;
-    int32_t farCorner;
-    float camZ;
-    VisJob* jobs;
-    LiquidOut* liquids;
 };
 
 static VisSnapshot s_visSnap;
@@ -485,73 +470,68 @@ static void LinkLiquidBucket(CChunkLiquid* liquid, const C3Vector& pos, const C4
 
 static void LinkVisibilityResults(const VisSnapshot& snap) {
     for (const VisJob& job : s_visJobs) {
-        if (job.linkChunk && !job.rejected) {
+        if (job.linkChunk) {
             job.chunk->m_distToCamera = job.dist;
             LinkChunkBucket(job.chunk, job.corner, snap.camPlaneXY);
         }
 
         for (uint32_t n = 0; n < job.liquidCount; ++n) {
             const LiquidOut& out = s_visLiquids[job.liquidBegin + n];
-
-            if (out.visible) {
-                LinkLiquidBucket(out.liquid, out.corner, snap.camPlaneXY);
-            }
+            LinkLiquidBucket(out.liquid, out.corner, snap.camPlaneXY);
         }
     }
 }
 
-static void RunChunkVisibility(Job::Range range, void* user) {
-    VisBatch* batch = static_cast<VisBatch*>(user);
+// -- ʕ •ᴥ•ʔ✿ One serial bucket. CullChunks and CullLiquid own the frustum. ✿ ʕ •ᴥ•ʔ
+static void FillVisibilityBuckets(const VisSnapshot& snap) {
+    const int32_t index = CMapChunk::cornerVertexIndex[snap.farCorner];
+    const float vertX = CMapChunk::vertexList[index].x;
+    const float vertY = CMapChunk::vertexList[index].y;
+    const int32_t nearX = snap.camTarget.x >= snap.activeView.x;
+    const int32_t nearY = snap.camTarget.y >= snap.activeView.y;
+    const int32_t nearZ = snap.camTarget.z >= snap.activeView.z;
+    const float camZ = snap.camZ;
 
-    for (uint32_t i = range.begin; i < range.end; ++i) {
-        VisJob& job = batch->jobs[i];
-        CMapChunk* chunk = job.chunk;
-        job.rejected = 1;
+    s_visJobs.resize(s_visRequests.size());
+    s_visLiquids.clear();
 
-        if (job.linkChunk && batch->frustum.Cull(chunk->m_bbox) != 0) {
-            C3Vector nearest;
-            nearest.x = (batch->camTarget.x >= batch->activeView.x) ? chunk->m_bbox.b.x : chunk->m_bbox.t.x;
-            nearest.y = (batch->camTarget.y >= batch->activeView.y) ? chunk->m_bbox.b.y : chunk->m_bbox.t.y;
-            nearest.z = (batch->camTarget.z >= batch->activeView.z) ? chunk->m_bbox.b.z : chunk->m_bbox.t.z;
-            job.dist = batch->camPlane.n.z * nearest.z + batch->camPlane.n.y * nearest.y + batch->camPlane.n.x * nearest.x + batch->camPlane.d;
+    for (size_t i = 0; i < s_visRequests.size(); ++i) {
+        const VisRequest& req = s_visRequests[i];
+        CMapChunk* chunk = req.chunk;
+        VisJob& job = s_visJobs[i];
+        job.chunk = chunk;
+        job.linkChunk = req.linkChunk;
+        job.liquidBegin = static_cast<uint32_t>(s_visLiquids.size());
+        job.liquidCount = 0;
 
-            int32_t index = CMapChunk::cornerVertexIndex[batch->farCorner];
-            job.corner.x = CMapChunk::vertexList[index].x + chunk->m_topLeftCoords.x;
-            job.corner.y = CMapChunk::vertexList[index].y + chunk->m_topLeftCoords.y;
+        if (req.linkChunk) {
+            const CAaBox& box = chunk->m_bbox;
+            const float nx = nearX ? box.b.x : box.t.x;
+            const float ny = nearY ? box.b.y : box.t.y;
+            const float nz = nearZ ? box.b.z : box.t.z;
+            job.dist = snap.camPlane.n.z * nz + snap.camPlane.n.y * ny + snap.camPlane.n.x * nx + snap.camPlane.d;
+            job.corner.x = vertX + chunk->m_topLeftCoords.x;
+            job.corner.y = vertY + chunk->m_topLeftCoords.y;
             job.corner.z = chunk->m_height[index] + chunk->m_topLeftCoords.z;
-            job.rejected = 0;
         }
 
-        if (!job.wantLiquids || !job.liquidCount) {
+        if (!req.wantLiquids || chunk->m_liquidBounds.t.x < chunk->m_liquidBounds.b.x) {
             continue;
         }
 
-        int32_t index = CMapChunk::cornerVertexIndex[batch->farCorner];
-        float cornerX = CMapChunk::vertexList[index].x + chunk->m_topLeftCoords.x;
-        float cornerY = CMapChunk::vertexList[index].y + chunk->m_topLeftCoords.y;
-        int32_t liquidOut = chunk->m_liquidBounds.t.x < chunk->m_liquidBounds.b.x || batch->frustum.Cull(chunk->m_liquidBounds) == 0;
+        const float cornerX = vertX + chunk->m_topLeftCoords.x;
+        const float cornerY = vertY + chunk->m_topLeftCoords.y;
 
-        for (uint32_t n = 0; n < job.liquidCount; ++n) {
-            LiquidOut& out = batch->liquids[job.liquidBegin + n];
-            out.visible = 0;
-
-            if (liquidOut) {
-                continue;
-            }
-
-            CAaBox box;
-            out.liquid->GetAaBox(box);
-
-            if (batch->frustum.Cull(box) == 0) {
-                continue;
-            }
-
-            float top = out.liquid->m_height.y;
-            float bottom = out.liquid->m_height.x;
+        for (CChunkLiquid* liquid = chunk->m_liquidChunkLinkList.Head(); liquid; liquid = chunk->m_liquidChunkLinkList.Next(liquid)) {
+            const float top = liquid->m_height.y;
+            const float bottom = liquid->m_height.x;
+            LiquidOut out;
+            out.liquid = liquid;
             out.corner.x = cornerX;
             out.corner.y = cornerY;
-            out.corner.z = (batch->camZ <= top ? batch->camZ : top) < bottom ? bottom : (batch->camZ > top ? top : batch->camZ);
-            out.visible = 1;
+            out.corner.z = (camZ <= top ? camZ : top) < bottom ? bottom : (camZ > top ? top : camZ);
+            s_visLiquids.push_back(out);
+            ++job.liquidCount;
         }
     }
 }
@@ -583,61 +563,7 @@ void CMapChunk::FlushQueuedVisibility() {
     s_visQueue.clear();
     s_visCacheValid = 0;
 
-    s_visJobs.resize(s_visRequests.size());
-    uint32_t liquidTotal = 0;
-
-    for (size_t i = 0; i < s_visRequests.size(); ++i) {
-        VisJob& job = s_visJobs[i];
-        job.chunk = s_visRequests[i].chunk;
-        job.linkChunk = s_visRequests[i].linkChunk;
-        job.wantLiquids = s_visRequests[i].wantLiquids;
-        job.rejected = 1;
-        job.dist = 0.0f;
-        job.corner = C3Vector(0.0f, 0.0f, 0.0f);
-        job.liquidBegin = liquidTotal;
-        job.liquidCount = 0;
-
-        if (!job.wantLiquids || !job.chunk) {
-            continue;
-        }
-
-        for (CChunkLiquid* liquid = job.chunk->m_liquidChunkLinkList.Head(); liquid; liquid = job.chunk->m_liquidChunkLinkList.Next(liquid)) {
-            ++job.liquidCount;
-        }
-
-        liquidTotal += job.liquidCount;
-    }
-
-    s_visLiquids.resize(liquidTotal);
-    uint32_t cursor = 0;
-
-    for (VisJob& job : s_visJobs) {
-        job.liquidBegin = cursor;
-
-        if (!job.liquidCount) {
-            continue;
-        }
-
-        for (CChunkLiquid* liquid = job.chunk->m_liquidChunkLinkList.Head(); liquid; liquid = job.chunk->m_liquidChunkLinkList.Next(liquid)) {
-            s_visLiquids[cursor].liquid = liquid;
-            s_visLiquids[cursor].visible = 0;
-            s_visLiquids[cursor].corner = C3Vector(0.0f, 0.0f, 0.0f);
-            ++cursor;
-        }
-    }
-
-    VisBatch batch;
-    batch.frustum = snap.frustum;
-    batch.camPlane = snap.camPlane;
-    batch.camTarget = snap.camTarget;
-    batch.activeView = snap.activeView;
-    batch.farCorner = snap.farCorner;
-    batch.camZ = snap.camZ;
-    batch.jobs = s_visJobs.data();
-    batch.liquids = s_visLiquids.empty() ? nullptr : s_visLiquids.data();
-
-    // -- ʕ •ᴥ•ʔ✿ Frustum tests write per-chunk results; the lists are linked afterward ✿ ʕ •ᴥ•ʔ
-    Job::ParallelFor(static_cast<uint32_t>(s_visJobs.size()), RunChunkVisibility, &batch);
+    FillVisibilityBuckets(snap);
     LinkVisibilityResults(snap);
     s_cachedSnap = snap;
     s_visCacheValid = 1;
@@ -646,7 +572,7 @@ void CMapChunk::FlushQueuedVisibility() {
 // VERIFY: 44a339cb manual
 // OFFSET: 0x007C3E70
 void __fastcall CWorldScene::AddMapChunk(CMapChunk* mapChunk) {
-    // -- ʕ •ᴥ•ʔ✿ Visibility is batched and tested off the main thread ✿ ʕ •ᴥ•ʔ
+    // -- ʕ •ᴥ•ʔ✿ Queued for the distance bucket. CullChunks owns the frustum. ✿ ʕ •ᴥ•ʔ
     EnqueueVisibility(mapChunk, 1, 0);
 }
 
