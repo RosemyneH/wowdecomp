@@ -205,21 +205,8 @@ void CM2Scene::SetProjectTextureCallback(void (*callback)(const CAaBox&, const C
 // OFFSET: 0x0081CC50
 static uint32_t __stdcall HashDoodadElement(const M2Element* element) {
     const CM2Model* model = element->m_model;
-    const CM2Lighting* lighting = model->m_currentLighting;
-    uint32_t colorIndex = element->m_batch->m_colorIndex;
-
-    const uint32_t* light = reinterpret_cast<const uint32_t*>(lighting);
-    uint32_t hash = light[23] + 19 * (light[22] + 19 * (light[21] + 19 * (light[26] + 19 * (light[25] + 19 * (19 * (light[48] + 19 * (light[47] + 19 * (19 * (light[43] + 19 * (light[42] + 19 * (element->m_index + 19 * static_cast<uint32_t>(reinterpret_cast<uintptr_t>(model->m_shared))))) + light[46]))) + light[24])))));
-
-    if (colorIndex < model->m_shared->m_data->m_colors.m_count) {
-        const uint32_t* color = reinterpret_cast<const uint32_t*>(&model->m_colors[colorIndex].m_colorTrack.m_currentValue);
-        hash = color[2] + 19 * (color[1] + 19 * (19 * hash + color[0]));
-    }
-
-    const uint32_t* diffuse = reinterpret_cast<const uint32_t*>(&model->m_diffuseColor);
-    const uint32_t* emissive = reinterpret_cast<const uint32_t*>(&model->m_emissiveColor);
-
-    return reinterpret_cast<const uint32_t*>(&model->unk_01B8)[0] + 19 * (emissive[2] + 19 * (emissive[1] + 19 * (19 * (diffuse[2] + 19 * (diffuse[1] + 19 * (19 * hash + diffuse[0]))) + emissive[0])));
+    // ʕ •ᴥ•ʔ✿ Same mesh section shares one draw. Per-copy light bits were splitting every tree into its own call ✿ ʕ •ᴥ•ʔ
+    return static_cast<uint32_t>(element->m_index) + 19u * static_cast<uint32_t>(reinterpret_cast<uintptr_t>(model->m_shared));
 }
 
 // VERIFY: 3a0615ca auto

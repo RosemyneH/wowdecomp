@@ -2634,6 +2634,31 @@ struct HorizonCache {
 
 HorizonCache s_horizon;
 
+int32_t ViewHeld() {
+    const C3Vector pos = CWorldScene::s_activeWorldView;
+    const C3Vector dir = CWorldScene::camPlane.n;
+    static C3Vector heldPos;
+    static C3Vector heldDir;
+    static int32_t held = 0;
+
+    if (held) {
+        float dx = pos.x - heldPos.x;
+        float dy = pos.y - heldPos.y;
+        float dz = pos.z - heldPos.z;
+        float dot = dir.x * heldDir.x + dir.y * heldDir.y + dir.z * heldDir.z;
+
+        // ʕ •ᴥ•ʔ✿ Idle bob stays inside two yards. A real turn or step reculls ✿ ʕ •ᴥ•ʔ
+        if (dx * dx + dy * dy + dz * dz < 4.0f && dot > 0.999f) {
+            return 1;
+        }
+    }
+
+    heldPos = pos;
+    heldDir = dir;
+    held = 1;
+    return 0;
+}
+
 int32_t HorizonHit(const CRect* rect) {
     if (!s_horizon.valid || !rect) {
         return 0;
@@ -4355,7 +4380,7 @@ void CWorldScene::CullSortTable(CRect* rect) {
 
     CSortEntry* entry = CWorldScene::sortTable.m_table;
     // -- ʕ •ᴥ•ʔ✿ The horizon is cleared every frame, then painted near-to-far. A still view replays the painted columns. ✿ ʕ •ᴥ•ʔ
-    int32_t reuse = HorizonHit(rect);
+    int32_t reuse = HorizonHit(rect) || ViewHeld();
 
     for (uint32_t i = 0; i < kSortBuckets; i++) {
         CWorldScene::CullChunks(entry, i, reuse);
