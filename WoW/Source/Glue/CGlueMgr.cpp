@@ -1157,7 +1157,6 @@ static void MaybeAutoLogin() {
     }
 
     static int32_t realmSent = 0;
-    static int32_t entered = 0;
 
     if (!realmSent && CGlueMgr::m_idleState == IDLE_NONE && !CCharacterSelection::s_characterList.Count()) {
         LoginResponse* response = ClientServices::CreateLoginResponse();
@@ -1179,11 +1178,19 @@ static void MaybeAutoLogin() {
         }
     }
 
-    if (entered || CGlueMgr::m_idleState != IDLE_NONE || !CCharacterSelection::s_characterList.Count()) {
+    if (CGlueMgr::m_idleState != IDLE_NONE || !CCharacterSelection::s_characterList.Count()) {
         return;
     }
 
-    entered = 1;
+    // ʕ •ᴥ•ʔ✿ The first enter can bounce back to the character screen. Wait, then press it again ✿ ʕ •ᴥ•ʔ
+    static int32_t wait = 0;
+
+    if (wait > 0) {
+        wait--;
+        return;
+    }
+
+    wait = 180;
 
     int32_t index = 0;
     uint32_t count = CCharacterSelection::s_characterList.Count();
