@@ -285,7 +285,9 @@ local function WowDecomp_InstallAdvanced()
         nil
     );
 
-    local reload = CreateFrame("Button", "VideoOptionsAdvancedPanelReloadShaders", shaders, "UIPanelButtonTemplate");
+    -- ʕ •ᴥ•ʔ✿ Login XML has GluePanelButtonTemplate. UIPanelButtonTemplate arrives with the world UI ✿ ʕ •ᴥ•ʔ
+    local buttonTemplate = GlueParent and "GluePanelButtonTemplate" or "UIPanelButtonTemplate";
+    local reload = CreateFrame("Button", "VideoOptionsAdvancedPanelReloadShaders", shaders, buttonTemplate);
     reload:SetWidth(148);
     reload:SetHeight(22);
     reload:SetPoint("TOPLEFT", unlit, "BOTTOMLEFT", 0, -8);
