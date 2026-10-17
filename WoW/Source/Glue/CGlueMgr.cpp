@@ -1143,6 +1143,10 @@ static void MaybeAutoLogin() {
             wantName[0] = '\0';
         }
 
+        // -- ʕ •ᴥ•ʔ✿ Scan.dll never finishes on Linux, so the login button's gate stays shut. ✿ ʕ •ᴥ•ʔ
+        CGlueMgr::m_scandllOkayToLogIn = 1;
+        CGlueMgr::m_acceptedTOS = 1;
+        CGlueMgr::m_acceptedEULA = 1;
         CGlueMgr::LoginServerLogin(user, pass);
 
         if (CGlueMgr::m_idleState == IDLE_LOGIN_SERVER_LOGIN) {
@@ -1152,11 +1156,29 @@ static void MaybeAutoLogin() {
         return;
     }
 
-    if (CGlueMgr::m_idleState != IDLE_NONE || !CCharacterSelection::s_characterList.Count()) {
-        return;
+    static int32_t realmSent = 0;
+
+    if (!realmSent && CGlueMgr::m_idleState == IDLE_NONE && !CCharacterSelection::s_characterList.Count()) {
+        LoginResponse* response = ClientServices::CreateLoginResponse();
+
+        if (response && response->m_realmList.m_count) {
+            REALM_INFO* realm = &response->m_realmList.m_data[0];
+            const char* saved = ClientServices::GetSelectedRealmName();
+
+            for (uint32_t i = 0; i < response->m_realmList.m_count; ++i) {
+                if (saved && saved[0] && !SStrCmpI(response->m_realmList.m_data[i].m_realmName, saved, STORM_MAX_STR)) {
+                    realm = &response->m_realmList.m_data[i];
+                    break;
+                }
+            }
+
+            realmSent = 1;
+            CGlueMgr::ChangeRealm(realm);
+            return;
+        }
     }
 
-    if (CGlueMgr::m_currentScreen[0] && SStrCmpI(CGlueMgr::m_currentScreen, "charselect", STORM_MAX_STR)) {
+    if (CGlueMgr::m_idleState != IDLE_NONE || !CCharacterSelection::s_characterList.Count()) {
         return;
     }
 
