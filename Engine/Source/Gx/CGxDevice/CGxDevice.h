@@ -82,6 +82,10 @@ struct GxTerrainDraw {
     int32_t baseVertex;
     uint32_t texIndex0;
     uint32_t texIndex1;
+    // -- ʕ •ᴥ•ʔ✿ 0 is the single pair above. A positive count is every layer of one chunk, packed into the spare light .w slots ✿ ʕ •ᴥ•ʔ
+    uint32_t layerCount;
+    uint32_t layerTex[4];
+    uint32_t layerAlpha[4];
 };
 
 class CGxDevice {

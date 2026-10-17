@@ -2676,6 +2676,8 @@ TerrainGroupKey MakeTerrainGroupKey(const TerrainCapture& cap, uint32_t layer, i
 std::vector<GxTerrainDraw> s_terrainDraws;
 std::vector<uint8_t> s_meshTaken;
 std::vector<size_t> s_terrainQueued;
+std::vector<size_t> s_terrainOrder;
+std::vector<uint8_t> s_terrainOwnShadow;
 
 struct TerrainLayerPlan {
     std::vector<TerrainGroupKey> keys;
@@ -2846,6 +2848,179 @@ static void DrawTerrainChunk(const TerrainCapture& cap) {
     g_theGxDevicePtr->Draw(&cap.chunk->m_batch, 1);
 }
 
+static int32_t SameTerrainGroup(const TerrainCapture& a, const TerrainCapture& b) {
+    return a.chunk->m_chunkBuf->m_vertexBuf->m_pool == b.chunk->m_chunkBuf->m_vertexBuf->m_pool && a.chunk->m_chunkBuf->m_indexBuf->m_pool == b.chunk->m_chunkBuf->m_indexBuf->m_pool && a.fog == b.fog && a.fogColor == b.fogColor && a.fogStart == b.fogStart && a.fogEnd == b.fogEnd;
+}
+
+static void DrawCapturedLayers(const TerrainCapture& cap) {
+    ApplyChunkFog(cap);
+    GxXformSet(GxXform_World, cap.world);
+    GxPrimVertexPtr(cap.chunk->m_chunkBuf->m_vertexBuf, CMapRenderChunk::s_gxBufVertexFormat);
+    g_theGxDevicePtr->PrimIndexPtr(cap.chunk->m_chunkBuf->m_indexBuf);
+    CMapRenderChunk::RenderMultiPassAlpha(cap.chunk);
+}
+
+static int32_t FillChunkLayers(GxTerrainDraw& draw, const TerrainCapture& cap, const C44Matrix* eye0, const C44Matrix* eye1) {
+    uint32_t count = cap.chunk->m_layersCount;
+
+    if (!count) {
+        return 0;
+    }
+
+    if (count > 4) {
+        count = 4;
+    }
+
+    FillTerrainDraw(draw, cap, eye0, eye1);
+    draw.layerCount = count;
+
+    for (uint32_t i = 0; i < 4; ++i) {
+        draw.layerTex[i] = ~0u;
+        draw.layerAlpha[i] = ~0u;
+    }
+
+    for (uint32_t i = 0; i < count; ++i) {
+        CMapRenderChunkLayer* layer = &cap.chunk->m_layers[i];
+        CGxTex* color = TextureGetGxTex(layer->m_texture, 0, nullptr);
+
+        if (color) {
+            GxTexSetWrap(color, GxTex_Wrap, GxTex_Wrap);
+        }
+
+        uint32_t slot = g_theGxDevicePtr->TerrainTextureSlot(color);
+
+        if (slot == ~0u) {
+            return 0;
+        }
+
+        draw.layerTex[i] = slot;
+
+        if (layer->m_layerTexture) {
+            CGxTex* alpha = TextureGetGxTex(layer->m_layerTexture, 1, nullptr);
+            uint32_t alphaSlot = g_theGxDevicePtr->TerrainTextureSlot(alpha);
+
+            if (alphaSlot == ~0u) {
+                return 0;
+            }
+
+            draw.layerAlpha[i] = alphaSlot;
+        }
+    }
+
+    draw.texIndex0 = draw.layerTex[0];
+    draw.texIndex1 = draw.layerAlpha[0];
+    return 1;
+}
+
+static void FlushTerrainComposite(const C44Matrix* eye0, const C44Matrix* eye1) {
+    // -- ʕ •ᴥ•ʔ✿ One indirect command per chunk. The fragment shader lerps every layer, so the per-layer setup is gone ✿ ʕ •ᴥ•ʔ
+    size_t count = s_terrainBatch.size();
+    s_terrainOwnShadow.assign(count, 0);
+    s_terrainOrder.resize(count);
+
+    for (size_t i = 0; i < count; ++i) {
+        s_terrainOrder[i] = i;
+    }
+
+    std::sort(s_terrainOrder.begin(), s_terrainOrder.end(), [](size_t a, size_t b) {
+        const TerrainCapture& ca = s_terrainBatch[a];
+        const TerrainCapture& cb = s_terrainBatch[b];
+        CGxPool* vertexA = ca.chunk->m_chunkBuf->m_vertexBuf->m_pool;
+        CGxPool* vertexB = cb.chunk->m_chunkBuf->m_vertexBuf->m_pool;
+
+        if (vertexA != vertexB) {
+            return vertexA < vertexB;
+        }
+
+        CGxPool* indexA = ca.chunk->m_chunkBuf->m_indexBuf->m_pool;
+        CGxPool* indexB = cb.chunk->m_chunkBuf->m_indexBuf->m_pool;
+
+        if (indexA != indexB) {
+            return indexA < indexB;
+        }
+
+        if (ca.fog != cb.fog) {
+            return ca.fog < cb.fog;
+        }
+
+        if (ca.fogColor != cb.fogColor) {
+            return ca.fogColor < cb.fogColor;
+        }
+
+        if (ca.fogStart != cb.fogStart) {
+            return ca.fogStart < cb.fogStart;
+        }
+
+        return ca.fogEnd < cb.fogEnd;
+    });
+
+    constexpr uint32_t kSlice = 16384;
+
+    for (size_t start = 0; start < count;) {
+        size_t end = start + 1;
+
+        while (end < count && SameTerrainGroup(s_terrainBatch[s_terrainOrder[start]], s_terrainBatch[s_terrainOrder[end]])) {
+            ++end;
+        }
+
+        s_terrainDraws.clear();
+        s_terrainQueued.clear();
+        const TerrainCapture* bound = nullptr;
+
+        for (size_t n = start; n < end; ++n) {
+            size_t index = s_terrainOrder[n];
+            const TerrainCapture& cap = s_terrainBatch[index];
+            GxTerrainDraw draw = {};
+
+            if (!FillChunkLayers(draw, cap, eye0, eye1)) {
+                DrawCapturedLayers(cap);
+                s_terrainOwnShadow[index] = 1;
+                continue;
+            }
+
+            if (!bound) {
+                bound = &cap;
+            }
+
+            s_terrainDraws.push_back(draw);
+            s_terrainQueued.push_back(index);
+        }
+
+        if (bound) {
+            CMapRenderChunkLayer* layer0 = &bound->chunk->m_layers[0];
+            CGxTex* color = TextureGetGxTex(layer0->m_texture, 0, nullptr);
+            CGxTex* alpha = layer0->m_layerTexture ? TextureGetGxTex(layer0->m_layerTexture, 1, nullptr) : color;
+            g_theGxDevicePtr->RsSet(GxRs_Texture0, color);
+            g_theGxDevicePtr->RsSet(GxRs_Texture1, alpha ? alpha : color);
+            GxRsSet(GxRs_BlendingMode, GxBlend_Opaque);
+            GxUpdateAlphaRef(GxRs_AlphaRef);
+            ApplyChunkFog(*bound);
+            GxPrimVertexPtr(bound->chunk->m_chunkBuf->m_vertexBuf, CMapRenderChunk::s_gxBufVertexFormat);
+            g_theGxDevicePtr->PrimIndexPtr(bound->chunk->m_chunkBuf->m_indexBuf);
+
+            for (uint32_t offset = 0; offset < s_terrainDraws.size();) {
+                uint32_t n = static_cast<uint32_t>(s_terrainDraws.size() - offset);
+
+                if (n > kSlice) {
+                    n = kSlice;
+                }
+
+                if (!g_theGxDevicePtr->DrawTerrainBatch(s_terrainDraws.data() + offset, n)) {
+                    for (uint32_t i = 0; i < n; ++i) {
+                        size_t index = s_terrainQueued[offset + i];
+                        DrawCapturedLayers(s_terrainBatch[index]);
+                        s_terrainOwnShadow[index] = 1;
+                    }
+                }
+
+                offset += n;
+            }
+        }
+
+        start = end;
+    }
+}
+
 void CMapRenderChunk::QueueMultiPass(CMapRenderChunk* chunk) {
     CGxBuf* vertex = chunk->m_chunkBuf ? chunk->m_chunkBuf->m_vertexBuf : nullptr;
     CGxBuf* index = chunk->m_chunkBuf ? chunk->m_chunkBuf->m_indexBuf : nullptr;
@@ -2912,11 +3087,14 @@ void CMapRenderChunk::FlushMultiPass() {
         eye1 = &gen1.m_mtx[gen1.m_level];
     }
 
-    // -- ʕ •ᴥ•ʔ✿ Grouping is the chunk set. Eye-linear texgen is one multiply per chunk, not a state change. ✿ ʕ •ᴥ•ʔ
-    if (!TerrainPlanMatches(bindless) || s_layerPlans.size() < maxLayers) {
+    // -- ʕ •ᴥ•ʔ✿ Bindless composites every layer in one command. The layer walk stays for the two-sampler path ✿ ʕ •ᴥ•ʔ
+    if (bindless) {
+        FlushTerrainComposite(eye0, eye1);
+    } else if (!TerrainPlanMatches(bindless) || s_layerPlans.size() < maxLayers) {
         BuildTerrainPlans(maxLayers, bindless);
     }
 
+    if (!bindless) {
     for (uint32_t layer = 0; layer < maxLayers; ++layer) {
         TerrainLayerPlan& plan = s_layerPlans[layer];
 
@@ -3037,8 +3215,15 @@ void CMapRenderChunk::FlushMultiPass() {
             }
         }
     }
+    }
 
-    for (const TerrainCapture& cap : s_terrainBatch) {
+    for (size_t index = 0; index < s_terrainBatch.size(); ++index) {
+        if (index < s_terrainOwnShadow.size() && s_terrainOwnShadow[index]) {
+            continue;
+        }
+
+        const TerrainCapture& cap = s_terrainBatch[index];
+
         if (!cap.chunk->m_shadowTexture || !(CWorld::enables & Enable_Shadow)) {
             continue;
         }
@@ -3058,6 +3243,7 @@ void CMapRenderChunk::FlushMultiPass() {
 
     s_terrainBatch.clear();
     s_terrainDraws.clear();
+    s_terrainOwnShadow.clear();
 }
 
 // VERIFY: 18189b69 manual

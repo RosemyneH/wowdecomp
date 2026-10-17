@@ -16,6 +16,8 @@ layout(location = 1) out vec3 outTexCoord0;
 layout(location = 2) out vec3 outTexCoord1;
 layout(location = 3) out float outFog;
 layout(location = 4) flat out ivec2 outTexIndex;
+layout(location = 5) flat out ivec4 outLayerTex;
+layout(location = 6) flat out ivec4 outAlphaTex;
 
 // ʕ •ᴥ•ʔ✿ Row-major, matching C44Matrix. One record per instance or per terrain draw ✿ ʕ •ᴥ•ʔ
 struct GpuDrawItem {
@@ -66,6 +68,11 @@ vec3 StageTexCoord(int stage, vec3 viewPos, vec3 viewNormal, mat4 texMatrix) {
     return mode == 2 ? t.xyz : vec3(t.xy, 1.0);
 }
 
+// -- ʕ •ᴥ•ʔ✿ Slot ids are plain floats. A missing slot is negative: int(-1 + 0.5) truncates to 0 ✿ ʕ •ᴥ•ʔ
+int TexSlot(float stored) {
+    return stored < 0.0 ? -1 : int(stored + 0.5);
+}
+
 void main() {
     int gpuMode = int(u.misc.y);
     mat4 worldMat = u.world;
@@ -75,7 +82,8 @@ void main() {
     vec4 lightDiffuse[4] = u.lightDiffuse;
     vec4 lightAmbient[4] = u.lightAmbient;
     vec4 lightAtten[4] = u.lightAtten;
-    ivec2 texIndex = ivec2(0);
+    ivec4 layerTex = ivec4(-1);
+    ivec4 alphaTex = ivec4(-1);
 
     if (gpuMode != 0) {
         GpuDrawItem item = gpu.items[gl_InstanceIndex];
@@ -88,12 +96,15 @@ void main() {
             lightDiffuse = item.lightDiffuse;
             lightAmbient = item.lightAmbient;
             lightAtten = item.lightAtten;
-            // ʕ •ᴥ•ʔ✿ Slot ids are plain floats. Raw bits below 2^23 are denormals and flush to zero ✿ ʕ •ᴥ•ʔ
-            texIndex = ivec2(int(item.lightAmbient[0].w + 0.5), int(item.lightAmbient[1].w + 0.5));
+            // -- ʕ •ᴥ•ʔ✿ Color slots sit in ambient.w. Alpha slots sit in atten.w. Lighting still reads rgb and xyz ✿ ʕ •ᴥ•ʔ
+            layerTex = ivec4(TexSlot(lightAmbient[0].w), TexSlot(lightAmbient[1].w), TexSlot(lightAmbient[2].w), TexSlot(lightAmbient[3].w));
+            alphaTex = ivec4(TexSlot(lightAtten[0].w), TexSlot(lightAtten[1].w), TexSlot(lightAtten[2].w), TexSlot(lightAtten[3].w));
         }
     }
 
-    outTexIndex = texIndex;
+    outTexIndex = ivec2(layerTex.x, alphaTex.x);
+    outLayerTex = layerTex;
+    outAlphaTex = alphaTex;
 
     vec3 position = inPosition;
     vec3 normal = inNormal;

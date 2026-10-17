@@ -10,7 +10,8 @@ layout(location = 0) in vec4 inColor;
 layout(location = 1) in vec3 inTexCoord0;
 layout(location = 2) in vec3 inTexCoord1;
 layout(location = 3) in float inFog;
-layout(location = 4) flat in ivec2 inTexIndex;
+layout(location = 5) flat in ivec4 inLayerTex;
+layout(location = 6) flat in ivec4 inAlphaTex;
 
 layout(location = 0) out vec4 outColor;
 
@@ -39,15 +40,34 @@ vec2 BlendUv(vec3 coord) {
 
 void main() {
     vec4 color = inColor;
+    int layers = 0;
 
+    // -- ʕ •ᴥ•ʔ✿ One chunk. Layer 0 replaces. Later layers lerp by coverage, the same src-alpha blend the multi-pass used ✿ ʕ •ᴥ•ʔ
     if (u.stageColorOp.x >= 0) {
-        color = Stage(0, texture(terrainTextures[nonuniformEXT(inTexIndex.x)], inTexCoord0.xy / inTexCoord0.z), color);
+        for (int i = 0; i < 4; i++) {
+            if (inLayerTex[i] < 0) {
+                continue;
+            }
 
-        // ʕ •ᴥ•ʔ✿ A base layer has no blend map. Sampling the default image here punches a second texture through the ground ✿ ʕ •ᴥ•ʔ
-        if (u.stageColorOp.y >= 0 && inTexIndex.y >= 0) {
-            vec4 blend = texture(terrainTextures[nonuniformEXT(inTexIndex.y)], BlendUv(inTexCoord1));
-            // ʕ •ᴥ•ʔ✿ Coverage lives in alpha. An 8-bit map repeats that weight in rgb, and modulating with it squares the fade into blocks ✿ ʕ •ᴥ•ʔ
-            color.a *= blend.a;
+            vec4 layer = Stage(0, texture(terrainTextures[nonuniformEXT(inLayerTex[i])], inTexCoord0.xy / inTexCoord0.z), inColor);
+
+            // -- ʕ •ᴥ•ʔ✿ Coverage lives in alpha. An 8-bit map repeats that weight in rgb, and modulating with it squares the fade into blocks ✿ ʕ •ᴥ•ʔ
+            if (inAlphaTex[i] >= 0) {
+                layer.a *= texture(terrainTextures[nonuniformEXT(inAlphaTex[i])], BlendUv(inTexCoord1)).a;
+            }
+
+            // -- ʕ •ᴥ•ʔ✿ Alpha blend's ref is 1. A zero weight does not cover the base, and it does not discard the pixel ✿ ʕ •ᴥ•ʔ
+            if (layers > 0 && layer.a * 255.0 < 1.0) {
+                continue;
+            }
+
+            if (layers == 0) {
+                color = layer;
+            } else {
+                color.rgb = mix(color.rgb, layer.rgb, layer.a);
+            }
+
+            layers++;
         }
     }
 
@@ -55,6 +75,7 @@ void main() {
         discard;
     }
 
+    // -- ʕ •ᴥ•ʔ✿ Fog is a lerp toward one color. Doing it once matches fogging each layer and then blending ✿ ʕ •ᴥ•ʔ
     color.rgb = mix(u.fogColor.rgb, color.rgb, inFog);
     outColor = color;
 }
