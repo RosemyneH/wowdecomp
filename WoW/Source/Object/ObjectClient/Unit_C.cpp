@@ -8410,6 +8410,10 @@ void CGUnit_C::UpdateSelectionRadius() {
     }
 }
 
+bool CGUnit_C::IsTransport() const {
+    return this->m_vehicle != nullptr;
+}
+
 // VERIFY: 9da62ce8 auto
 // OFFSET: 0x0074B810
 int32_t CGUnit_C::AddPassenger(CPassenger* passenger, int32_t a2) {

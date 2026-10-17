@@ -430,6 +430,7 @@ class CGUnit_C : public CGObject_C, public CGUnit {
     C3Vector GetNamePosition() const override;
     float GetFacing() const override;
     float GetRenderFacing() const override;
+    bool IsTransport() const override;
     int32_t AddPassenger(CPassenger* passenger, int32_t a2) override;
     C3Vector GetPosition() const override;
     void Disable() override;
