@@ -2551,9 +2551,22 @@ C3Vector CM2Model::GetAttachmentPivot(uint32_t id) {
     }
 
     M2Data* data = this->m_shared->m_data;
-    uint32_t index = id < data->m_attachmentIndicesById.m_count ? data->m_attachmentIndicesById[id] : 0xFFFFFFFF;
+    uint16_t index = id < data->m_attachmentIndicesById.m_count ? data->m_attachmentIndicesById[id] : 0xFFFF;
 
-    return data->m_attachments[index].m_position;
+    if (index >= data->m_attachments.m_count || !this->m_boneMatrices) {
+        return C3Vector(0.0f, 0.0f, 0.0f);
+    }
+
+    // ʕ •ᴥ•ʔ✿ File position is bone-local. The camera anchor is that point after the bone, still in model space. ✿ ʕ •ᴥ•ʔ
+    M2Attachment* attachment = &data->m_attachments[index];
+    uint16_t bone = attachment->m_bone;
+
+    if (bone >= data->m_bones.m_count) {
+        return attachment->m_position;
+    }
+
+    this->Animate();
+    return attachment->m_position * this->m_boneMatrices[bone];
 }
 
 // VERIFY: dca38176 manual
