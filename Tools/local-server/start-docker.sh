@@ -9,7 +9,8 @@ source "$ROOT/Tools/local-server/docker/cdn-env.sh"
 if docker info >/dev/null 2>&1; then
     DOCKER=(docker)
 elif sudo docker info >/dev/null 2>&1; then
-    DOCKER=(sudo docker)
+    # ʕ •ᴥ•ʔ✿ sudo drops the CDN bind-mount paths, and compose then mounts the project dir onto a file ✿ ʕ •ᴥ•ʔ
+    DOCKER=(sudo --preserve-env=WOWDECOMP_GAME_DATA,WOWDECOMP_CDN_NGINX_CONF,WOWDECOMP_CDN_SIGNATURE,DOCKER_CDN_EXTERNAL_PORT docker)
 else
     echo "Docker backend selected but the daemon is not running." >&2
     echo "Install/start Docker, then re-run this script." >&2
