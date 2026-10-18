@@ -17,6 +17,7 @@
 #include <vector>
 #include <wayland-server-core.h>
 #include <wayland-server-protocol.h>
+#include <wayland-version.h>
 #include <xkbcommon/xkbcommon.h>
 
 extern "C" {
@@ -139,7 +140,9 @@ void SurfaceTransform(wl_client*, wl_resource*, int32_t) {}
 void SurfaceScale(wl_client*, wl_resource*, int32_t) {}
 void SurfaceDamageBuffer(wl_client*, wl_resource*, int32_t, int32_t, int32_t, int32_t) {}
 void SurfaceOffset(wl_client*, wl_resource*, int32_t, int32_t) {}
+#if WAYLAND_VERSION_MINOR >= 25
 void SurfaceGetRelease(wl_client*, wl_resource*, uint32_t) {}
+#endif
 
 void SurfaceFrame(wl_client* client, wl_resource* resource, uint32_t id) {
     Surface* surface = SurfaceOf(resource);
@@ -215,7 +218,10 @@ void SurfaceCommit(wl_client*, wl_resource* resource) {
 
 const struct wl_surface_interface kSurfaceImpl = {
     SurfaceDestroy, SurfaceAttach, SurfaceDamage, SurfaceFrame, SurfaceOpaque, SurfaceInput, SurfaceCommit,
-    SurfaceTransform, SurfaceScale, SurfaceDamageBuffer, SurfaceOffset, SurfaceGetRelease,
+    SurfaceTransform, SurfaceScale, SurfaceDamageBuffer, SurfaceOffset,
+#if WAYLAND_VERSION_MINOR >= 25
+    SurfaceGetRelease,
+#endif
 };
 
 void CompositorCreateSurface(wl_client* client, wl_resource*, uint32_t id) {
@@ -246,9 +252,17 @@ void CompositorCreateRegion(wl_client* client, wl_resource*, uint32_t id) {
     wl_resource_set_implementation(region, &kRegionImpl, nullptr, nullptr);
 }
 
+#if WAYLAND_VERSION_MINOR >= 25
 void CompositorRelease(wl_client*, wl_resource* resource) { wl_resource_destroy(resource); }
+#endif
 
-const struct wl_compositor_interface kCompositorImpl = { CompositorCreateSurface, CompositorCreateRegion, CompositorRelease };
+const struct wl_compositor_interface kCompositorImpl = {
+    CompositorCreateSurface,
+    CompositorCreateRegion,
+#if WAYLAND_VERSION_MINOR >= 25
+    CompositorRelease,
+#endif
+};
 
 void OutputRelease(wl_client*, wl_resource* resource) { wl_resource_destroy(resource); }
 const struct wl_output_interface kOutputImpl = { OutputRelease };
