@@ -27,7 +27,11 @@ jobs:
             libsdl3-dev libwayland-dev libcurl4-openssl-dev libasound2-dev libvulkan-dev libxvidcore-dev
 
       - name: Configure
-        run: cmake -S . -B build/linux -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: |
+          cmake -S . -B build/linux -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_FLAGS_RELEASE="-O3 -DNDEBUG" \
+            -DCMAKE_CXX_FLAGS_RELEASE="-O3 -DNDEBUG"
 
       - name: Build WowClient
         run: cmake --build build/linux --target WowClient -j"$(nproc)"

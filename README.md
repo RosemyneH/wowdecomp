@@ -46,7 +46,7 @@ What **GitHub Actions** exercises on every push/PR, what **releases** ship, and 
 | OS / arch | CI workflow | CI builds | Release archive | Typical graphics | Playability notes |
 |-----------|---------------|-----------|--------------------|------------------|-------------------|
 | **Windows x64** | [`windows-x64`](.github/workflows/windows.yml) | **WowClient** (Ninja, Release) | `wowdecomp-windows-x64.zip` | Vulkan (default) + D3D9 + OpenGL | The tested Windows client. |
-| **Linux x86_64** | [`linux-x64`](.github/workflows/linux.yml) | **WowClient** (Ninja, RelWithDebInfo) | `wowdecomp-linux-x86_64.tar.gz` | Vulkan on the session window | The tested Linux client. Wayland sessions get a Wayland window. X11 sessions stay on X11. |
+| **Linux x86_64** | [`linux-x64`](.github/workflows/linux.yml) | **WowClient** (Ninja, Release `-O3`) | `wowdecomp-linux-x86_64.tar.gz` | Vulkan on the session window | The tested Linux client. Wayland sessions get a Wayland window. X11 sessions stay on X11. |
 | **Windows ARM64** | — | *not in CI* | — | Vulkan only if you build it | Local Ninja build only. |
 | **Android arm64** | manual [`android-arm64`](.github/workflows/android.yml) | *not on push* | — | Vulkan on an SDL surface | Not a tested client. |
 | **Linux aarch64** | — | *not in CI* | — | Vulkan only (expected) | Cross-build with `cmake/Toolchain-Clang-aarch64-linux.cmake`. |
