@@ -131,20 +131,18 @@ static float WrapAngle0To2Pi(float angle) {
 // VERIFY: 0904e9a9 auto
 // OFFSET: 0x005FF500
 float CGCamera::FOV() const {
-    float fov = this->m_targetFov + this->m_fov;
-    // ʕ •ᴥ•ʔ✿ 0 leaves the retail field of view. 1..200 maps across a half turn. ✿ ʕ •ᴥ•ʔ
+    // ʕ •ᴥ•ʔ✿ Unset or 0 is 100 (90°). A fresh Config.wtf never wrote this, and the scripted sum then sits in the feet. ✿ ʕ •ᴥ•ʔ
+    int value = 100;
     if (CVar* cvar = CVar::Lookup("cameraFov")) {
-        int value = cvar->m_intValue;
-
-        if (value > 0) {
-            if (value > 200) {
-                value = 200;
-            }
-
-            fov = 3.14159265f * static_cast<float>(value) / 200.0f;
+        if (cvar->m_intValue > 0) {
+            value = cvar->m_intValue;
         }
     }
-    return 0.0f > fov ? 0.0f : (3.1241393f <= fov ? 3.1241393f : fov);
+    if (value > 200) {
+        value = 200;
+    }
+    float fov = 3.14159265f * static_cast<float>(value) / 200.0f;
+    return fov > 3.1241393f ? 3.1241393f : fov;
 }
 
 // VERIFY: ccdea4b6 manual

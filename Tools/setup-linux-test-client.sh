@@ -163,7 +163,7 @@ fi
 rm -rf "$PLAY_DIR/WTF"
 mkdir -p "$PLAY_DIR/WTF"
 if [[ "$LOCAL_REALM" -eq 1 ]]; then
-    printf 'SET locale "enUS"\nSET realmList "%s"\nSET hwDetect "0"\nSET readTOS "1"\nSET readEULA "1"\n' "$REALM_HOST" > "$PLAY_DIR/WTF/Config.wtf"
+    printf 'SET locale "enUS"\nSET realmList "%s"\nSET hwDetect "0"\nSET readTOS "1"\nSET readEULA "1"\nSET cameraFov "100"\n' "$REALM_HOST" > "$PLAY_DIR/WTF/Config.wtf"
 elif [[ "$RETAIL_WTF" -eq 1 && -d "$GAME_SRC/WTF" ]]; then
     rm -rf "$PLAY_DIR/WTF"
     ln -sfn "$GAME_SRC/WTF" "$PLAY_DIR/WTF"
@@ -171,7 +171,7 @@ elif [[ -d "$GAME_SRC/WTF" ]]; then
     rm -rf "$PLAY_DIR/WTF"
     ln -sfn "$GAME_SRC/WTF" "$PLAY_DIR/WTF"
 else
-    printf 'SET locale "enUS"\nSET realmList "%s"\n' "$REALM_HOST" > "$PLAY_DIR/WTF/Config.wtf"
+    printf 'SET locale "enUS"\nSET realmList "%s"\nSET cameraFov "100"\n' "$REALM_HOST" > "$PLAY_DIR/WTF/Config.wtf"
 fi
 
 cat <<EOF

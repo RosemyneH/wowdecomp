@@ -2,6 +2,7 @@ name: Release
 
 on:
   push:
+    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -130,7 +131,12 @@ jobs:
           path: wowdecomp-android-arm64.apk
 
   publish:
-    if: startsWith(github.ref, 'refs/tags/')
+    if: >-
+      always() &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') &&
+      needs.linux-x64.result == 'success' &&
+      needs.windows-x64.result == 'success' &&
+      needs.android-arm64.result == 'success'
     needs: [linux-x64, windows-x64, windows-arm64, android-arm64]
     runs-on: ubuntu-latest
     steps:
@@ -140,18 +146,27 @@ jobs:
           merge-multiple: true
           path: dist
 
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*
-          generate_release_notes: true
-          body: |
-            **Experimental build.** Desktop archives still need a retail **WoW 3.3.5a (12340)** `Data` folder beside the client. The Android APK is a native Vulkan app (arm64, API 33+). On first launch it writes a starter `WoW.mfil` into app storage; point `source=` at an HTTP CDN that serves the 3.3.5a archives. That CDN layout is brian8544's, GPL-2.0: https://github.com/brian8544/streamingclient-3.3.5
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          notes=$(cat <<'EOF' | sed 's/^          //'
+          **Experimental build.** Desktop archives still need a retail **WoW 3.3.5a (12340)** `Data` folder. Put it beside the client, or start with `-datadir /path/to/client`. `cameraFov` defaults to **100** (90°). The Android APK is a native Vulkan app (arm64, API 33+). On first launch it writes a starter `WoW.mfil` into app storage; point `source=` at an HTTP CDN that serves the 3.3.5a archives. That CDN layout is brian8544's, GPL-2.0: https://github.com/brian8544/streamingclient-3.3.5
 
-            The APK is signed with the CI debug key. Gamepad input matches the Linux client. Audio and cinematics are not wired up on Android yet.
+          The APK is signed with the CI debug key. Gamepad input matches the Linux client. Audio and cinematics are not wired up on Android yet.
 
-            | Archive | Platform |
-            |---------|----------|
-            | `wowdecomp-linux-x86_64.tar.gz` | Linux x86_64 |
-            | `wowdecomp-windows-x64.zip` | Windows x64 |
-            | `wowdecomp-windows-arm64.zip` | Windows on ARM (when the ARM job succeeds) |
-            | `wowdecomp-android-arm64.apk` | Android arm64, Vulkan |
+          | Archive | Platform |
+          |---------|----------|
+          | `wowdecomp-linux-x86_64.tar.gz` | Linux x86_64 |
+          | `wowdecomp-windows-x64.zip` | Windows x64 |
+          | `wowdecomp-windows-arm64.zip` | Windows on ARM (when the ARM job succeeds) |
+          | `wowdecomp-android-arm64.apk` | Android arm64, Vulkan |
+          EOF
+          )
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --target "$GITHUB_SHA" --notes "$notes"
+          else
+            gh release delete continuous --yes --cleanup-tag || true
+            gh release create continuous dist/* --prerelease --target "$GITHUB_SHA" --title "Latest build" --notes "$notes"
+          fi

@@ -39,7 +39,7 @@ The Lua and CVar surface around this lives on the [AwesomeWotLK](awesomewotlk.md
 Two AwesomeWotLK CVars change the camera, and both apply:
 
 - `cameraIndirectVisibility` `1` skips the collision that normally pushes the camera out of walls and terrain, so the camera can pass through world objects.
-- `cameraFov`, once you set it, replaces the scripted field of view. The value is 1–200. **100 is a right angle** (90°). Values above that widen toward a half turn and are clamped just short of 180°.
+- `cameraFov` is the field of view. The value is 1–200. **100 is a right angle** (90°), and that is the default when the cvar is missing or `0`. Values above that widen toward a half turn and are clamped just short of 180°.
 
 `cameraIndirectAlpha` is stored and readable. It does not fade the geometry the camera intersects.
 

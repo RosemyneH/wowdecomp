@@ -136,6 +136,7 @@ if ($localRealm) {
         'SET hwDetect "0"'
         'SET readTOS "1"'
         'SET readEULA "1"'
+        'SET cameraFov "100"'
         'SET gxApi "D3D9"'
     ) | Set-Content -LiteralPath (Join-Path $wtf 'Config.wtf')
 } elseif ($RetailWtf -and (Test-Path -LiteralPath (Join-Path $GameSrc 'WTF'))) {
@@ -144,7 +145,7 @@ if ($localRealm) {
     New-WowdecompLink -Source (Join-Path $GameSrc 'WTF') -Destination $wtf
 } else {
     New-Item -ItemType Directory -Path $wtf | Out-Null
-    @('SET locale "enUS"', "SET realmList `"$RealmHost`"") | Set-Content -LiteralPath (Join-Path $wtf 'Config.wtf')
+    @('SET locale "enUS"', "SET realmList `"$RealmHost`"", 'SET cameraFov "100"') | Set-Content -LiteralPath (Join-Path $wtf 'Config.wtf')
 }
 
 $frameXml = Join-Path $PlayDir 'Interface\FrameXML'

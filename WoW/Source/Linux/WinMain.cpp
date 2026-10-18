@@ -163,7 +163,7 @@ static void AndroidPrepareGameRoot() {
     WriteFile("WoW.mfil", mfil);
 
     char realm[160];
-    snprintf(realm, sizeof(realm), "SET realmList \"%s\"\nSET locale \"enUS\"\n", cdnHost);
+    snprintf(realm, sizeof(realm), "SET realmList \"%s\"\nSET locale \"enUS\"\nSET cameraFov \"100\"\n", cdnHost);
     WriteFile("WTF/Config.wtf", realm);
     snprintf(realm, sizeof(realm), "SET realmList \"%s\"\n", cdnHost);
     WriteFile("Data/enUS/realmlist.wtf", realm);

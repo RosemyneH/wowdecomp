@@ -43,7 +43,7 @@ The [wiki](https://github.com/RosemyneH/wowdecomp/wiki) explains each area in th
 
 What **GitHub Actions** exercises on every push/PR, what **releases** ship, and what you can expect when building locally. “**WowClient**” means the full game executable (`Tools/WowClient`); “**Os + Gx**” is only the engine layers needed for the Vulkan path.
 
-| OS / arch | CI workflow | CI builds | Release tag (`v*`) | Typical graphics | Playability notes |
+| OS / arch | CI workflow | CI builds | Release archive | Typical graphics | Playability notes |
 |-----------|---------------|-----------|--------------------|------------------|-------------------|
 | **Windows x64** | [`windows-x64`](.github/workflows/windows.yml) | **WowClient** (Ninja, Release) | `wowdecomp-windows-x64.zip` | Vulkan (default) + D3D9 + OpenGL | Main reference path; closest to “retail-like” on this fork. |
 | **Windows ARM64** | same workflow, job **`build-arm64`** | **WowClient** on `windows-11-arm` | `wowdecomp-windows-arm64.zip` when the ARM job succeeds | **Vulkan only** (no D3D9/NvAPI/OpenGL in the build) | CI job uses `continue-on-error: true` so x64 stays authoritative if ARM regresses; **currently building in CI**. |
@@ -139,7 +139,18 @@ Or use `.\Tools\dev-station.ps1 all` for scope + server, or `launch` to also sta
 
 ## Building
 
-In-source builds are refused—use a separate `build/` directory.
+Prebuilt clients are on the [latest build](https://github.com/RosemyneH/wowdecomp/releases/tag/continuous) release, updated from `main` by [`.github/workflows/release.yml`](.github/workflows/release.yml). A version tag (`v0.1.0`) publishes a normal release with the same archives. Each push also uploads the binaries as Actions artifacts (`linux-x64-WowClient64`, `windows-x64-WowClient64`, `windows-arm64-WowClient64`, `android-arm64-wowdecomp`). Game `Data` is not in any of those files.
+
+| Archive | Platform |
+|---------|----------|
+| `wowdecomp-linux-x86_64.tar.gz` | Linux x86_64, `WowClient64` |
+| `wowdecomp-windows-x64.zip` | Windows x64, `WowClient64.exe` |
+| `wowdecomp-windows-arm64.zip` | Windows on ARM, when that job succeeds |
+| `wowdecomp-android-arm64.apk` | Android arm64 |
+
+Put a 3.3.5a `Data` folder beside the executable, or start it with `-datadir /path/to/client` (the folder that contains `Data`).
+
+Compiling it yourself is the rest of this section. In-source builds are refused—use a separate `build/` directory. The `cmake --build … --target WowClient` line is what produces the game binary.
 
 `--target WowClient` is the game binary alone. It does not build wasm addon packages, the addon test host, or copy anything into `Interface/WasmAddOns`. `Tools/dev-station.sh` is an optional local play setup that does those extra steps.
 
@@ -248,9 +259,9 @@ cmake --build <build-dir> --target GxVulkanShadersRegenerate
 
 On every push/PR, see the **[Build & CI status](#build--ci-status)** table for job names and what each platform compiles.
 
-**Prebuilt binaries:** push a version tag (`v0.1.0`, etc.) to run [`.github/workflows/release.yml`](.github/workflows/release.yml)—**Linux x86_64**, **Windows x64**, **Windows ARM64** (when that job succeeds), and **Android arm64**. **macOS** is not shipped. Game `Data` is never included. The Android package expects a `WoW.mfil` CDN instead of a bundled `Data` folder.
+**Prebuilt binaries:** every push to `main` runs [`.github/workflows/release.yml`](.github/workflows/release.yml) and replaces the [latest build](https://github.com/RosemyneH/wowdecomp/releases/tag/continuous) prerelease (**Linux x86_64**, **Windows x64**, **Windows ARM64** when that job succeeds, **Android arm64**). A version tag (`v0.1.0`) publishes a normal release with the same archives. **macOS** is not shipped. Game `Data` is never included. The Android package expects a `WoW.mfil` CDN instead of a bundled `Data` folder.
 
-Workflow artifacts from non-tag CI runs: `linux-x64-WowClient64`, `windows-x64-WowClient64`, `windows-arm64-WowClient64` when the ARM job passes, and `android-arm64-wowdecomp`.
+The same commits also leave raw binaries as Actions artifacts: `linux-x64-WowClient64`, `windows-x64-WowClient64`, `windows-arm64-WowClient64` when the ARM job passes, and `android-arm64-wowdecomp`.
 
 ---
 

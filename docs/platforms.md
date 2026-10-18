@@ -14,7 +14,7 @@ What builds, what a release archive contains, and how the two launch modes diffe
 | macOS Apple Silicon | `Os` and `Gx` only | None | MoltenVK. The full client still fails to link |
 | macOS Intel | None | None | Same stack if you build it locally |
 
-Tag a version (`v0.1.0`) to run the release workflow. Game `Data` is never in the archive. CI artifacts from ordinary pushes are `linux-x64-WowClient64`, `windows-x64-WowClient64`, `windows-arm64-WowClient64`, and `android-arm64-wowdecomp`.
+Pushes to `main` publish those archives on the [latest build](https://github.com/RosemyneH/wowdecomp/releases/tag/continuous) prerelease. A version tag (`v0.1.0`) publishes a normal release as well. Game `Data` is never in the archive. CI artifacts from ordinary pushes are `linux-x64-WowClient64`, `windows-x64-WowClient64`, `windows-arm64-WowClient64`, and `android-arm64-wowdecomp`.
 
 The Android package is a native activity. SDL3 creates the Vulkan surface. A plugged-in gamepad uses the same mapping as Linux. Touch arrives as mouse clicks. The first launch writes `WoW.mfil` into the app files directory so archives can stream from an HTTP CDN. That manifest format, and the server that serves the range requests, are brian8544's GPL-2.0 streaming client: [streamingclient-3.3.5](https://github.com/brian8544/streamingclient-3.3.5) and [mod-streamingclient](https://github.com/brian8544/mod-streamingclient). The server sources are in `ThirdParty/streamingclient/`. The Docker AzerothCore stack serves those archives from nginx on port 1119 (`Tools/local-server/start-docker.sh`). Sound and in-game cinematics are not available in the Android build.
 

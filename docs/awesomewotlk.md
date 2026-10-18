@@ -115,7 +115,7 @@ On Windows every speak request finishes as `unavailable`. The Lua functions are 
 | CVar | Default | Effect |
 |---|---|---|
 | `cameraIndirectVisibility` | 0 | `1` lets the camera pass through world objects. See [World](world.md) |
-| `cameraFov` | 100 | Applied after you set it. 1–200, and 100 is 90°. See [World](world.md) |
+| `cameraFov` | 100 | 1–200, and 100 is 90°. Missing or `0` uses 100, so a new `Config.wtf` is not stuck in the character's feet. See [World](world.md) |
 | `showPlayer` | 1 | `0` hides the player model |
 | `enableStancePatch` | 0 | After a form or stance spell succeeds, writes the form byte the stock client sometimes leaves stale |
 | `cameraIndirectAlpha` | 0.6 | Stored only |
