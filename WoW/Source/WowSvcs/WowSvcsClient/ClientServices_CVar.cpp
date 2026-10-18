@@ -31,7 +31,8 @@ void ClientServices::InitLoginServerCVars(int32_t overwrite, const char* locale)
     char localeDir[260];
 
     if (locale && *locale) {
-        SStrPrintf(localeDir, sizeof(localeDir), "data\\%s\\", locale);
+        // ʕ •ᴥ•ʔ✿ The install directory is Data/, and Linux will not open data/. ✿ ʕ •ᴥ•ʔ
+        SStrPrintf(localeDir, sizeof(localeDir), "Data\\%s\\", locale);
     } else {
         localeDir[0] = '\0';
     }

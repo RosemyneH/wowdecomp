@@ -718,7 +718,8 @@ bool WowConnection::Connect(const char* address, int32_t timeout) {
 
         SStrCopy(host, address, length);
     } else {
-        this->m_connectPort = 0;
+        // ʕ •ᴥ•ʔ✿ realmlist.wtf is often just the host. Auth is 3724. ✿ ʕ •ᴥ•ʔ
+        this->m_connectPort = 3724;
         SStrCopy(host, address, sizeof(host));
     }
 

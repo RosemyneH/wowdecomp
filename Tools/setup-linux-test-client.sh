@@ -130,7 +130,7 @@ link_data_with_local_realmlist() {
                 fi
                 ln -sfn "$loc" "$dst/$locale/$leaf"
             done
-            printf 'set realmlist "%s"\n' "$REALM_HOST" > "$dst/$locale/realmlist.wtf"
+            printf 'set realmlist "%s"\n' "${REALM_HOST}:3724" > "$dst/$locale/realmlist.wtf"
         else
             ln -sfn "$item" "$dst/$base"
         fi
