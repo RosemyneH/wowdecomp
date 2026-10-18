@@ -685,6 +685,17 @@ int32_t CGCamera::FinishLoadingTarget(CGObject_C* target) {
             maxHeight = 15.0f;
         }
 
+        // ʕ •ᴥ•ʔ✿ A near-zero attachment leaves the eye at the feet. Pitch then drops it through the ground and collision pins it inside the mesh. ✿ ʕ •ᴥ•ʔ
+        float body = unit->m_movementData.m_collisionHeight;
+        if (body > 0.5f && this->m_targetHeightNear < body * 0.65f) {
+            float shoulder = body * 0.9f;
+            this->m_targetHeightNear = shoulder;
+            this->m_targetHeightFar = shoulder;
+            if (this->m_targetHeightSwim < shoulder * 0.5f) {
+                this->m_targetHeightSwim = shoulder * 0.5f;
+            }
+        }
+
         if (CGBarberShop::m_barberShopEnabled) {
             maxHeight *= 1.2;
         }
@@ -2544,7 +2555,7 @@ void CGCamera::CalcTargetCamera(CGObject_C* target, uint32_t time) {
         this->m_facing.RotateAroundY(this->m_targetOffset);
     }
 
-    if (this->m_distance - distance > 0.11111111f) {
+    if (this->m_distance - distance > 0.11111111f && ((this->m_state & 0x8) || distance > 1.0f || this->m_distance < 2.0f)) {
         this->m_state |= 0x4000000;
         this->m_smoothDistance.m_startTimeMs = time;
         this->m_distance = distance + 0.11111207f;
@@ -3734,7 +3745,7 @@ uint32_t CGCamera::CollideCameraWithWorld(const C3Vector& target, float& distanc
 
         float hitDistance = 1.0f;
 
-        if (World::Intersect(base, end, &hit, &hitDistance, flags, nullptr)) {
+        if (World::Intersect(base, end, &hit, &hitDistance, flags, nullptr) && hitDistance > 0.08f) {
             result |= 0x10000;
             distance = distance * hitDistance;
         }
