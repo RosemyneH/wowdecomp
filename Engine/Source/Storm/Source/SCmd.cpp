@@ -267,8 +267,11 @@ static int32_t ProcessToken(const char* string, int32_t quoted, _PROCESSING* pro
     }
 
     if (SStrChr("-/", *string) && !quoted) {
-        processing->ptr = nullptr;
-        return ProcessFlags(string + 1, processing, errorcallback);
+        // ʕ •ᴥ•ʔ✿ -datadir /home/... is a path, not another flag ✿ ʕ •ᴥ•ʔ
+        if (!(processing->ptr && *string == '/')) {
+            processing->ptr = nullptr;
+            return ProcessFlags(string + 1, processing, errorcallback);
+        }
     }
 
     int32_t datachars;

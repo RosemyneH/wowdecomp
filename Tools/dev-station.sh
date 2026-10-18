@@ -3,7 +3,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-GAME_SRC="${WOWDECOMP_GAME_SRC:-$HOME/Games/WoW335}"
+# shellcheck source=game-src.sh
+source "$ROOT/Tools/game-src.sh"
+GAME_SRC="$(wowdecomp_default_game_src)"
+export WOWDECOMP_GAME_SRC="$GAME_SRC"
 PLAY_DIR="${WOWDECOMP_PLAY_DIR:-$ROOT/test/dev-335}"
 BUILD_DIR="${WOWDECOMP_BUILD_DIR:-$ROOT/build/linux-dev}"
 RELEASE_BUILD_DIR="${WOWDECOMP_RELEASE_BUILD_DIR:-$ROOT/build/linux-release}"
@@ -38,11 +41,14 @@ Usage: $0 [all|deps|addons|scope|build|test|launch|release|smoke]
   scope    symlink $PLAY_DIR from $GAME_SRC and the built packages
   build    Ninja RelWithDebInfo (-O2 -g -DNDEBUG) WowClient, wasm_addon_host, wasm_addon_tests
   test     headless host tests against Addons/Wasm/dist
-  launch   start AzerothCore in Docker, then the RelWithDebInfo WowClient64 in the dev scope
+  launch   start AzerothCore in Docker, then RelWithDebInfo WowClient64 -datadir <play scope>
   release  build Release (-O3 -DNDEBUG) into a separate tree and launch that binary with MSDF fonts
   smoke    start the client, require it to stay up, then stop it
 
-Env: WOWDECOMP_GAME_SRC WOWDECOMP_PLAY_DIR WOWDECOMP_BUILD_DIR WOWDECOMP_RELEASE_BUILD_DIR WOWDECOMP_REALM_HOST
+  WowClient64 -datadir /path/to/client   install root (the folder that contains Data/)
+
+Env: WOWDECOMP_GAME_SRC (this host defaults to ~/Games/client) WOWDECOMP_PLAY_DIR
+     WOWDECOMP_BUILD_DIR WOWDECOMP_RELEASE_BUILD_DIR WOWDECOMP_REALM_HOST
      WOWDECOMP_PROFILE (on|off, default on; release defaults off — CPU zones in $PROFILE_SHM)
 EOF
 }
@@ -253,18 +259,38 @@ ensure_wow_disk() {
     fi
 }
 
-launch_client() {
-    ensure_wow_disk
-    if [[ ! -x "$PLAY_DIR/WowClient64" ]]; then
-        echo "Missing $PLAY_DIR/WowClient64 — run: $0 build" >&2
+client_binary() {
+    local name="$1"
+    if [[ -x "$ROOT/bin/Linux/$name" ]]; then
+        printf '%s\n' "$ROOT/bin/Linux/$name"
+        return
+    fi
+    printf '%s\n' "$PLAY_DIR/$name"
+}
+
+# ʕ •ᴥ•ʔ✿ -datadir is the install root. The play scope holds Data, WTF, and WasmAddOns ✿ ʕ •ᴥ•ʔ
+exec_client() {
+    local bin="$1"
+    if [[ ! -x "$bin" ]]; then
+        echo "Missing $bin — run: $0 build" >&2
         exit 1
     fi
+    if [[ ! -d "$PLAY_DIR/Data" ]]; then
+        echo "Missing $PLAY_DIR/Data — run: $0 scope" >&2
+        exit 1
+    fi
+    echo "datadir: $PLAY_DIR"
+    echo "MPQs:    $GAME_SRC"
+    exec "$bin" -datadir "$PLAY_DIR"
+}
+
+launch_client() {
+    ensure_wow_disk
     WOWDECOMP_SERVER_BACKEND=docker "$ROOT/Tools/local-server/start.sh"
     apply_profiler_env
     profiler_launch_note
-    echo "RelWithDebInfo (-O2 -g -DNDEBUG): $PLAY_DIR/WowClient64"
-    cd "$PLAY_DIR"
-    exec ./WowClient64
+    echo "RelWithDebInfo (-O2 -g -DNDEBUG)"
+    exec_client "$(client_binary WowClient64)"
 }
 
 enable_release_msdf() {
@@ -299,17 +325,19 @@ launch_release() {
     : "${WOWDECOMP_PROFILE:=off}"
     apply_profiler_env
     profiler_launch_note
-    # ʕ •ᴥ•ʔ✿ /proc/self/exe is the Data root. A symlink resolves back to bin/Linux ✿ ʕ •ᴥ•ʔ
-    local play_bin="$PLAY_DIR/WowClient64.release"
-    cp -fl "$RELEASE_BIN" "$play_bin" 2>/dev/null || cp -f "$RELEASE_BIN" "$play_bin"
-    echo "Release (-O3 -DNDEBUG, gxMsdfFonts=1): $play_bin"
-    cd "$PLAY_DIR"
-    exec ./WowClient64.release
+    echo "Release (-O3 -DNDEBUG, gxMsdfFonts=1)"
+    exec_client "$RELEASE_BIN"
 }
 
 smoke_launch() {
-    if [[ ! -x "$PLAY_DIR/WowClient64" ]]; then
-        echo "Missing $PLAY_DIR/WowClient64 — run: $0 build" >&2
+    local bin
+    bin="$(client_binary WowClient64)"
+    if [[ ! -x "$bin" ]]; then
+        echo "Missing $bin — run: $0 build" >&2
+        exit 1
+    fi
+    if [[ ! -d "$PLAY_DIR/Data" ]]; then
+        echo "Missing $PLAY_DIR/Data — run: $0 scope" >&2
         exit 1
     fi
     mkdir -p "$PLAY_DIR/Logs"
@@ -317,7 +345,7 @@ smoke_launch() {
     : >"$log"
     apply_profiler_env
     set +e
-    (cd "$PLAY_DIR" && ./WowClient64) >"$log" 2>&1 &
+    "$bin" -datadir "$PLAY_DIR" >"$log" 2>&1 &
     local pid=$!
     local i alive=0
     for i in 1 2 3 4 5 6 7 8; do

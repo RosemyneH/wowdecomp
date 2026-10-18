@@ -1694,8 +1694,6 @@ void ForEveryRunOnceWTF::Execute(int32_t (*callback)(const char*)) {
 // VERIFY: f4d6d325 manual
 // OFFSET: 0x004067F0
 bool InitializeGlobal() {
-    SCmdRegisterArgList(s_wowArgList, sizeof(s_wowArgList) / sizeof(s_wowArgList[0]));
-    CmdLineProcess();
     ConsoleSetLogTee(CmdLineGetBool(static_cast<CMDOPT>(CMD_CONSOLE_LOG)));
     LoadMFIL("WoW.mfil");
 
@@ -1842,6 +1840,9 @@ int32_t CommonMain() {
     StormSetOption(11, &option, sizeof(option));
 
     OsSystemEnableCpuLog();
+    // ʕ •ᴥ•ʔ✿ -datadir has to land before the exe directory becomes the data root ✿ ʕ •ᴥ•ʔ
+    SCmdRegisterArgList(s_wowArgList, sizeof(s_wowArgList) / sizeof(s_wowArgList[0]));
+    CmdLineProcess();
     SetPaths();
 
     uint32_t sendErrorLogs = 1;

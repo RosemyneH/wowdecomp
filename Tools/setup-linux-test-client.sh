@@ -19,6 +19,14 @@ usage() {
 }
 
 default_game_src() {
+    local resolved
+    # shellcheck source=game-src.sh
+    source "$ROOT/Tools/game-src.sh"
+    resolved="$(wowdecomp_default_game_src)"
+    if [[ -d "$resolved/Data" ]]; then
+        echo "$resolved"
+        return
+    fi
     if [[ -d "${HOME}/Games/WoW335/Data" ]]; then
         echo "${HOME}/Games/WoW335"
         return

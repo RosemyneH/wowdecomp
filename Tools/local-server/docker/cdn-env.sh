@@ -3,7 +3,10 @@
 # ʕ •ᴥ•ʔ✿ Fills COMPOSE_EXTRA and the bind-mount env the streaming compose file reads ✿ ʕ •ᴥ•ʔ
 wowdecomp_prepare_cdn() {
     local root="$1"
-    local game_src="${WOWDECOMP_GAME_SRC:-$HOME/Games/WoW335}"
+    # shellcheck source=../../game-src.sh
+    source "$root/Tools/game-src.sh"
+    local game_src
+    game_src="$(wowdecomp_default_game_src)"
     local data="$game_src/Data"
 
     COMPOSE_EXTRA=()

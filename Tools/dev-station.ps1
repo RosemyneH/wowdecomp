@@ -91,8 +91,8 @@ function Invoke-Release {
     Invoke-Server
     Set-GxApi 'Vulkan'
     Write-Host "Release (/O2 /DNDEBUG, gxApi Vulkan): $dest"
-    Set-Location $PlayDir
-    & $dest
+    Write-Host "datadir: $PlayDir"
+    & $dest -datadir $PlayDir
 }
 
 function Invoke-Launch {
@@ -103,8 +103,8 @@ function Invoke-Launch {
     }
     Invoke-Server
     Write-Host "Launching: $client"
-    Set-Location $PlayDir
-    & $client
+    Write-Host "datadir: $PlayDir"
+    & $client -datadir $PlayDir
 }
 
 switch ($Command) {
