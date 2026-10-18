@@ -1,8 +1,7 @@
 name: macos-arm64
 
+# ʕ •ᴥ•ʔ✿ Not tested. Manual only, so it does not sit next to the Windows and Linux clients. ✿ ʕ •ᴥ•ʔ
 on:
-  push:
-  pull_request:
   workflow_dispatch:
 
 concurrency:

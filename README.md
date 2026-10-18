@@ -15,7 +15,7 @@ Join the Discord for other clients and to show off cool stuff you build: https:/
 | Area | Status in this fork |
 |------|---------------------|
 | **Vulkan renderer** | Default backend wherever the full client builds (MoltenVK on macOS **Gx**). **Windows x64** still exposes Direct3D 9 and OpenGL; **Windows on ARM64** and **Linux** are **Vulkan-only** at the Gx layer. |
-| **Cross-platform** | See **[Build & CI status](#build--ci-status)** below—full **WowClient** CI covers **Windows x64**, **Windows ARM64**, and **Linux x86_64**; **macOS** is a partial **Os + Gx** compile only; **Linux aarch64** is local/cross-build via `cmake/Toolchain-Clang-aarch64-linux.cmake` (no CI yet). |
+| **Cross-platform** | Tested CI is **Windows x64** and **Linux x86_64** only. macOS has not been tested. Android, Windows ARM64, and Linux aarch64 are local builds, not release clients. |
 | **Custom Vulkan shaders** | GLSL sources under `Engine/Source/Gx/CGxDeviceVulkan/Shaders/`; SPIR-V is embedded in-tree. Regenerate with the `GxVulkanShadersRegenerate` CMake target when `glslc` is installed. |
 | **Lighting & fog** | Classic fixed-function lighting and linear distance fog in the Vulkan FFP shaders (`Ffp.vert`, `Ffp.frag`, `FfpTerrain.frag`), plus the existing `ShaderEffect` stack. Volumetric fog, aerial haze, ambient occlusion, bloom, god rays, and tone mapping are **not** in this tree. |
 | **WASM addons** | Host runtime (`WasmAddon`, Wasmtime) for sandboxed `wasm32` addons. GitHub reading: [`Addons/Wasm/README.md`](Addons/Wasm/README.md), [`docs/lua-wasm.md`](docs/lua-wasm.md), [`docs/wasm-addon-architecture.md`](docs/wasm-addon-architecture.md). Wiki: [wowdecomp/wiki](https://github.com/RosemyneH/wowdecomp/wiki). Install addons under `Interface/WasmAddOns/`. |
@@ -45,13 +45,12 @@ What **GitHub Actions** exercises on every push/PR, what **releases** ship, and 
 
 | OS / arch | CI workflow | CI builds | Release archive | Typical graphics | Playability notes |
 |-----------|---------------|-----------|--------------------|------------------|-------------------|
-| **Windows x64** | [`windows-x64`](.github/workflows/windows.yml) | **WowClient** (Ninja, Release) | `wowdecomp-windows-x64.zip` | Vulkan (default) + D3D9 + OpenGL | Main reference path; closest to “retail-like” on this fork. |
-| **Windows ARM64** | same workflow, job **`build-arm64`** | **WowClient** on `windows-11-arm` | `wowdecomp-windows-arm64.zip` when the ARM job succeeds | **Vulkan only** (no D3D9/NvAPI/OpenGL in the build) | CI job uses `continue-on-error: true` so x64 stays authoritative if ARM regresses; **currently building in CI**. |
-| **Linux x86_64** | [`linux-x64`](.github/workflows/linux.yml) | **WowClient** (Ninja, RelWithDebInfo) | `wowdecomp-linux-x86_64.tar.gz` | Vulkan on the session window | Experimental. Wayland sessions get a Wayland window. X11 sessions stay on X11. `SDL_VIDEODRIVER` overrides that. Gamepads use SDL3. |
-| **Android arm64** | [`android-arm64`](.github/workflows/android.yml) | **WowClient** as `libmain.so` inside an APK | `wowdecomp-android-arm64.apk` | Vulkan on an SDL surface | Native app, API 33+. First launch writes a starter `WoW.mfil`. Audio and cinematics are not hooked up yet. |
-| **Linux aarch64** | — | *not in CI* | — | Vulkan only (expected) | Cross-build with `cmake/Toolchain-Clang-aarch64-linux.cmake`; treat as untested in automation. |
-| **macOS Apple Silicon** | [`macos-arm64`](.github/workflows/macos.yml) | **Os + Gx** static libs only | *not published* | MoltenVK via **Gx** | Full **WowClient** still fails to link (e.g. `malloc.h`, FMOD codec paths)—CI is a compile smoke test, not a runnable client. |
-| **macOS Intel** | — | *not in CI* | — | Same stack as arm64 locally | No automated build; use `-DCMAKE_OSX_ARCHITECTURES=x86_64` if you try it. |
+| **Windows x64** | [`windows-x64`](.github/workflows/windows.yml) | **WowClient** (Ninja, Release) | `wowdecomp-windows-x64.zip` | Vulkan (default) + D3D9 + OpenGL | The tested Windows client. |
+| **Linux x86_64** | [`linux-x64`](.github/workflows/linux.yml) | **WowClient** (Ninja, RelWithDebInfo) | `wowdecomp-linux-x86_64.tar.gz` | Vulkan on the session window | The tested Linux client. Wayland sessions get a Wayland window. X11 sessions stay on X11. |
+| **Windows ARM64** | — | *not in CI* | — | Vulkan only if you build it | Local Ninja build only. |
+| **Android arm64** | manual [`android-arm64`](.github/workflows/android.yml) | *not on push* | — | Vulkan on an SDL surface | Not a tested client. |
+| **Linux aarch64** | — | *not in CI* | — | Vulkan only (expected) | Cross-build with `cmake/Toolchain-Clang-aarch64-linux.cmake`. |
+| **macOS** | manual [`macos-arm64`](.github/workflows/macos.yml) | *not on push* | — | MoltenVK via **Gx** | Not tested. The workflow only compiles `Os` and `Gx`, and only when started by hand. |
 
 Other automation: [`generated-drift`](.github/workflows/generated-drift.yml) regenerates embedded Vulkan SPIR-V when GLSL under `Engine/Source/Gx/CGxDeviceVulkan/Shaders/` changes.
 
@@ -139,14 +138,12 @@ Or use `.\Tools\dev-station.ps1 all` for scope + server, or `launch` to also sta
 
 ## Building
 
-Prebuilt clients are on the [latest build](https://github.com/RosemyneH/wowdecomp/releases/tag/continuous) release, updated from `main` by [`.github/workflows/release.yml`](.github/workflows/release.yml). A version tag (`v0.1.0`) publishes a normal release with the same archives. Each push also uploads the binaries as Actions artifacts (`linux-x64-WowClient64`, `windows-x64-WowClient64`, `windows-arm64-WowClient64`, `android-arm64-wowdecomp`). Game `Data` is not in any of those files.
+Prebuilt clients are on the [latest build](https://github.com/RosemyneH/wowdecomp/releases/tag/continuous) release, updated from `main` by [`.github/workflows/release.yml`](.github/workflows/release.yml). A version tag (`v0.1.0`) publishes a normal release with the same archives. Each push also uploads `linux-x64-WowClient64` and `windows-x64-WowClient64` as Actions artifacts. Game `Data` is not in either archive.
 
 | Archive | Platform |
 |---------|----------|
 | `wowdecomp-linux-x86_64.tar.gz` | Linux x86_64, `WowClient64` |
 | `wowdecomp-windows-x64.zip` | Windows x64, `WowClient64.exe` |
-| `wowdecomp-windows-arm64.zip` | Windows on ARM, when that job succeeds |
-| `wowdecomp-android-arm64.apk` | Android arm64 |
 
 Put a 3.3.5a `Data` folder beside the executable, or start it with `-datadir /path/to/client` (the folder that contains `Data`).
 
@@ -210,7 +207,7 @@ For **aarch64** Linux cross-builds (no CI), see `cmake/Toolchain-Clang-aarch64-l
 
 ### Android (experimental)
 
-Matches [`android-arm64`](.github/workflows/android.yml). This produces a native APK, not a desktop binary. Gradle drives CMake with the NDK. `SDL3_ROOT` must be an SDL **3.4.16** checkout so the Java activity and the native library are the same release.
+Not part of CI. [`android-arm64`](.github/workflows/android.yml) runs only when started by hand. This produces a native APK, not a desktop binary. Gradle drives CMake with the NDK. `SDL3_ROOT` must be an SDL **3.4.16** checkout so the Java activity and the native library are the same release.
 
 ```bash
 curl -fsSL -o sdl.tgz https://github.com/libsdl-org/SDL/archive/refs/tags/release-3.4.16.tar.gz
@@ -226,7 +223,7 @@ The APK is `android/app/build/outputs/apk/release/app-release.apk`. It is signed
 
 ### macOS (experimental, partial)
 
-You can configure the full tree locally, but **CI only builds `Os` and `Gx`** until the macOS **WowClient** port catches up. Smoke build (same as [`macos-arm64`](.github/workflows/macos.yml)):
+macOS is not tested and is not part of CI. A hand-started [`macos-arm64`](.github/workflows/macos.yml) run only compiles `Os` and `Gx`. Local smoke:
 
 ```bash
 brew install ninja sdl2 xvid molten-vk vulkan-loader vulkan-headers vulkan-tools
@@ -259,9 +256,9 @@ cmake --build <build-dir> --target GxVulkanShadersRegenerate
 
 On every push/PR, see the **[Build & CI status](#build--ci-status)** table for job names and what each platform compiles.
 
-**Prebuilt binaries:** every push to `main` runs [`.github/workflows/release.yml`](.github/workflows/release.yml) and replaces the [latest build](https://github.com/RosemyneH/wowdecomp/releases/tag/continuous) prerelease (**Linux x86_64**, **Windows x64**, **Windows ARM64** when that job succeeds, **Android arm64**). A version tag (`v0.1.0`) publishes a normal release with the same archives. **macOS** is not shipped. Game `Data` is never included. The Android package expects a `WoW.mfil` CDN instead of a bundled `Data` folder.
+**Prebuilt binaries:** every push to `main` runs [`.github/workflows/release.yml`](.github/workflows/release.yml) and replaces the [latest build](https://github.com/RosemyneH/wowdecomp/releases/tag/continuous) prerelease with **Linux x86_64** and **Windows x64**. A version tag (`v0.1.0`) publishes a normal release with those same two archives. macOS, Android, and Windows ARM are not shipped. Game `Data` is never included.
 
-The same commits also leave raw binaries as Actions artifacts: `linux-x64-WowClient64`, `windows-x64-WowClient64`, `windows-arm64-WowClient64` when the ARM job passes, and `android-arm64-wowdecomp`.
+The same commits also leave raw binaries as Actions artifacts: `linux-x64-WowClient64` and `windows-x64-WowClient64`.
 
 ---
 

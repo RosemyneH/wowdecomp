@@ -1,8 +1,7 @@
 name: android-arm64
 
+# ʕ •ᴥ•ʔ✿ Not part of the tested clients. Manual only. ✿ ʕ •ᴥ•ʔ
 on:
-  push:
-  pull_request:
   workflow_dispatch:
 
 concurrency:

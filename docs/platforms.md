@@ -2,19 +2,18 @@
 
 What builds, what a release archive contains, and how the two launch modes differ. Exact CMake lines and package lists are in the [README](https://github.com/RosemyneH/wowdecomp/blob/main/README.md).
 
-**WowClient** is the game executable (`Tools/WowClient`). **Os + Gx** is only the platform and graphics libraries, which is as far as macOS CI gets.
+**WowClient** is the game executable (`Tools/WowClient`). Tested CI and the published archives are Windows x64 and Linux x86_64. macOS has not been tested.
 
 | OS / arch | CI | Release archive | Graphics in that build |
 |---|---|---|---|
 | Windows x64 | Full WowClient | `wowdecomp-windows-x64.zip` | Vulkan by default, plus D3D9 and OpenGL |
-| Windows ARM64 | Full WowClient on `windows-11-arm`. The job is allowed to fail without failing x64 | `wowdecomp-windows-arm64.zip` when the ARM job succeeds | Vulkan only |
 | Linux x86_64 | Full WowClient | `wowdecomp-linux-x86_64.tar.gz` | Vulkan only |
-| Android arm64 | Full WowClient inside an APK ([`android-arm64`](../.github/workflows/android.yml)) | `wowdecomp-android-arm64.apk` | Vulkan only. API 33+ |
-| Linux aarch64 | None yet | None | Vulkan, via `cmake/Toolchain-Clang-aarch64-linux.cmake` |
-| macOS Apple Silicon | `Os` and `Gx` only | None | MoltenVK. The full client still fails to link |
-| macOS Intel | None | None | Same stack if you build it locally |
+| Windows ARM64 | None | None | Vulkan only if you build it locally |
+| Android arm64 | Manual workflow only | None | Vulkan only. API 33+ |
+| Linux aarch64 | None | None | Vulkan, via `cmake/Toolchain-Clang-aarch64-linux.cmake` |
+| macOS | Manual workflow only, `Os` and `Gx` | None | Not tested |
 
-Pushes to `main` publish those archives on the [latest build](https://github.com/RosemyneH/wowdecomp/releases/tag/continuous) prerelease. A version tag (`v0.1.0`) publishes a normal release as well. Game `Data` is never in the archive. CI artifacts from ordinary pushes are `linux-x64-WowClient64`, `windows-x64-WowClient64`, `windows-arm64-WowClient64`, and `android-arm64-wowdecomp`.
+Pushes to `main` publish the Windows and Linux archives on the [latest build](https://github.com/RosemyneH/wowdecomp/releases/tag/continuous) prerelease. A version tag (`v0.1.0`) publishes a normal release as well. Game `Data` is never in the archive. CI artifacts from ordinary pushes are `linux-x64-WowClient64` and `windows-x64-WowClient64`.
 
 The Android package is a native activity. SDL3 creates the Vulkan surface. A plugged-in gamepad uses the same mapping as Linux. Touch arrives as mouse clicks. The first launch writes `WoW.mfil` into the app files directory so archives can stream from an HTTP CDN. That manifest format, and the server that serves the range requests, are brian8544's GPL-2.0 streaming client: [streamingclient-3.3.5](https://github.com/brian8544/streamingclient-3.3.5) and [mod-streamingclient](https://github.com/brian8544/mod-streamingclient). The server sources are in `ThirdParty/streamingclient/`. The Docker AzerothCore stack serves those archives from nginx on port 1119 (`Tools/local-server/start-docker.sh`). Sound and in-game cinematics are not available in the Android build.
 

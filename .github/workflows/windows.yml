@@ -33,28 +33,3 @@ jobs:
           name: windows-x64-WowClient64
           path: bin/Win/WowClient64.exe
           if-no-files-found: error
-
-  build-arm64:
-    runs-on: windows-11-arm
-    continue-on-error: true
-    env:
-      BUILD_DIR: build/arm64
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: arm64
-
-      - name: Configure
-        run: cmake -S . -B $env:BUILD_DIR -G Ninja -DCMAKE_BUILD_TYPE=Release
-
-      - name: Build WowClient
-        run: cmake --build $env:BUILD_DIR --target WowClient --parallel
-
-      - uses: actions/upload-artifact@v4
-        if: success()
-        with:
-          name: windows-arm64-WowClient64
-          path: bin/Win/WowClient64.exe
-          if-no-files-found: error
