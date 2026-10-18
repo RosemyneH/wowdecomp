@@ -24,6 +24,7 @@
 #include "WoW/Source/DB/Rec/ChatChannelsRec.h"
 #include "WoW/Source/Game/GameClient/ComSatClient.h"
 #include "Engine/Source/ConsoleBase/ConsoleVar.h"
+#include "Engine/Source/ConsoleBase/IConsole.h"
 #include "WoW/Source/WowSvcs/WowSvcsClient/FriendList.h"
 #include "WoW/Source/DB/DBClient/DBCacheInstances.h"
 #include "WoW/Source/Game/GameClient/NameCache.h"
@@ -236,6 +237,35 @@ int32_t CGChat::SendNative(int32_t type, uint32_t language, const char* target, 
     return 0;
 }
 
+// ʕ •ᴥ•ʔ✿ A chat frame that never hashed /console sends the line as say. Run it here instead. ✿ ʕ •ᴥ•ʔ
+static bool ConsumeConsoleSlash(const char* text) {
+    if (!text || text[0] != '/') {
+        return false;
+    }
+
+    const char* body = text + 1;
+    while (*body == ' ' || *body == '\t') {
+        body++;
+    }
+
+    if (SStrCmpI(body, "console", 7) != 0) {
+        return false;
+    }
+
+    char next = body[7];
+    if (next != '\0' && next != ' ' && next != '\t') {
+        return false;
+    }
+
+    const char* args = body + 7;
+    while (*args == ' ' || *args == '\t') {
+        args++;
+    }
+
+    ConsoleCommandExecute(args, 1);
+    return true;
+}
+
 static int32_t Script_SendChatMessage(lua_State* L) {
     if (!CGGameUI::CanPerformAction(10)) {
         return 0;
@@ -252,6 +282,9 @@ static int32_t Script_SendChatMessage(lua_State* L) {
     }
 
     const char* text = lua_tolstring(L, 1, nullptr);
+    if (ConsumeConsoleSlash(text)) {
+        return 0;
+    }
     int32_t type = CHAT_MSG_SAY;
 
     if (lua_isstring(L, 2)) {

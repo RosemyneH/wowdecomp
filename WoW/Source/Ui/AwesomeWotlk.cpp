@@ -969,6 +969,36 @@ static void SetTableFunction(lua_State* L, const char* table, const char* name, 
     lua_pop(L, 1);
 }
 
+static bool s_consoleSlash = false;
+static int32_t s_consoleSlashTries = 0;
+
+static void RegisterConsoleSlash() {
+    if (s_consoleSlash) {
+        return;
+    }
+
+    lua_State* L = FrameScript_GetContext();
+    if (!L) {
+        return;
+    }
+
+    FrameScript_Execute(
+        "SLASH_CONSOLE1 = \"/console\"\n"
+        "if not SlashCmdList then SlashCmdList = {} end\n"
+        "SlashCmdList[\"CONSOLE\"] = function(msg) ConsoleExec(msg) end\n"
+        "if hash_SlashCmdList then hash_SlashCmdList[\"/CONSOLE\"] = SlashCmdList[\"CONSOLE\"] end\n",
+        "console-slash",
+        nullptr);
+
+    int top = lua_gettop(L);
+    lua_getfield(L, LUA_GLOBALSINDEX, "hash_SlashCmdList");
+    bool hashed = lua_istable(L, -1);
+    lua_settop(L, top);
+    if (hashed || ++s_consoleSlashTries > 300) {
+        s_consoleSlash = true;
+    }
+}
+
 static void RegisterSlash() {
     if (s_slash) return;
     lua_State* L = FrameScript_GetContext();
@@ -990,6 +1020,7 @@ static void RegisterSlash() {
 void AwesomeWotlkService() {
     if (s_ground && ++s_groundAge > 1) s_ground = 0;
     RegisterSlash();
+    RegisterConsoleSlash();
     RunInteract();
     ServiceSpeech();
     ApplyShowPlayer();
