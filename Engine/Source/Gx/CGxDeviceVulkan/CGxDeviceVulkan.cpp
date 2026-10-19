@@ -34,6 +34,10 @@ static const uint32_t s_fxaaFragmentCode[] =
 #include "Fxaa.frag.inc"
 ;
 
+static int32_t ShaderDesaturates(CGxShader* shader) {
+    return shader && shader->m_key.m_str && !SStrCmpI(shader->m_key.m_str, "Desaturate", STORM_MAX_STR);
+}
+
 static_assert(sizeof(GpuDrawItem) == 448, "GpuDrawItem must match Ffp.vert");
 static_assert(offsetof(GpuDrawItem, tex0) == 64, "GpuDrawItem.tex0");
 static_assert(offsetof(GpuDrawItem, tex1) == 128, "GpuDrawItem.tex1");
@@ -1659,6 +1663,11 @@ void CGxDeviceVulkan::IBuildUniforms(VkDrawUniforms& uniforms) {
 
     uniforms.stageColorOp[2] = -1;
     uniforms.stageColorOp[3] = -1;
+
+    // ʕ •ᴥ•ʔ✿ stageColorOp.z is unused by the combiners. It flags the Desaturate stand-in ✿ ʕ •ᴥ•ʔ
+    if (ShaderDesaturates(static_cast<CGxShader*>(rs[GxRs_PixelShader].m_value.m_data.p))) {
+        uniforms.stageColorOp[2] = 1;
+    }
     uniforms.stageAlphaOp[2] = -1;
     uniforms.stageAlphaOp[3] = -1;
 
@@ -3495,6 +3504,11 @@ bool CGxDeviceVulkan::QueryGetData(CGxQuery* query, uint32_t& data) {
 void CGxDeviceVulkan::IShaderCreate(CGxShader* shader) {
     shader->m_valid = 0;
     shader->m_loaded = this->m_context != 0;
+
+    // ʕ •ᴥ•ʔ✿ .bls never loads here. SetDesaturated has to succeed or FrameXML just darkens the icon ✿ ʕ •ᴥ•ʔ
+    if (shader->m_target == GxSh_Pixel && ShaderDesaturates(shader)) {
+        shader->m_valid = 1;
+    }
 }
 
 void CGxDeviceVulkan::IShaderReload(CGxShader* shader, const char* path, const char* name) {
