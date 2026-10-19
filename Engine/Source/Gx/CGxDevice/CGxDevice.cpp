@@ -1926,7 +1926,6 @@ void CGxDevice::WaitForFPSCap() {
         maxFps = 8;
     }
 
-    // ʕ •ᴥ•ʔ✿ Sleep(1) wakes in ~3ms on Windows and pins the counter at 333 ✿ ʕ •ᴥ•ʔ
     uint64_t clocksPerSecond = static_cast<uint64_t>(OsGetAsyncClocksPerSecond());
     if (clocksPerSecond < 1000) {
         clocksPerSecond = 1000;
@@ -1939,9 +1938,14 @@ void CGxDevice::WaitForFPSCap() {
 
     uint64_t now = OsGetAsyncTimeClocks();
     if (s_nextFrameClock > now && s_nextFrameClock - now < clocksPerSecond) {
-        uint64_t remainMs = (s_nextFrameClock - now) * 1000 / clocksPerSecond;
-        if (remainMs > 1) {
-            OsSleep(static_cast<uint32_t>(remainMs - 1));
+        uint64_t remaining = s_nextFrameClock - now;
+        // ʕ •ᴥ•ʔ✿ OsSleep(1) often costs ~3ms on Windows; only coarse-sleep when far from the target ✿ ʕ •ᴥ•ʔ
+        uint64_t coarseSleepMin = clocksPerSecond / 100;
+        if (remaining > coarseSleepMin) {
+            uint64_t sleepMs = (remaining - clocksPerSecond / 200) * 1000 / clocksPerSecond;
+            if (sleepMs) {
+                OsSleep(static_cast<uint32_t>(sleepMs));
+            }
         }
 
         while (OsGetAsyncTimeClocks() < s_nextFrameClock) {

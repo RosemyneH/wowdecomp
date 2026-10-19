@@ -1,6 +1,7 @@
 #if defined(WOWDECOMP_ARCH_32)
 
 #include <windows.h>
+#include <timeapi.h>
 #include <cstdlib>
 #include <float.h>
 #include "Engine/Source/Storm/H/storm.h"
@@ -28,6 +29,7 @@ extern "C" int start() {
 // VERIFY: d518fe65 auto
 // OFFSET: 0x00406D70
 int main() {
+    timeBeginPeriod(1);
     _set_invalid_parameter_handler(InvalidParameterHandler);
     _clearfp();
     _control87(0x9001F, 0xFFFFFFFF);
