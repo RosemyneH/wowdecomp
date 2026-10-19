@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iterator>
+#include <vector>
 #include "Engine/Source/Gx/CGxDeviceVulkan/VkContext.h"
 #include "Engine/Source/Os/Gui.h"
 
@@ -148,7 +149,14 @@ int32_t VkContext::CreateDevice(VkSurfaceKHR surface) {
     std::vector<VkPhysicalDevice> devices(count);
     vkEnumeratePhysicalDevices(this->m_instance, &count, devices.data());
 
-    int32_t bestScore = -1;
+    struct Candidate {
+        VkPhysicalDevice device;
+        VkPhysicalDeviceProperties properties;
+        uint32_t family;
+        int32_t score;
+    };
+
+    std::vector<Candidate> candidates;
 
     for (VkPhysicalDevice device : devices) {
         VkPhysicalDeviceProperties properties;
@@ -172,24 +180,38 @@ int32_t VkContext::CreateDevice(VkSurfaceKHR surface) {
             }
 
             int32_t score = properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? 2 : properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU ? 1 : 0;
-
-            if (score > bestScore) {
-                bestScore = score;
-                this->m_physicalDevice = device;
-                this->m_properties = properties;
-                this->m_queueFamily = family;
-            }
-
+            candidates.push_back({ device, properties, family, score });
             break;
         }
     }
 
-    if (bestScore < 0) {
+    std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) {
+        return a.score > b.score;
+    });
+
+    if (candidates.empty()) {
         return 0;
     }
 
-    vkGetPhysicalDeviceMemoryProperties(this->m_physicalDevice, &this->m_memoryProperties);
-    this->ChooseHeaps();
+    for (const Candidate& candidate : candidates) {
+        this->m_physicalDevice = candidate.device;
+        this->m_properties = candidate.properties;
+        this->m_queueFamily = candidate.family;
+        vkGetPhysicalDeviceMemoryProperties(this->m_physicalDevice, &this->m_memoryProperties);
+        this->ChooseHeaps();
+
+        if (this->FinishCreateDevice()) {
+            return 1;
+        }
+
+        std::fprintf(stderr, "vulkan: vkCreateDevice failed for %s, trying the next GPU\n", candidate.properties.deviceName);
+        this->DestroyDevice();
+    }
+
+    return 0;
+}
+
+int32_t VkContext::FinishCreateDevice() {
 
     VkPhysicalDeviceDescriptorIndexingFeatures indexingSupported = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES };
     VkPhysicalDeviceFeatures2 features2 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };

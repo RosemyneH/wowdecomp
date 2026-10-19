@@ -201,6 +201,7 @@ class VkContext {
 
     int32_t CreateInstance(const char* const* extensions, uint32_t extensionCount);
     int32_t CreateDevice(VkSurfaceKHR surface);
+    int32_t FinishCreateDevice();
     int32_t CreateDeviceResources();
     int32_t SetSurface(VkSurfaceKHR surface);
     void DestroySurface();
