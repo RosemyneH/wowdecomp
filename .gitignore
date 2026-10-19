@@ -417,6 +417,7 @@ FodyWeavers.xsd
 # Local Visual Studio CMake settings (absolute paths to re/tools)
 CMakeSettings.json
 /build/
+/out-server-items
 
 android/.gradle/
 android/local.properties
