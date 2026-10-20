@@ -418,6 +418,8 @@ void Configure(XdgRole* role) {
     if (!role || !role->xdg || !role->toplevel || !role->host) return;
     wl_array states;
     wl_array_init(&states);
+    uint32_t* state = static_cast<uint32_t*>(wl_array_add(&states, sizeof(uint32_t)));
+    if (state) *state = XDG_TOPLEVEL_STATE_ACTIVATED;
     xdg_toplevel_send_configure(role->toplevel, role->host->reqW, role->host->reqH, &states);
     wl_array_release(&states);
     xdg_surface_send_configure(role->xdg, NextSerial(role->host));
@@ -548,7 +550,7 @@ bool SplitApp(const std::string& text, std::vector<std::string>& args) {
     return !args.empty();
 }
 
-bool Spawn(Host* host, const std::vector<std::string>& args, char* error, uint32_t errorLen) {
+bool Spawn(Host* host, const std::vector<std::string>& args, char* error, uint32_t errorLen, bool waylandOnly) {
     std::vector<std::string> storage;
     std::vector<char*> argv;
     for (const std::string& arg : args) {
@@ -563,6 +565,10 @@ bool Spawn(Host* host, const std::vector<std::string>& args, char* error, uint32
         if (std::strncmp(*env, "WAYLAND_DISPLAY=", 16) == 0) {
             envStore.push_back(display);
             replaced = true;
+        } else if (std::strncmp(*env, "WAYLAND_SOCKET=", 15) == 0) {
+            continue;
+        } else if (waylandOnly && std::strncmp(*env, "DISPLAY=", 8) == 0) {
+            continue;
         } else {
             envStore.push_back(*env);
         }
@@ -571,8 +577,15 @@ bool Spawn(Host* host, const std::vector<std::string>& args, char* error, uint32
     std::vector<char*> envp;
     for (std::string& entry : envStore) envp.push_back(entry.data());
     envp.push_back(nullptr);
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    std::string logPath = "/tmp/" + host->socket + ".log";
+    int logfd = open(logPath.c_str(), O_CREAT | O_WRONLY | O_TRUNC | O_CLOEXEC, 0600);
+    if (logfd >= 0) posix_spawn_file_actions_adddup2(&actions, logfd, STDERR_FILENO);
     pid_t pid = 0;
-    int rc = posix_spawn(&pid, argv[0], nullptr, nullptr, argv.data(), envp.data());
+    int rc = posix_spawn(&pid, argv[0], &actions, nullptr, argv.data(), envp.data());
+    if (logfd >= 0) close(logfd);
+    posix_spawn_file_actions_destroy(&actions);
     if (rc != 0) {
         Note(error, errorLen, "could not start the wayland client");
         return false;
@@ -602,11 +615,21 @@ bool Launch(Host* host, const char* spec, char* error, uint32_t errorLen) {
         }
         std::string dir = "/tmp/wowdecomp-chrome-" + std::to_string(host->id);
         mkdir(dir.c_str(), 0700);
+        const char* prefs = "{\"distribution\":{\"require_eula\":false,\"skip_first_run_ui\":true,\"suppress_first_run_default_browser_prompt\":true}}\n";
+        auto plant = [&](const std::string& path, const char* body) {
+            FILE* file = std::fopen(path.c_str(), "w");
+            if (!file) return;
+            if (body) std::fputs(body, file);
+            std::fclose(file);
+        };
+        plant(dir + "/initial_preferences", prefs);
+        plant(dir + "/master_preferences", prefs);
+        plant(dir + "/EULA Accepted", nullptr);
         std::string size = "--window-size=" + std::to_string(host->reqW) + "," + std::to_string(host->reqH);
         std::string app = "--app=" + url;
         std::string data = "--user-data-dir=" + dir;
-        args = { bin, "--ozone-platform=wayland", "--disable-gpu", "--disable-dev-shm-usage", "--no-first-run",
-            "--no-default-browser-check", data, size, app };
+        args = { bin, "--ozone-platform=wayland", "--disable-gpu", "--disable-gpu-compositing", "--disable-dev-shm-usage",
+            "--no-first-run", "--no-default-browser-check", data, size, app };
         std::snprintf(host->title, sizeof(host->title), "%s", url.c_str());
     } else {
         std::string command = text.rfind("app:", 0) == 0 ? text.substr(4) : text;
@@ -624,7 +647,8 @@ bool Launch(Host* host, const char* spec, char* error, uint32_t errorLen) {
         }
         std::snprintf(host->title, sizeof(host->title), "%s", args[0].c_str());
     }
-    return Spawn(host, args, error, errorLen);
+    bool web = text.rfind("https://", 0) == 0 || text.rfind("http://", 0) == 0 || text.rfind("html:", 0) == 0;
+    return Spawn(host, args, error, errorLen, web);
 }
 
 void SendPointerFrame(ClientState* state) {
@@ -756,6 +780,22 @@ int32_t WaylandEmbedPixels(int32_t id, WaylandPixels* out) {
     out->stride = host->stride;
     out->serial = host->stamp;
     return 1;
+}
+
+void WaylandEmbedScroll(int32_t id, int32_t delta) {
+    Host* host = FindHost(id);
+    if (!host || !delta) return;
+    for (ClientState* state : host->clients) {
+        if (!state->pointer || !state->toplevelSurface) continue;
+        uint32_t version = wl_resource_get_version(state->pointer);
+        if (version >= 5) {
+            wl_pointer_send_axis_source(state->pointer, WL_POINTER_AXIS_SOURCE_WHEEL);
+            wl_pointer_send_axis_discrete(state->pointer, WL_POINTER_AXIS_VERTICAL_SCROLL, -delta);
+        }
+        wl_pointer_send_axis(state->pointer, NowMs(), WL_POINTER_AXIS_VERTICAL_SCROLL, wl_fixed_from_int(-delta * 40));
+        if (version >= 5) wl_pointer_send_axis_stop(state->pointer, NowMs(), WL_POINTER_AXIS_VERTICAL_SCROLL);
+        SendPointerFrame(state);
+    }
 }
 
 void WaylandEmbedPointer(int32_t id, int32_t x, int32_t y, int32_t button, int32_t down) {
