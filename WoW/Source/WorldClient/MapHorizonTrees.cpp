@@ -288,7 +288,7 @@ void CMapHorizonTrees::Draw() {
     for (const HorizonTreeInst& inst : drawList) {
         CM2Model* proto = TreePrototype(inst.m_model);
 
-        if (!proto || !proto->IsLoaded(0, 0)) {
+        if (!proto || !proto->m_shared || !proto->m_shared->m_data || !proto->IsLoaded(0, 0) || !proto->IsDrawable(0, 0)) {
             continue;
         }
 
@@ -310,6 +310,15 @@ void CMapHorizonTrees::Draw() {
     if (!drawn) {
         RestoreScene(scene, snap);
         return;
+    }
+
+    for (CM2Model* model : temps) {
+        if (!model->m_shared || !model->m_shared->m_data) {
+            continue;
+        }
+
+        model->AnimateST();
+        model->SetupLighting();
     }
 
     scene->Animate(CWorldScene::s_activeWorldView);

@@ -269,7 +269,11 @@ void Atmosphere_ApplyTime(float& dayProgression, uint32_t& timeOfDay) {
     if (s_v[A_TimeMode] < 1.5f) {
         time_t now = time(nullptr);
         tm local = {};
+#if defined(_WIN32)
+        localtime_s(&local, &now);
+#else
         localtime_r(&now, &local);
+#endif
         hour = static_cast<float>(local.tm_hour) + static_cast<float>(local.tm_min) / 60.0f;
     } else {
         hour = Clamped(A_TimeHour, 0.0f, 24.0f);

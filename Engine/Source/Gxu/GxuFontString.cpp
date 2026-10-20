@@ -1,6 +1,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cwctype>
 #include "Engine/Source/Gxu/GxuFontString.h"
 #include "Engine/Source/Gxu/GxuFontFont.h"
 #include "Engine/Source/Gxu/GxuFont.h"
@@ -451,6 +452,19 @@ void CGxString::InitializeTextLine(const char* text, uint32_t numBytes, CImVecto
                         if (!desc) {
                             break;
                         }
+                    }
+
+                    if (msdf && iswspace(static_cast<wint_t>(wide))) {
+                        uint32_t flags = this->m_flags;
+
+                        if (!(flags & 0x80)) {
+                            x = x + 0.5f;
+                            x = floor(x);
+                        }
+
+                        pos.x = x + pos.x;
+                        lastCode = wide;
+                        break;
                     }
 
                     uint32_t texturePage = desc->m_textureNumber;

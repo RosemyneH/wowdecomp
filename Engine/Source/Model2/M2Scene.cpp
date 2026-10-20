@@ -2373,7 +2373,7 @@ int32_t CM2Scene::Animate(const C3Vector& cameraPos) {
         }
 
         for (uint32_t i = 0; i < data->m_ribbons.m_count; i++) {
-            if (model->m_ribbonEmitters[i]->IsDead()) {
+            if (!model->m_ribbonEmitters || !model->m_ribbonEmitters[i] || model->m_ribbonEmitters[i]->IsDead()) {
                 continue;
             }
 
@@ -2473,7 +2473,11 @@ int32_t CM2Scene::Animate(const C3Vector& cameraPos) {
         }
 
         for (uint32_t i = 0; i < data->m_particles.m_count; i++) {
-            CParticleEmitter2* emitter = model->m_particleEmitters[i];
+            CParticleEmitter2* emitter = model->m_particleEmitters ? model->m_particleEmitters[i] : nullptr;
+
+            if (!emitter) {
+                continue;
+            }
 
             if ((model->m_fFlags & 0x2000) && (emitter->m_flags & 0x200)) {
                 continue;

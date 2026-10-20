@@ -44,6 +44,15 @@ static VOID CALLBACK MainFiberProc(LPVOID parameter) {
 
 // OFFSET: 0x0040B7F0
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) {
+    using SetProcessDpiAwarenessContextFn = DPI_AWARENESS_CONTEXT(WINAPI*)(DPI_AWARENESS_CONTEXT);
+    SetProcessDpiAwarenessContextFn setDpiContext = reinterpret_cast<SetProcessDpiAwarenessContextFn>(GetProcAddress(GetModuleHandleW(L"user32.dll"), "SetProcessDpiAwarenessContext"));
+
+    if (setDpiContext) {
+        setDpiContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    } else {
+        SetProcessDPIAware();
+    }
+
     lpFiber = ConvertThreadToFiber(nullptr);
 
     if (!lpFiber) {
