@@ -143,7 +143,7 @@ WowDecompAdvancedOptions = {
     vkWireframe = { text = "Wireframe", tooltip = "Draws depth-tested world geometry as lines through the Vulkan shaders." },
     vkUnlit = { text = "Unlit", tooltip = "Turns off fixed-function lighting in the Vulkan vertex shader." },
     gxMsdfFonts = { text = "Distance-field fonts", tooltip = "Rebuilds UI fonts as multi-channel distance fields so edges stay smooth when the frame scales them." },
-    gxMsdfRange = { text = "Range", minValue = 1, maxValue = 8, valueStep = 1, tooltip = "Texels of distance stored around each glyph. Wider covers thick outlines. Narrower is sharper and can clip." },
+    gxMsdfRange = { text = "Range", minValue = 1, maxValue = 8, valueStep = 1, tooltip = "Texels of distance stored around each glyph. The atlases rebuild when you release the slider. 4 is the normal value." },
     gxMsdfSharp = { text = "Sharpness", minValue = 0.25, maxValue = 4, valueStep = 0.25, tooltip = "How hard the shader cuts the distance field. 1 matches the stored range." },
 };
 
@@ -410,7 +410,7 @@ local function WowDecomp_InstallAdvanced()
         panel.msdfChecks[#panel.msdfChecks + 1] = check;
     end
 
-    local function msdfSlider(name, cvar, entry, low, high, y)
+    local function msdfSlider(name, cvar, entry, low, high, y, live)
         local slider = CreateFrame("Slider", name, fonts, "OptionsSliderTemplate");
         slider:SetWidth(200);
         slider:SetPoint("TOPLEFT", fonts, "TOPLEFT", 16, y);
@@ -419,28 +419,57 @@ local function WowDecomp_InstallAdvanced()
         slider.tooltipText = entry.tooltip;
         _G[name .. "Low"]:SetText(low);
         _G[name .. "High"]:SetText(high);
+
+        local function snappedText(value)
+            local step = entry.valueStep or 1;
+            local snapped = math.floor(value / step + 0.5) * step;
+            local text = step >= 1 and tostring(math.floor(snapped + 0.5)) or string.format("%.2f", snapped);
+            local title = _G[name .. "Text"];
+            if title then
+                title:SetText((entry.text or name) .. ": " .. text);
+            end
+            return snapped, text;
+        end
+
+        local function apply(value)
+            if slider.wowDecompApplying then
+                return;
+            end
+            slider.wowDecompApplying = true;
+            local snapped, text = snappedText(value);
+            BlizzardOptionsPanel_Slider_OnValueChanged(slider, snapped);
+            SetCVar(cvar, text);
+            if WowDecomp_RefreshMsdfStatus then
+                WowDecomp_RefreshMsdfStatus();
+            end
+            if VideoOptionsFrameApply then
+                VideoOptionsFrameApply:Enable();
+            end
+            slider.wowDecompApplying = false;
+        end
+
         slider:SetScript("OnValueChanged", function(self, value)
             if not self.wowDecompReady then
                 return;
             end
-            local step = entry.valueStep or 1;
-            local snapped = math.floor(value / step + 0.5) * step;
-            BlizzardOptionsPanel_Slider_OnValueChanged(self, snapped);
-            local text = step >= 1 and tostring(math.floor(snapped + 0.5)) or string.format("%.2f", snapped);
-            SetCVar(cvar, text);
-            WowDecomp_RefreshMsdfStatus();
-            if VideoOptionsFrameApply then
-                VideoOptionsFrameApply:Enable();
+            if live then
+                apply(value);
+            else
+                snappedText(value);
             end
+        end);
+        slider:SetScript("OnMouseUp", function(self)
+            apply(self:GetValue());
         end);
         BlizzardOptionsPanel_RegisterControl(slider, panel);
         WowDecomp_SetupRegisteredControl(slider, panel, entry);
         slider.wowDecompReady = true;
+        snappedText(slider:GetValue());
         return slider;
     end
 
-    msdfSlider("VideoOptionsAdvancedPanelMsdfRange", "gxMsdfRange", WowDecompAdvancedOptions.gxMsdfRange, "1", "8", -132);
-    msdfSlider("VideoOptionsAdvancedPanelMsdfSharp", "gxMsdfSharp", WowDecompAdvancedOptions.gxMsdfSharp, "Soft", "Hard", -172);
+    msdfSlider("VideoOptionsAdvancedPanelMsdfRange", "gxMsdfRange", WowDecompAdvancedOptions.gxMsdfRange, "1", "8", -132, false);
+    msdfSlider("VideoOptionsAdvancedPanelMsdfSharp", "gxMsdfSharp", WowDecompAdvancedOptions.gxMsdfSharp, "Soft", "Hard", -172, true);
 
     if smallFont then
         local fontStatus = fonts:CreateFontString("VideoOptionsAdvancedPanelMsdfStatus", "ARTWORK", smallFont);

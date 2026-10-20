@@ -903,26 +903,17 @@ int32_t GxuFontCreateFont(const char* name, float fontHeight, CGxFont*& face, ui
     return result;
 }
 
+static int32_t s_msdfFlush;
+
 void GxuFontSetMsdfEnabled(int32_t enabled) {
-    g_fontMsdf = enabled != 0;
+    enabled = enabled != 0;
 
-    for (CGxFont* font = g_fonts.Head(); font; font = g_fonts.Next(font)) {
-        uint32_t flags = font->m_fontFlags;
-        uint32_t next = flags;
-
-        if (g_fontMsdf) {
-            next |= GxFontFlag_Msdf;
-        } else if (!(flags & GxFontFlag_MsdfExplicit)) {
-            next &= ~GxFontFlag_Msdf;
-        }
-
-        if (next == flags) {
-            continue;
-        }
-
-        font->m_fontFlags = next;
-        font->HandleScreenSizeChange();
+    if (g_fontMsdf == enabled) {
+        return;
     }
+
+    g_fontMsdf = enabled;
+    s_msdfFlush = 1;
 }
 
 void GxuFontSetMsdfRange(float range) {
@@ -937,9 +928,30 @@ void GxuFontSetMsdfRange(float range) {
     }
 
     g_fontMsdfRange = range;
+    s_msdfFlush = 1;
+}
+
+void GxuFontFlushMsdf() {
+    if (!s_msdfFlush) {
+        return;
+    }
+
+    s_msdfFlush = 0;
 
     for (CGxFont* font = g_fonts.Head(); font; font = g_fonts.Next(font)) {
-        if (font->m_fontFlags & GxFontFlag_Msdf) {
+        uint32_t flags = font->m_fontFlags;
+        uint32_t next = flags;
+
+        if (g_fontMsdf) {
+            next |= GxFontFlag_Msdf;
+        } else if (!(flags & GxFontFlag_MsdfExplicit)) {
+            next &= ~GxFontFlag_Msdf;
+        }
+
+        int32_t changed = next != flags;
+        font->m_fontFlags = next;
+
+        if (changed || (next & GxFontFlag_Msdf)) {
             font->HandleScreenSizeChange();
         }
     }

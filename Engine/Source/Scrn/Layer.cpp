@@ -162,6 +162,7 @@ static int32_t CaptureScreen() {
 // OFFSET: 0x004A8720
 static int32_t OnPaint(const void* data, void* param) {
     if (GxHasContext() && GxIsWindowVisible()) {
+        GxuFontFlushMsdf();
         HSRGN rgn;
         SRgnCreate(&rgn, 0);
 

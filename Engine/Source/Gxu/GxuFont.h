@@ -50,6 +50,7 @@ float GxuFontGetWrappedTextHeight(CGxFont* face, const char* text, float fontHei
 void GxuFontInitialize();
 void GxuFontSetMsdfEnabled(int32_t enabled);
 void GxuFontSetMsdfRange(float range);
+void GxuFontFlushMsdf();
 void GxuFontRemoveShadow(CGxString* string);
 void GxuFontRenderBatch(CGxStringBatch* batch);
 int32_t GxuFontSetStringColor(CGxString* string, const CImVector& color);
