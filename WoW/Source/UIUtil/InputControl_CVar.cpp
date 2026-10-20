@@ -150,6 +150,8 @@ static void PushGamepadOptions() {
     options.cursorToggle = PadFlag("padCursorToggle", 1);
     options.autorun = PadFlag("padAutorun", 1);
     options.dpad = PadFlag("padDpad", 1);
+    options.axisBindings = PadFlag("padAxisBindings", 0);
+    options.style = PadFlag("padStyle", 0);
     OsGamepadSetOptions(&options);
 }
 
@@ -163,7 +165,7 @@ static void RegisterPadCVar(const char* name, const char* help, const char* valu
 }
 
 void RegisterGamepadCVars() {
-    RegisterPadCVar("padLayout", "0 retail gamepad layout, 1 Steam Input passthrough", "0");
+    RegisterPadCVar("padLayout", "0 built-in layout, 1 Steam Input, 2 key bindings", "0");
     RegisterPadCVar("padDeadzone", "gamepad stick deadzone", "0.18");
     RegisterPadCVar("padLookSens", "gamepad look sensitivity", "1");
     RegisterPadCVar("padCursorSpeed", "gamepad cursor speed", "16");
@@ -180,6 +182,9 @@ void RegisterGamepadCVars() {
     RegisterPadCVar("padCursorToggle", "right stick click toggles the cursor", "1");
     RegisterPadCVar("padAutorun", "left stick click toggles autorun", "1");
     RegisterPadCVar("padDpad", "d-pad opens character, bags, spellbook, and quests", "1");
+    RegisterPadCVar("padUI", "show the on-screen controller bar", "0");
+    RegisterPadCVar("padStyle", "0 auto, 1 standard pad, 2 GameCube", "0");
+    RegisterPadCVar("padAxisBindings", "bind stick directions instead of analog move and look", "0");
     PushGamepadOptions();
 }
 
