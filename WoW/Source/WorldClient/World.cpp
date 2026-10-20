@@ -5287,6 +5287,11 @@ void CWorldScene::CullModelRecursive(CM2Model* model) {
 // VERIFY: 545e3065 manual
 // OFFSET: 0x00795F80
 void CWorldScene::RenderHorizon() {
+    // ʕ •ᴥ•ʔ✿ Without full view the fog already covers this distance. The low-poly continent would show through it ✿ ʕ •ᴥ•ʔ
+    if (!CWorldParamSlider::ExtendedViewEnabled()) {
+        return;
+    }
+
     C44Matrix savedProjection;
     C44Matrix projection;
     CWorldScene::BuildHorizonProjection(&projection);

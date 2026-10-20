@@ -127,7 +127,6 @@ void main() {
     int sky = a.texel.z > 0.5 && depth > 0.998 ? 1 : 0;
     vec3 world = a.texel.z > 0.5 ? WorldAt(uv, depth) : a.camera.xyz;
     float nightAmt = a.sun.w;
-    float nightScale = mix(1.0, a.night.z, nightAmt);
 
     if (a.cloud.x > 0.5 && sky == 1) {
         vec3 ray = world - a.camera.xyz;
@@ -155,73 +154,46 @@ void main() {
         }
     }
 
-    // ʕ •ᴥ•ʔ✿ Fog follows the depth buffer only. A world-position test was flipping per frame and the scene strobed ✿ ʕ •ᴥ•ʔ
+    // ʕ •ᴥ•ʔ✿ Depth-only fog. It reaches the far clip so distant ground disappears into it instead of showing through ✿ ʕ •ᴥ•ʔ
     if (a.light2.z > 0.5 && sky == 0 && a.texel.z > 0.5) {
-        float viewDist = ViewDist(depth);
-        float fogAmt = (1.0 - exp(-a.light2.w * viewDist)) * smoothstep(70.0, 260.0, viewDist);
-        fogAmt = min(fogAmt, 0.22);
-        color = mix(color, a.fogColor.rgb * max(a.fog.y, 0.4), fogAmt);
+        float farZ = max(a.player.w, 80.0);
+        float start = farZ > 8000.0 ? farZ * 0.82 : farZ * 0.2;
+        float end = farZ > 8000.0 ? farZ * 0.98 : farZ * 0.78;
+        float fogAmt = smoothstep(start, end, ViewDist(depth));
+        color = mix(color, a.fogColor.rgb * max(a.fog.y, 0.55), fogAmt);
     }
 
     if (a.night.x > 0.5 && nightAmt > 0.0) {
-        float dark = a.night.y * nightAmt * 0.45;
+        float dark = clamp(a.night.y * nightAmt, 0.0, 0.9);
+        vec3 moon = vec3(0.55, 0.64, 0.9);
+        color = mix(color, color * moon, dark * 0.7);
         color *= 1.0 - dark;
-    }
-
-    if (a.shadow2.z > 0.5 && a.shadow2.w > 0.0) {
-        vec3 sunPoint = a.camera.xyz + a.sun.xyz * 400.0;
-        vec2 sunUv = ProjectUv(sunPoint);
-        float sunDepth = ProjectDepth(sunPoint);
-        float covered = 0.0;
-        if (sunUv.x > 0.0 && sunUv.y > 0.0 && sunUv.x < 1.0 && sunUv.y < 1.0 && sunDepth > 0.0 && a.texel.z > 0.5) {
-            float atSun = textureLod(depthTex, sunUv, 0.0).r;
-            covered = atSun < 0.998 ? 1.0 : 0.0;
-        }
-        if (sunUv.x > -0.2 && sunUv.y > -0.2 && sunUv.x < 1.2 && sunUv.y < 1.2 && covered < 0.5) {
-            vec2 delta = (sunUv - uv) / 12.0;
-            float illum = 0.0;
-            float decay = 1.0;
-            vec2 sampleUv = uv;
-            for (int i = 0; i < 12; i++) {
-                sampleUv += delta;
-                if (sampleUv.x <= 0.0 || sampleUv.y <= 0.0 || sampleUv.x >= 1.0 || sampleUv.y >= 1.0) {
-                    break;
-                }
-                float sampleDepth = a.texel.z > 0.5 ? textureLod(depthTex, sampleUv, 0.0).r : 1.0;
-                float bright = Luma(textureLod(colorTex, sampleUv, 0.0).rgb);
-                float skyCast = sampleDepth > 0.998 ? 1.0 : 0.0;
-                illum += bright * skyCast * decay;
-                decay *= 0.9;
-            }
-            color += vec3(1.0, 0.9, 0.75) * illum * a.shadow2.w * nightScale * 0.08;
-        }
     }
 
     float lampDay = mix(a.lamp.w, 1.0, nightAmt);
     int lampCount = int(a.lamp.z + 0.5);
-    vec3 lampPos;
-    float lampDist;
-    int lampPlace = a.texel.z > 0.5 && sky == 0 ? Place(world, ViewDist(depth), lampPos, lampDist) : 0;
-    if ((a.lamp.x > 0.5 || a.beacon.x > 0.5) && lampPlace == 1) {
+    if ((a.lamp.x > 0.5 || a.beacon.x > 0.5) && sky == 0 && a.texel.z > 0.5) {
+        vec3 here = world;
+        vec3 shifted = world + a.camera.xyz;
         for (int i = 0; i < 64; i++) {
             if (i >= lampCount) {
                 break;
             }
-            vec3 toLamp = a.lamps[i].posRange.xyz - lampPos;
-            float dist = length(toLamp);
-            float range = max(a.lamps[i].posRange.w, 1.0);
+            vec3 lamp = a.lamps[i].posRange.xyz;
+            float dist = min(length(lamp - here), length(lamp - shifted));
+            float range = max(a.lamps[i].posRange.w, 8.0);
             if (a.lamp.x > 0.5 && dist < range) {
                 float atten = 1.0 - dist / range;
-                atten *= atten;
-                color += a.lamps[i].color.rgb * atten * a.lamp.y * lampDay;
+                color += a.lamps[i].color.rgb * atten * atten * a.lamp.y * lampDay;
             }
             if (a.beacon.x > 0.5 && a.lamps[i].color.w > 0.5 && a.beacon.y > 0.0) {
-                float ang = a.wind.z * 0.52;
+                float ang = a.wind.z * 0.15;
                 vec3 dir = normalize(vec3(cos(ang), sin(ang), -0.04));
-                float along = dot(-toLamp, dir);
-                vec3 perp = -toLamp - dir * along;
-                float beam = exp(-dot(perp, perp) / 8.0) * smoothstep(0.0, 12.0, along) * exp(-max(along - 20.0, 0.0) / 180.0);
-                color += vec3(1.0, 0.89, 0.66) * beam * a.beacon.y * mix(a.lamp.w, 1.0, nightAmt);
+                vec3 rel = here - lamp;
+                float along = dot(rel, dir);
+                vec3 perp = rel - dir * along;
+                float beam = exp(-dot(perp, perp) / 18.0) * smoothstep(0.0, 8.0, along) * exp(-max(along, 0.0) / 220.0);
+                color += vec3(1.0, 0.9, 0.7) * beam * a.beacon.y * 2.0;
             }
         }
     }

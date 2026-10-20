@@ -86,7 +86,7 @@ static const AtmosVar kVars[A_Count] = {
     { "atmosRays", "Sun rays", "1" },
     { "atmosRaysStrength", "Sun ray strength", "40" },
     { "atmosNight", "Night darkness", "1" },
-    { "atmosNightDarkness", "Night darkness amount", "20" },
+    { "atmosNightDarkness", "Night darkness amount", "55" },
     { "atmosNightStrength", "Light and rays at night", "25" },
     { "atmosNightIndoors", "Night darkness indoors", "0" },
     { "atmosClouds", "Cloud layer", "1" },
@@ -122,7 +122,7 @@ static float s_v[A_Count] = {
     1, 15, 25, 45, 50, 210,
     1, 1, 1, 20, 1, 35,
     1, 40,
-    1, 20, 25, 0,
+    1, 55, 25, 0,
     1, 45, 15, 1,
     1, 100, 100, 100,
     1, 26, 32, 51,
@@ -294,18 +294,29 @@ void Atmosphere_NoteWorld(float playerX, float playerY, float playerZ, float cam
 }
 
 void Atmosphere_NoteSun(float x, float y, float z, float brightness) {
-    if (brightness <= s_sunBrightness) {
+    if (z < 0.05f || brightness <= s_sunBrightness) {
         return;
     }
     s_sunBrightness = brightness;
-    s_sun[0] = x;
-    s_sun[1] = y;
-    s_sun[2] = z;
+    s_sun[0] = s_sun[0] * 0.8f + x * 0.2f;
+    s_sun[1] = s_sun[1] * 0.8f + y * 0.2f;
+    s_sun[2] = s_sun[2] * 0.8f + z * 0.2f;
 }
 
 void Atmosphere_NoteLamp(float x, float y, float z, float range, float r, float g, float b, int32_t beacon) {
     if (!On(A_Master) || s_lampCount >= Atmosphere_CollectLamps) {
         return;
+    }
+
+    float ox = x - s_camera[0];
+    float oy = y - s_camera[1];
+    float oz = z - s_camera[2];
+    float fromOrigin = x * x + y * y + z * z;
+    float cameraSpan = s_camera[0] * s_camera[0] + s_camera[1] * s_camera[1] + s_camera[2] * s_camera[2];
+    if (cameraSpan > 400.0f * 400.0f && fromOrigin < 600.0f * 600.0f && ox * ox + oy * oy + oz * oz > 400.0f * 400.0f) {
+        x += s_camera[0];
+        y += s_camera[1];
+        z += s_camera[2];
     }
 
     int32_t limit = static_cast<int32_t>(Clamped(A_LampCount, 16.0f, static_cast<float>(Atmosphere_CollectLamps)));
@@ -386,14 +397,7 @@ void Atmosphere_FillGpu(AtmosGpu& gpu, const float viewProj[16], const float inv
     }
 
     NormalizeSun();
-    float clockNight = NightAmount();
-    float sunNight = 1.0f - (s_sun[2] - 0.02f) / 0.32f;
-    if (sunNight < 0.0f) {
-        sunNight = 0.0f;
-    } else if (sunNight > 1.0f) {
-        sunNight = 1.0f;
-    }
-    float night = s_sunBrightness < 0.0f ? clockNight * 0.35f : (clockNight < sunNight ? clockNight : sunNight);
+    float night = NightAmount();
     if (s_interior && !On(A_NightIndoors)) {
         night = 0.0f;
     }
@@ -459,7 +463,7 @@ void Atmosphere_FillGpu(AtmosGpu& gpu, const float viewProj[16], const float inv
         lampCap = Atmosphere_ShadeLamps;
     }
     gpu.lamp[0] = master && On(A_Lamps) ? 1.0f : 0.0f;
-    gpu.lamp[1] = Clamped(A_LampGlow, 0.0f, 50.0f) * 0.04f;
+    gpu.lamp[1] = Clamped(A_LampGlow, 0.0f, 50.0f) * 0.55f;
     gpu.lamp[2] = static_cast<float>(lampCap);
     gpu.lamp[3] = Clamped(A_LampDay, 0.0f, 100.0f) * 0.01f;
 

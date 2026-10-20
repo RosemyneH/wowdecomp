@@ -1951,10 +1951,10 @@ void CGxDeviceVulkan::IBuildUniforms(VkDrawUniforms& uniforms) {
                     } else if (linear > 1.0e-4f) {
                         range = 8.0f / linear;
                     }
-                    if (range < 4.0f) {
-                        range = 4.0f;
-                    } else if (range > 80.0f) {
-                        range = 80.0f;
+                    if (range < 18.0f) {
+                        range = 18.0f;
+                    } else if (range > 48.0f) {
+                        range = 48.0f;
                     }
                     float brightness = light.m_dirColor.x + light.m_dirColor.y + light.m_dirColor.z;
                     Atmosphere_NoteLamp(light.m_dir.x, light.m_dir.y, light.m_dir.z, range, light.m_dirColor.x, light.m_dirColor.y, light.m_dirColor.z, range > 28.0f && brightness > 1.2f);
