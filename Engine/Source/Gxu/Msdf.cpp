@@ -6,6 +6,7 @@
 #include <vector>
 #include <freetype/ftoutln.h>
 #include "Engine/Source/Gxu/GxuFontFont.h"
+#include "Engine/Source/Gxu/IGxuFontGlyph.h"
 #include "Engine/Source/Storm/H/storm.h"
 
 // ʕ •ᴥ•ʔ✿ Multi-channel signed distance, after Chlumsky. Edge distance is negative inside a CCW contour ✿ ʕ •ᴥ•ʔ
@@ -991,7 +992,7 @@ bool MsdfRasterizeGlyph(FT_Face face, uint32_t pixelSize, uint32_t code, uint32_
         return false;
     }
 
-    glyph->m_advance = static_cast<float>(face->glyph->metrics.horiAdvance / 64.0) + 1.0f;
+    glyph->m_advance = static_cast<float>(GxuFontGlyphAdvancePixels(face, code, pixelSize));
     glyph->m_rgba = nullptr;
     glyph->m_size = 0;
     glyph->m_width = 0;
