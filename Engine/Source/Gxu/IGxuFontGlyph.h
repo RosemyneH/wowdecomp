@@ -9,7 +9,7 @@ struct GLYPHBITMAPDATA;
 
 bool GxuFontGlyphIsLayoutWhitespace(uint32_t code);
 
-double GxuFontGlyphAdvancePixels(FT_Face face, uint32_t code, uint32_t pixelSize);
+double GxuFontGlyphAdvancePixels(FT_Face face, uint32_t code);
 
 bool GxuFontGlyphQueryAdvance(FT_Face face, uint32_t pixelSize, uint32_t code, bool monochrome, double* advance);
 

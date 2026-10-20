@@ -31,29 +31,9 @@ bool GxuFontGlyphIsLayoutWhitespace(uint32_t code) {
     return code <= 0x7F && iswspace(static_cast<wint_t>(code)) != 0;
 }
 
-double GxuFontGlyphAdvancePixels(FT_Face face, uint32_t code, uint32_t pixelSize) {
-    FT_Pos adv = face->glyph->metrics.horiAdvance;
-
-    if (adv <= 0 && face->glyph->linearHoriAdvance != 0) {
-        adv = FT_MulFix(face->glyph->linearHoriAdvance, face->size->metrics.x_scale);
-    }
-
-    double advance = static_cast<double>(adv) / 64.0;
-
-    // ʕ ◕ᴥ◕ ʔ✿ Ink glyphs keep +1 for atlas bleed; U+0020 is advance-only under MSDF ✿ ʕ ◕ᴥ◕ ʔ
-    if (code != 0x20) {
-        advance += 1.0;
-    }
-
-    if (pixelSize) {
-        if (code == 0x20 && advance < static_cast<double>((pixelSize + 1) / 2)) {
-            advance = static_cast<double>((pixelSize + 1) / 2);
-        } else if (code == 0x3000 && advance < static_cast<double>(pixelSize)) {
-            advance = static_cast<double>(pixelSize);
-        }
-    }
-
-    return advance;
+double GxuFontGlyphAdvancePixels(FT_Face face, uint32_t code) {
+    (void)code;
+    return static_cast<double>(face->glyph->metrics.horiAdvance) / 64.0 + 1.0;
 }
 
 // VERIFY: fff26b99 manual
@@ -89,7 +69,7 @@ bool GxuFontGlyphQueryAdvance(FT_Face face, uint32_t pixelSize, uint32_t code, b
         return false;
     }
 
-    *advance = GxuFontGlyphAdvancePixels(face, code, pixelSize);
+    *advance = GxuFontGlyphAdvancePixels(face, code);
     return true;
 }
 
@@ -187,7 +167,7 @@ bool IGxuFontGlyphRenderGlyph(FT_Face face, uint32_t pixelSize, uint32_t code, u
     dataPtr->m_data = data;
     dataPtr->m_glyphWidth = width;
     dataPtr->m_glyphHeight = height;
-    dataPtr->m_glyphAdvance = GxuFontGlyphAdvancePixels(face, code, pixelSize);
+    dataPtr->m_glyphAdvance = GxuFontGlyphAdvancePixels(face, code);
     dataPtr->m_yOffset = 0;
     dataPtr->m_yStart = 0;
     dataPtr->m_glyphBearing = face->glyph->metrics.horiBearingX * (1.0 / 64.0);

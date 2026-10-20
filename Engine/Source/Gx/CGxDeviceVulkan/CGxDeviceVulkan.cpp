@@ -1358,6 +1358,12 @@ void CGxDeviceVulkan::ScenePresent() {
             }
         }
 
+        if (this->m_format.m_fixLag) {
+            vkQueueWaitIdle(this->m_vk.m_queue);
+        }
+
+        this->ISceneEnd();
+
         if (!this->m_windowVisible) {
             int32_t savedFocus = this->m_windowFocus;
             this->m_windowFocus = 0;
@@ -1370,12 +1376,6 @@ void CGxDeviceVulkan::ScenePresent() {
         } else if (!this->m_imageStarved) {
             this->WaitForFPSCap();
         }
-
-        if (this->m_format.m_fixLag) {
-            vkQueueWaitIdle(this->m_vk.m_queue);
-        }
-
-        this->ISceneEnd();
         // ʕ •ᴥ•ʔ✿ While invisible no frame ends; don't let uploads and garbage accumulate ✿ ʕ •ᴥ•ʔ
         this->m_vk.FlushUploads();
     }

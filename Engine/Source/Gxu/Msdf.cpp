@@ -1151,7 +1151,7 @@ bool MsdfRasterizeGlyph(FT_Face face, uint32_t pixelSize, uint32_t code, uint32_
     glyph->m_width = static_cast<uint32_t>(width);
     glyph->m_height = height;
     glyph->m_pitch = pitch;
-    glyph->m_advance = static_cast<float>(GxuFontGlyphAdvancePixels(face, code, pixelSize));
+    glyph->m_advance = static_cast<float>(GxuFontGlyphAdvancePixels(face, code));
     glyph->m_bearing = static_cast<float>(face->glyph->metrics.horiBearingX) / 64.0f;
 
     return true;

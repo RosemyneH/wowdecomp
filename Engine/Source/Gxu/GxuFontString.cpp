@@ -454,7 +454,7 @@ void CGxString::InitializeTextLine(const char* text, uint32_t numBytes, CImVecto
                         }
                     }
 
-                    if (msdf && GxuFontGlyphIsLayoutWhitespace(wide)) {
+                    if (GxuFontGlyphIsLayoutWhitespace(wide)) {
                         uint32_t flags = this->m_flags;
 
                         if (!(flags & 0x80)) {

@@ -16,6 +16,37 @@
 #include "Engine/Source/Os/Processor.h"
 #include "Engine/Source/Os/TimeManager.h"
 
+#if defined(WOWDECOMP_ARCH_64) && defined(_WIN32)
+#include <windows.h>
+
+static uint64_t FpsCapClocks() {
+    LARGE_INTEGER count;
+    QueryPerformanceCounter(&count);
+    return static_cast<uint64_t>(count.QuadPart);
+}
+
+static uint64_t FpsCapClocksPerSecond() {
+    static uint64_t frequency = 0;
+
+    if (!frequency) {
+        LARGE_INTEGER value;
+        QueryPerformanceFrequency(&value);
+        frequency = static_cast<uint64_t>(value.QuadPart);
+    }
+
+    return frequency;
+}
+#else
+static uint64_t FpsCapClocks() {
+    return OsGetAsyncTimeClocks();
+}
+
+static uint64_t FpsCapClocksPerSecond() {
+    uint64_t frequency = static_cast<uint64_t>(OsGetAsyncClocksPerSecond());
+    return frequency < 1000 ? 1000 : frequency;
+}
+#endif
+
 // STATIC: 0x00A2DAF8
 const uint32_t CGxDevice::s_texFormatBitDepth[GxTexFormats_Last] = { 0, 32, 32, 16, 16, 16, 4, 8, 8, 16, 32, 32, 32 };
 
@@ -1927,28 +1958,23 @@ void CGxDevice::WaitForFPSCap() {
         maxFps = 8;
     }
 
-    uint64_t clocksPerSecond = static_cast<uint64_t>(OsGetAsyncClocksPerSecond());
-    if (clocksPerSecond < 1000) {
-        clocksPerSecond = 1000;
-    }
-
+    uint64_t clocksPerSecond = FpsCapClocksPerSecond();
     uint64_t interval = clocksPerSecond / maxFps;
     if (!interval) {
         return;
     }
 
-    uint64_t now = OsGetAsyncTimeClocks();
+    uint64_t now = FpsCapClocks();
     if (s_nextFrameClock > now && s_nextFrameClock - now < clocksPerSecond) {
-        // ʕ •ᴥ•ʔ✿ Sleep(1) on Windows is ~3ms; only coarse-sleep when far from the target ✿ ʕ •ᴥ•ʔ
         uint64_t remainMs = (s_nextFrameClock - now) * 1000 / clocksPerSecond;
-        if (remainMs > 4) {
+        if (remainMs > 8) {
             OsSleep(static_cast<uint32_t>(remainMs - 2));
         }
 
-        while (OsGetAsyncTimeClocks() < s_nextFrameClock) {
+        while (FpsCapClocks() < s_nextFrameClock) {
         }
 
-        now = OsGetAsyncTimeClocks();
+        now = FpsCapClocks();
     }
 
     s_nextFrameClock = now + interval;

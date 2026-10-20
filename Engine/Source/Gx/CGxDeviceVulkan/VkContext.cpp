@@ -496,12 +496,12 @@ int32_t VkContext::CreateSwapchain(uint32_t width, uint32_t height, int32_t vsyn
     if (vsync) {
         candidates[candidateCount++] = VK_PRESENT_MODE_FIFO_KHR;
     } else {
-        if (modeSupported(VK_PRESENT_MODE_MAILBOX_KHR)) {
-            candidates[candidateCount++] = VK_PRESENT_MODE_MAILBOX_KHR;
-        }
-
         if (modeSupported(VK_PRESENT_MODE_IMMEDIATE_KHR)) {
             candidates[candidateCount++] = VK_PRESENT_MODE_IMMEDIATE_KHR;
+        }
+
+        if (modeSupported(VK_PRESENT_MODE_MAILBOX_KHR)) {
+            candidates[candidateCount++] = VK_PRESENT_MODE_MAILBOX_KHR;
         }
 
         candidates[candidateCount++] = VK_PRESENT_MODE_FIFO_KHR;
@@ -532,22 +532,16 @@ int32_t VkContext::CreateSwapchain(uint32_t width, uint32_t height, int32_t vsyn
 
     for (uint32_t candidateIndex = 0; candidateIndex < candidateCount; candidateIndex++) {
         VkPresentModeKHR presentMode = candidates[candidateIndex];
-        uint32_t imageCount = caps.minImageCount + 1;
+        uint32_t imageCount = caps.minImageCount;
 
         if (presentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
-            imageCount = caps.minImageCount + 2;
-
-            if (imageCount < 3) {
-                imageCount = 3;
-            }
+            imageCount = caps.minImageCount + 1;
+        } else if (presentMode == VK_PRESENT_MODE_FIFO_KHR) {
+            imageCount = caps.minImageCount + 1;
         }
 
         if (caps.maxImageCount && imageCount > caps.maxImageCount) {
             imageCount = caps.maxImageCount;
-        }
-
-        if (presentMode == VK_PRESENT_MODE_MAILBOX_KHR && imageCount < 3) {
-            continue;
         }
 
         info.presentMode = presentMode;
