@@ -150,6 +150,7 @@ static float s_weather;
 static float s_timeSec;
 static int32_t s_interior;
 static int32_t s_drawKind;
+static int32_t s_inWorld;
 
 static int32_t On(int id) {
     return s_v[id] > 0.5f;
@@ -220,6 +221,10 @@ void Atmosphere_Register() {
     Refresh();
 }
 
+void Atmosphere_SetInWorld(int32_t inWorld) {
+    s_inWorld = inWorld != 0;
+}
+
 void Atmosphere_BeginFrame() {
     Refresh();
     s_lampCount = 0;
@@ -227,18 +232,18 @@ void Atmosphere_BeginFrame() {
 }
 
 int32_t Atmosphere_Master() {
-    return On(A_Master);
+    return s_inWorld && On(A_Master);
 }
 
 int32_t Atmosphere_PostActive() {
-    if (!On(A_Master)) {
+    if (!s_inWorld || !On(A_Master)) {
         return 0;
     }
     return On(A_Volume) || On(A_Fog) || On(A_Shadows) || On(A_Rays) || On(A_Night) || On(A_Clouds) || On(A_Color) || On(A_Lamps) || On(A_Beacon);
 }
 
 float Atmosphere_GlowScale() {
-    if (!On(A_Master)) {
+    if (!s_inWorld || !On(A_Master)) {
         return 1.0f;
     }
     return Clamped(A_Glow, 0.0f, 200.0f) * 0.01f;
@@ -256,7 +261,7 @@ void Atmosphere_Camera(float& x, float& y, float& z) {
 
 void Atmosphere_ApplyTime(float& dayProgression, uint32_t& timeOfDay) {
     Refresh();
-    if (!On(A_Master) || !On(A_Time) || s_v[A_TimeMode] < 0.5f) {
+    if (!s_inWorld || !On(A_Master) || !On(A_Time) || s_v[A_TimeMode] < 0.5f) {
         return;
     }
 
@@ -304,7 +309,7 @@ void Atmosphere_NoteSun(float x, float y, float z, float brightness) {
 }
 
 void Atmosphere_NoteLamp(float x, float y, float z, float range, float r, float g, float b, int32_t beacon) {
-    if (!On(A_Master) || s_lampCount >= Atmosphere_CollectLamps) {
+    if (!s_inWorld || !On(A_Master) || s_lampCount >= Atmosphere_CollectLamps) {
         return;
     }
 
@@ -348,7 +353,7 @@ void Atmosphere_NoteLamp(float x, float y, float z, float range, float r, float 
 }
 
 void Atmosphere_BeginDraw(int32_t kind) {
-    if (!On(A_Master)) {
+    if (!s_inWorld || !On(A_Master)) {
         return;
     }
     if (kind == Atmosphere_GrassDraw && On(A_Grass)) {

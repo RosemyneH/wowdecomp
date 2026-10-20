@@ -24,6 +24,7 @@
 #include "Engine/Source/FrameScript/FrameScript_Object.h"
 #include "Engine/Source/FrameXML/FrameXML.h"
 #include "Engine/Source/FrameXML/LoadXML.h"
+#include "Engine/Source/Gx/Atmosphere.h"
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
 #include "Engine/Source/lua-5.1/src/lauxlib.h"
 #include "Engine/Source/lua-5.1/src/lua.h"
@@ -3686,6 +3687,7 @@ void CGGameUI::EnterWorld() {
     }
 
     CGGameUI::s_inWorld = 1;
+    Atmosphere_SetInWorld(1);
     CGChat::Pause();
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
     CM2Model* model = player ? player->GetObjectModel() : nullptr;
@@ -8142,6 +8144,7 @@ void CGGameUI::LeaveWorld() {
     }
 
     CGGameUI::s_inWorld = 0;
+    Atmosphere_SetInWorld(0);
 
     if (CGGameUI::m_inCinematic) {
         FrameScript_SignalEvent(SCRIPT_EVENT_CINEMATIC_STOP, nullptr);

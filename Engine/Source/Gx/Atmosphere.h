@@ -42,6 +42,7 @@ static_assert(sizeof(AtmosLampGpu) == 32, "AtmosLampGpu");
 static_assert(sizeof(AtmosGpu) == 128 + 16 * 16 + 32 * Atmosphere_ShadeLamps, "AtmosGpu");
 
 void Atmosphere_Register();
+void Atmosphere_SetInWorld(int32_t inWorld);
 void Atmosphere_BeginFrame();
 int32_t Atmosphere_Master();
 int32_t Atmosphere_PostActive();
