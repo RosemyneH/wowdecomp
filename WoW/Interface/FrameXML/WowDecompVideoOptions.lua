@@ -203,7 +203,7 @@ local function WowDecomp_InstallAdvanced()
 
     local child = CreateFrame("Frame", "VideoOptionsAdvancedPanelScrollChild", scroll);
     child:SetWidth(400);
-    child:SetHeight(640);
+    child:SetHeight(720);
     scroll:SetScrollChild(child);
 
     local function clampScroll()
@@ -348,7 +348,7 @@ local function WowDecomp_InstallAdvanced()
 
     local fonts = CreateFrame("Frame", "VideoOptionsAdvancedPanelFonts", child, "OptionsBoxTemplate");
     fonts:SetWidth(380);
-    fonts:SetHeight(214);
+    fonts:SetHeight(268);
     fonts:SetPoint("TOPLEFT", shaders, "BOTTOMLEFT", 0, -28);
     _G[fonts:GetName() .. "Title"]:SetText("Fonts");
 
@@ -368,51 +368,47 @@ local function WowDecomp_InstallAdvanced()
 
     if smallFont then
         local viewLabel = fonts:CreateFontString(nil, "ARTWORK", smallFont);
-        viewLabel:SetPoint("TOPLEFT", fonts, "TOPLEFT", 16, -40);
+        viewLabel:SetPoint("TOPLEFT", fonts, "TOPLEFT", 16, -36);
         viewLabel:SetText("View");
     end
 
-    local drop = CreateFrame("Frame", "VideoOptionsAdvancedPanelMsdfView", fonts, "UIDropDownMenuTemplate");
-    drop:SetPoint("TOPLEFT", fonts, "TOPLEFT", 48, -32);
-    UIDropDownMenu_SetWidth(150, drop);
-    UIDropDownMenu_JustifyText("LEFT", drop);
+    -- ʕ •ᴥ•ʔ✿ Glue login has no UIDropDownMenuTemplate. The view is a radio list of the same checkboxes as the rest of this page ✿ ʕ •ᴥ•ʔ
     panel.msdfView = "0";
-
-    local function viewText(value)
-        if value == "1" then
-            return "Color channels";
+    panel.msdfChecks = {};
+    local viewChoices = {
+        { "VideoOptionsAdvancedPanelMsdfShaded", "Shaded", "0", -52 },
+        { "VideoOptionsAdvancedPanelMsdfChannels", "Color channels", "1", -74 },
+        { "VideoOptionsAdvancedPanelMsdfDistance", "Signed distance", "2", -96 },
+    };
+    for _, choice in ipairs(viewChoices) do
+        local check = CreateFrame("CheckButton", choice[1], fonts, "VideoOptionsSmallCheckButtonTemplate");
+        check.msdfValue = choice[3];
+        check:SetPoint("TOPLEFT", fonts, "TOPLEFT", 16, choice[4]);
+        check:SetHitRectInsets(0, -160, 0, 0);
+        local text = _G[check:GetName() .. "Text"];
+        if text then
+            text:SetText(choice[2]);
         end
-        if value == "2" then
-            return "Signed distance";
-        end
-        return "Shaded";
-    end
-
-    UIDropDownMenu_Initialize(drop, function()
-        local function choice(text, value)
-            local info = UIDropDownMenu_CreateInfo();
-            info.text = text;
-            info.value = value;
-            info.checked = panel.msdfView == value;
-            info.func = function(button)
-                panel.msdfView = button.value;
-                UIDropDownMenu_SetText(viewText(button.value), drop);
-                SetCVar("gxMsdfView", button.value);
-                if button.value ~= "0" and not msdf:GetChecked() then
-                    msdf:SetChecked(true);
-                    WowDecomp_ApplyPlaytestCVar(msdf);
-                end
-                WowDecomp_RefreshMsdfStatus();
-                if VideoOptionsFrameApply then
-                    VideoOptionsFrameApply:Enable();
-                end
+        check:SetScript("OnClick", function(self)
+            if self:GetChecked() then
+                PlaySound("igMainMenuOptionCheckBoxOn");
+            else
+                PlaySound("igMainMenuOptionCheckBoxOff");
             end
-            UIDropDownMenu_AddButton(info);
-        end
-        choice("Shaded", "0");
-        choice("Color channels", "1");
-        choice("Signed distance", "2");
-    end);
+            self:SetChecked(true);
+            panel.msdfView = self.msdfValue;
+            SetCVar("gxMsdfView", self.msdfValue);
+            if self.msdfValue ~= "0" and not msdf:GetChecked() then
+                msdf:SetChecked(true);
+                WowDecomp_ApplyPlaytestCVar(msdf);
+            end
+            WowDecomp_RefreshMsdfStatus();
+            if VideoOptionsFrameApply then
+                VideoOptionsFrameApply:Enable();
+            end
+        end);
+        panel.msdfChecks[#panel.msdfChecks + 1] = check;
+    end
 
     local function msdfSlider(name, cvar, entry, low, high, y)
         local slider = CreateFrame("Slider", name, fonts, "OptionsSliderTemplate");
@@ -443,12 +439,12 @@ local function WowDecomp_InstallAdvanced()
         return slider;
     end
 
-    msdfSlider("VideoOptionsAdvancedPanelMsdfRange", "gxMsdfRange", WowDecompAdvancedOptions.gxMsdfRange, "1", "8", -78);
-    msdfSlider("VideoOptionsAdvancedPanelMsdfSharp", "gxMsdfSharp", WowDecompAdvancedOptions.gxMsdfSharp, "Soft", "Hard", -118);
+    msdfSlider("VideoOptionsAdvancedPanelMsdfRange", "gxMsdfRange", WowDecompAdvancedOptions.gxMsdfRange, "1", "8", -132);
+    msdfSlider("VideoOptionsAdvancedPanelMsdfSharp", "gxMsdfSharp", WowDecompAdvancedOptions.gxMsdfSharp, "Soft", "Hard", -172);
 
     if smallFont then
         local fontStatus = fonts:CreateFontString("VideoOptionsAdvancedPanelMsdfStatus", "ARTWORK", smallFont);
-        fontStatus:SetPoint("TOPLEFT", fonts, "TOPLEFT", 16, -162);
+        fontStatus:SetPoint("TOPLEFT", fonts, "TOPLEFT", 16, -216);
         fontStatus:SetWidth(348);
         fontStatus:SetJustifyH("LEFT");
         fontStatus:SetJustifyV("TOP");
@@ -470,9 +466,11 @@ local function WowDecomp_InstallAdvanced()
                 fontStatus:SetText("Distance fields are on. Range " .. (GetCVar("gxMsdfRange") or "4") .. ", sharpness " .. (GetCVar("gxMsdfSharp") or "1") .. ".");
             end
         end
-        if drop then
+        if panel.msdfChecks then
             panel.msdfView = GetCVar("gxMsdfView") or panel.msdfView or "0";
-            UIDropDownMenu_SetText(viewText(panel.msdfView), drop);
+            for _, check in ipairs(panel.msdfChecks) do
+                check:SetChecked(check.msdfValue == panel.msdfView);
+            end
         end
     end
 
