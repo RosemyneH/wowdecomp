@@ -6269,6 +6269,53 @@ static int32_t Script_GetConnectedController(lua_State* L) {
     return 1;
 }
 
+static int32_t Script_GetControllerKind(lua_State* L) {
+    int32_t kind = OsGamepadKind();
+    const char* name = "none";
+    if (kind == OS_GAMEPAD_GAMECUBE) {
+        name = "gamecube";
+    } else if (kind == OS_GAMEPAD_STANDARD) {
+        name = "standard";
+    }
+    lua_pushstring(L, name);
+    return 1;
+}
+
+static int32_t Script_GetControllerMapped(lua_State* L) {
+    lua_pushboolean(L, OsGamepadMapped());
+    return 1;
+}
+
+static int32_t Script_GetControllerControlCount(lua_State* L) {
+    lua_pushnumber(L, OsGamepadControlCount());
+    return 1;
+}
+
+static int32_t Script_GetControllerControl(lua_State* L) {
+    int32_t index = static_cast<int32_t>(lua_tonumber(L, 1)) - 1;
+    char key[32];
+    char label[32];
+    int32_t down = 0;
+    if (!OsGamepadControl(index, key, sizeof(key), label, sizeof(label), &down)) {
+        return 0;
+    }
+    lua_pushstring(L, key);
+    lua_pushstring(L, label);
+    lua_pushboolean(L, down);
+    return 3;
+}
+
+static int32_t Script_GetControllerCapture(lua_State* L) {
+    const char* key = OsGamepadPopCapture();
+    lua_pushstring(L, key ? key : "");
+    return 1;
+}
+
+static int32_t Script_SetControllerCapture(lua_State* L) {
+    OsGamepadSetCapture(lua_toboolean(L, 1));
+    return 0;
+}
+
 // STATIC: 0x00AC80B0
 static FrameScript_Method s_ScriptFunctions[] = {
     { "FrameXML_Debug", &Script_FrameXML_Debug },
@@ -6305,6 +6352,12 @@ static FrameScript_Method s_ScriptFunctions[] = {
     { "SetCVar", &Script_SetCVar },
     { "GetCVar", &Script_GetCVar },
     { "GetConnectedController", &Script_GetConnectedController },
+    { "GetControllerKind", &Script_GetControllerKind },
+    { "GetControllerMapped", &Script_GetControllerMapped },
+    { "GetControllerControlCount", &Script_GetControllerControlCount },
+    { "GetControllerControl", &Script_GetControllerControl },
+    { "GetControllerCapture", &Script_GetControllerCapture },
+    { "SetControllerCapture", &Script_SetControllerCapture },
     { "GetCVarBool", &Script_GetCVarBool },
     { "GetCVarDefault", &Script_GetCVarDefault },
     { "GetCVarMin", &Script_GetCVarMin },

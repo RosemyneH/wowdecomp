@@ -614,9 +614,25 @@ void CGInputControl::OnPitchToAngleStop() {
     }
 }
 
+static void DispatchGamepadBindings() {
+    OsGamepadEdge edges[16];
+    int32_t count = OsGamepadDrainEdges(edges, 16);
+    CVar* layout = CVar::Lookup("padLayout");
+    int32_t useBindings = layout && layout->m_intValue == 2 && !OsGamepadCapture();
+    CGUIBindings* bindings = CGUIBindings::s_bindings;
+
+    for (int32_t i = 0; i < count; i++) {
+        if (useBindings && bindings && CSimpleTop::s_instance && edges[i].key[0]) {
+            bindings->ExecKey(0, edges[i].key, edges[i].down, 1, BINDING_MODE_ACTIVE);
+        }
+    }
+}
+
 // VERIFY: b38d40e5 manual
 // OFFSET: 0x005FAB70
 void CGInputControl::OnUpdate(float elapsed) {
+    DispatchGamepadBindings();
+
     CGUnit_C* mover = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(CGUnit_C::s_activeMover, TYPEMASK_UNIT, __FILE__, __LINE__));
 
     if (!mover) {
