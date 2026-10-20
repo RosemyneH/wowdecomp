@@ -701,12 +701,22 @@ intptr_t OsWindowProc(void* window, uint32_t message, uintptr_t wparam, intptr_t
             break;
 
         case SDL_EVENT_MOUSE_WHEEL: {
+            // ʕ •ᴥ•ʔ✿ A hi-res notch is several events whose tick is still 0; the UI reads 0 as scroll-up ✿ ʕ •ᴥ•ʔ
+            int32_t delta = event.wheel.integer_y;
+            if (!delta) {
+                if (event.wheel.y >= 1.0f || event.wheel.y <= -1.0f) {
+                    delta = static_cast<int32_t>(event.wheel.y);
+                } else {
+                    break;
+                }
+            }
+            if (event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED) {
+                delta = -delta;
+            }
+
             int32_t x;
             int32_t y;
             OsInputGetMousePosition(&x, &y);
-
-            int32_t delta = event.wheel.integer_y;
-            if (event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED) delta = -delta;
             OsQueuePut(OS_INPUT_MOUSE_WHEEL, static_cast<int16_t>(delta * 120), x, y, 0);
             break;
         }

@@ -677,11 +677,18 @@ intptr_t OsWindowProc(void* window, uint32_t message, uintptr_t wparam, intptr_t
             break;
 
         case SDL_MOUSEWHEEL: {
+            // ʕ •ᴥ•ʔ✿ Fractional precise-wheel events report y == 0; the UI reads that as scroll-up ✿ ʕ •ᴥ•ʔ
+            int32_t delta = event.wheel.y;
+            if (!delta) {
+                break;
+            }
+            if (event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED) {
+                delta = -delta;
+            }
+
             int32_t x;
             int32_t y;
             OsInputGetMousePosition(&x, &y);
-
-            int32_t delta = event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -event.wheel.y : event.wheel.y;
             OsQueuePut(OS_INPUT_MOUSE_WHEEL, static_cast<int16_t>(delta * 120), x, y, 0);
             break;
         }
