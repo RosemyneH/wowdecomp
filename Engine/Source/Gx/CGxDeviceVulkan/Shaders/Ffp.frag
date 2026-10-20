@@ -62,7 +62,7 @@ void main() {
         float dist = sd * screenPxRange;
         float outlinePx = colorOp == 8 ? 2.0 : (colorOp == 7 ? 1.0 : 0.0);
         // ʕ •ᴥ•ʔ✿ The field only covers the chosen range. An outline that reaches the rim stays a box ✿ ʕ •ᴥ•ʔ
-        outlinePx = min(outlinePx, max(0.5 * screenPxRange - 1.0, 0.0));
+        outlinePx = min(outlinePx, max(screenPxRange * 0.45, 0.0));
         float body = clamp(dist + 0.5, 0.0, 1.0);
         float alpha = clamp(dist + 0.5 + outlinePx, 0.0, 1.0);
         vec4 color = vec4(inColor.rgb * body / max(alpha, 1e-4), inColor.a * alpha);

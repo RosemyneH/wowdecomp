@@ -231,7 +231,8 @@ float GxuFontGetOneToOneHeight(CGxFont* face) {
         return 0.0f;
     }
 
-    return static_cast<float>(face->GetPixelSize()) / static_cast<float>(g_heightPixels);
+    uint32_t em = face->m_nominalSize ? face->m_nominalSize : face->GetPixelSize();
+    return static_cast<float>(em) / static_cast<float>(g_heightPixels);
 }
 
 // VERIFY: 1ebc6f2b auto

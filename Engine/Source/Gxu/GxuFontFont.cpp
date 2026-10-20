@@ -80,6 +80,23 @@ int32_t CGxFont::UpdateDimensions() {
         DebugLog("Error, font %s being created with height %g at screen res of %dx%d which is %d pixels!", this->m_fontName, height, g_widthPixels, g_heightPixels, pixelSize);
     }
 
+    // ʕ •ᴥ•ʔ✿ One-to-one height follows the requested em. The atlas can be denser without growing the line ✿ ʕ •ᴥ•ʔ
+    this->m_nominalSize = pixelSize;
+
+    if (this->UsesMsdf() && pixelSize > 0) {
+        uint32_t raster = pixelSize * 2;
+
+        if (raster < 32) {
+            raster = 32;
+        }
+
+        if (raster > 48) {
+            raster = 48;
+        }
+
+        pixelSize = raster;
+    }
+
     this->m_pixelSize = pixelSize;
 
     int32_t units = face->ascender + abs(face->descender);
@@ -226,7 +243,7 @@ void CGxFont::HandleScreenSizeChange() {
 
 // VERIFY: 4ab2e948 manual
 // OFFSET: 0x006C39A0
-CGxFont::CGxFont() : m_cellHeight(0), m_pixelsPerUnit(0.0f) {
+CGxFont::CGxFont() : m_cellHeight(0), m_pixelsPerUnit(0.0f), m_nominalSize(0) {
 }
 
 // VERIFY: b72018df manual

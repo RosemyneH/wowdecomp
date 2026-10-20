@@ -49,6 +49,7 @@ struct CGxFont : public TSLinkedNode<CGxFont> {
     /* 0188 */ float m_pixelsPerUnit;
     /* 018C */ TEXTURECACHE m_textureCache[8];
     /* 024C */ uint32_t m_pixelSize;
+    uint32_t m_nominalSize;
 
     CGxFont();
     ~CGxFont();
