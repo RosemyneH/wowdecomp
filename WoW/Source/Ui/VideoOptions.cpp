@@ -33,7 +33,8 @@ local function show(index)
         local panel = CreateFrame("Frame", "WowDecompAddonNote", parent)
         panel:SetWidth(268)
         panel:SetHeight(280)
-        if AddonList then panel:SetPoint("TOPLEFT", AddonList, "TOPRIGHT", 8, -12) else panel:SetPoint("CENTER", 220, 0) end
+        local anchor = AddonListBackground or AddonList
+        if anchor then panel:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 8, -48) else panel:SetPoint("CENTER", 220, 0) end
         panel:SetBackdrop({
             bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
             edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -80,6 +81,11 @@ if type(AddonList_Update) == "function" and not WowDecompAddonListWrapped then
     end
 end
 hookEntries()
+if AddonList and AddonList.HookScript then
+    AddonList:HookScript("OnHide", function()
+        if WowDecompAddonNote then WowDecompAddonNote:Hide() end
+    end)
+end
 )lua";
     FrameScript_Execute(kAddonList, "Interface\\FrameXML\\WowDecompAddonList.lua", nullptr);
     FrameScript_Execute(kWowDecompAddonPanelLua, "Interface\\FrameXML\\WowDecompAddonPanel.lua", nullptr);

@@ -182,7 +182,7 @@ local function Layout()
     local y = 0
     for i = 1, #rows do
         local row = rows[i]
-        local match = query == "" or string.find(row.key, query, 1, true) or (row.titleKey and string.find(row.titleKey, query, 1, true))
+        local match = (not panel.wasmOnly or row.wasm) and (query == "" or string.find(row.key, query, 1, true) or (row.titleKey and string.find(row.titleKey, query, 1, true)))
         if match then
             row:ClearAllPoints()
             row:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -y)
@@ -240,8 +240,9 @@ local function Refresh()
             row.stateText = stateText
             rows[i] = row
         end
-        local name, title = GetAddOnInfo(i)
+        local name, title, notes = GetAddOnInfo(i)
         row.index = i
+        row.wasm = notes and string.find(notes, "WASM addon", 1, true) and true or false
         row.key = string.lower(name or "")
         row.titleKey = string.lower(title or "")
         row.nameText:SetText(title or name or "")
@@ -311,8 +312,16 @@ if glue then
     end)
 end
 
-local function ShowPanel()
-    if panel:IsShown() then panel:Hide() else panel:Show() end
+local function ShowPanel(wasmOnly)
+    local want = wasmOnly and true or false
+    if panel:IsShown() and (panel.wasmOnly and true or false) == want then
+        panel:Hide()
+        return
+    end
+    panel.wasmOnly = want
+    title:SetText(want and "WASM addons" or "AddOns")
+    panel:Show()
+    Refresh()
 end
 
 if GameMenuFrame and GameMenuButtonMacros and not GameMenuButtonWowdecompAddons then
@@ -320,7 +329,7 @@ if GameMenuFrame and GameMenuButtonMacros and not GameMenuButtonWowdecompAddons 
     menuButton:SetText("AddOns")
     menuButton:SetScript("OnClick", function()
         if HideUIPanel then HideUIPanel(GameMenuFrame) else GameMenuFrame:Hide() end
-        ShowPanel()
+        ShowPanel(false)
     end)
     local function PlaceMenuButton()
         menuButton:ClearAllPoints()
@@ -333,16 +342,50 @@ if GameMenuFrame and GameMenuButtonMacros and not GameMenuButtonWowdecompAddons 
     PlaceMenuButton()
     GameMenuFrame:SetHeight(GameMenuFrame:GetHeight() + menuButton:GetHeight() + 1)
     if GameMenuFrame.HookScript then GameMenuFrame:HookScript("OnShow", PlaceMenuButton) end
-elseif CharSelectEnterWorldButton then
-    local glueButton = button(parent, "AddOns", 110)
-    glueButton:SetPoint("RIGHT", CharSelectEnterWorldButton, "LEFT", -8, 0)
-    glueButton:SetScript("OnClick", ShowPanel)
+elseif CharacterSelectAddonsButton and not CharacterSelectAddonsButton.wowDecompSubmenu then
+    -- ʕ •ᴥ•ʔ✿ Keep login and the character screen clear. WASM hangs off the AddOns button ✿ ʕ •ᴥ•ʔ
+    CharacterSelectAddonsButton.wowDecompSubmenu = true
+    local menu = CreateFrame("Frame", "WowdecompAddonSubmenu", CharacterSelectAddonsButton)
+    menu:SetFrameStrata("FULLSCREEN_DIALOG")
+    menu:SetWidth(150)
+    menu:SetHeight(46)
+    menu:SetPoint("BOTTOMLEFT", CharacterSelectAddonsButton, "TOPLEFT", 0, 4)
+    menu:Hide()
+    local wasm = button(menu, "WASM addons", 150)
+    wasm:SetPoint("BOTTOMLEFT", menu, "BOTTOMLEFT", 0, 0)
+    wasm:SetScript("OnClick", function()
+        menu:Hide()
+        ShowPanel(true)
+    end)
+    local addons = button(menu, "AddOns", 150)
+    addons:SetPoint("BOTTOM", wasm, "TOP", 0, 2)
+    addons:SetScript("OnClick", function()
+        menu:Hide()
+        if AddonList then AddonList:Show() end
+    end)
+    CharacterSelectAddonsButton:SetScript("OnClick", function()
+        if menu:IsShown() then menu:Hide() else menu:Show() end
+    end)
+    if CharacterSelectAddonsButton.HookScript then
+        CharacterSelectAddonsButton:HookScript("OnHide", function() menu:Hide() end)
+    end
+    if CharacterSelect and CharacterSelect.HookScript then
+        CharacterSelect:HookScript("OnHide", function()
+            menu:Hide()
+            if panel.wasmOnly then panel:Hide() end
+        end)
+    end
+    if AddonList and AddonList.HookScript then
+        AddonList:HookScript("OnHide", function()
+            if panel.wasmOnly then panel:Hide() end
+        end)
+    end
 end
 
 if SlashCmdList then
     SLASH_WOWADDONS1 = "/addons"
     SlashCmdList["WOWADDONS"] = function()
-        if panel:IsShown() then panel:Hide() else panel:Show() end
+        ShowPanel(false)
     end
 end
 )lua";
