@@ -5,12 +5,13 @@
 #include "Engine/Source/Gxu/GxuFontMiscClasses.h"
 #include "Engine/Source/Storm/H/storm.h"
 
+// ʕ ● ᴥ ●ʔ CJK MPQ fonts set isFixedPitch with a bogus hhea.advanceWidthMax; use per-glyph advance (SatyPardus/wowdecomp d4e9b1a, Kissinger Zhou)
 // VERIFY: fff26b99 manual
 // OFFSET: 0x006C8C10
 static int32_t FREETYPE_RenderGlyph(FT_Face face, uint32_t code, bool monochrome) {
     FT_UInt index = FT_Get_Char_Index(face, code);
 
-    if (!index || FT_Load_Glyph(face, index, monochrome ? FT_LOAD_LINEAR_DESIGN | FT_LOAD_PEDANTIC | FT_LOAD_CROP_BITMAP | FT_LOAD_NO_HINTING : FT_LOAD_LINEAR_DESIGN | FT_LOAD_PEDANTIC | FT_LOAD_NO_BITMAP | FT_LOAD_NO_HINTING)) {
+    if (!index || FT_Load_Glyph(face, index, monochrome ? FT_LOAD_LINEAR_DESIGN | FT_LOAD_PEDANTIC | FT_LOAD_CROP_BITMAP | FT_LOAD_NO_HINTING | FT_LOAD_IGNORE_GLOBAL_ADVANCE_WIDTH : FT_LOAD_LINEAR_DESIGN | FT_LOAD_PEDANTIC | FT_LOAD_NO_BITMAP | FT_LOAD_NO_HINTING | FT_LOAD_IGNORE_GLOBAL_ADVANCE_WIDTH)) {
         return 0;
     }
 

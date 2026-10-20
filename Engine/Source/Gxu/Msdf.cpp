@@ -987,7 +987,7 @@ bool MsdfRasterizeGlyph(FT_Face face, uint32_t pixelSize, uint32_t code, uint32_
 
     FT_UInt index = FT_Get_Char_Index(face, code);
 
-    if (!index || FT_Load_Glyph(face, index, FT_LOAD_NO_BITMAP | FT_LOAD_NO_HINTING | FT_LOAD_PEDANTIC)) {
+    if (!index || FT_Load_Glyph(face, index, FT_LOAD_NO_BITMAP | FT_LOAD_NO_HINTING | FT_LOAD_PEDANTIC | FT_LOAD_IGNORE_GLOBAL_ADVANCE_WIDTH)) {
         return false;
     }
 
