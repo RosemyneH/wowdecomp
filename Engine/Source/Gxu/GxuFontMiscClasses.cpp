@@ -80,14 +80,16 @@ GLYPHBITMAPDATA::~GLYPHBITMAPDATA() {
 void CHARCODEDESC::GenerateTextureCoords(uint32_t rowNumber, uint32_t cellHeight) {
     int32_t top = rowNumber * cellHeight;
     float left = this->m_glyphStartPixel;
+    float right = left + this->m_bitmapData.m_glyphCellWidth;
+    // ʕ •ᴥ•ʔ✿ Rows are packed flush. A sample on the edge reads the next row and draws a line above and below the glyph ✿ ʕ •ᴥ•ʔ
+    const float texel = 1.0f / 256.0f;
+    const float inset = 0.5f * texel;
 
     CRect coords;
-    coords.minY = top * (1.0 / 256.0);
-    coords.minX = left * (1.0 / 256.0);
-    coords.maxY = (top + cellHeight) * (1.0 / 256.0);
-
-    float right = left + this->m_bitmapData.m_glyphCellWidth;
-    coords.maxX = (1.0 / 256.0) * right;
+    coords.minY = top * texel + inset;
+    coords.maxY = (top + cellHeight) * texel - inset;
+    coords.minX = left * texel + inset;
+    coords.maxX = right * texel - inset;
 
     this->m_bitmapData.m_textureCoords = coords;
 }
