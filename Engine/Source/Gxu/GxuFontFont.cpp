@@ -80,21 +80,6 @@ int32_t CGxFont::UpdateDimensions() {
         DebugLog("Error, font %s being created with height %g at screen res of %dx%d which is %d pixels!", this->m_fontName, height, g_widthPixels, g_heightPixels, pixelSize);
     }
 
-    // ʕ •ᴥ•ʔ✿ Chat, bars, and addon text are drawn near 1:1. A denser field is what makes that size smoother than the alpha atlas ✿ ʕ •ᴥ•ʔ
-    if (this->UsesMsdf() && pixelSize > 0) {
-        uint32_t sampled = pixelSize * 2;
-
-        if (sampled < 32) {
-            sampled = 32;
-        }
-
-        if (sampled > 48) {
-            sampled = 48;
-        }
-
-        pixelSize = sampled;
-    }
-
     this->m_pixelSize = pixelSize;
 
     int32_t units = face->ascender + abs(face->descender);
