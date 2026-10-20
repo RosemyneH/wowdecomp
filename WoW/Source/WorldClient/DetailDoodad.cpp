@@ -11,6 +11,7 @@
 #include "Engine/Source/Model2/M2Model.h"
 #include "Engine/Source/Model2/M2Scene.h"
 #include "Engine/Source/Model2/M2Shared.h"
+#include "Engine/Source/Gx/Atmosphere.h"
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
 #include "Engine/Source/Gx/CGxTexFlags.h"
 #include "Engine/Source/Gx/Gx.h"
@@ -908,7 +909,9 @@ void CDetailDoodadInstBatch::Draw() {
     batch.m_count = this->m_indexCount;
     batch.m_minIndex = 0;
     batch.m_maxIndex = static_cast<uint16_t>(this->m_vertexCount - 1);
+    Atmosphere_BeginDraw(Atmosphere_GrassDraw);
     g_theGxDevicePtr->Draw(&batch, 1);
+    Atmosphere_EndDraw();
 }
 
 // VERIFY: 84475972 auto

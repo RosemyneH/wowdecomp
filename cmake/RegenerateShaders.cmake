@@ -13,7 +13,7 @@ if (VERSION_AT EQUAL -1 OR SPIRV_AT EQUAL -1)
     message(FATAL_ERROR "glslc version mismatch: need ${EXPECTED_VERSION}, got: ${VERSION_OUT}")
 endif ()
 set(SHADER_DIR "${CMAKE_CURRENT_LIST_DIR}/../Engine/Source/Gx/CGxDeviceVulkan/Shaders")
-foreach (SHADER Ffp.vert Ffp.frag FfpTerrain.frag Fxaa.vert Fxaa.frag)
+foreach (SHADER Ffp.vert Ffp.frag FfpTerrain.frag Fxaa.vert Fxaa.frag Atmosphere.frag)
     execute_process(
         COMMAND ${GLSLC} -O --target-env=vulkan1.1 -mfmt=c -I ${SHADER_DIR}
             -o ${SHADER_DIR}/Generated/${SHADER}.inc ${SHADER_DIR}/${SHADER}

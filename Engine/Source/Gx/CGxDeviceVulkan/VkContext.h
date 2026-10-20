@@ -173,6 +173,7 @@ class VkContext {
     VkSwapchainKHR m_swapchain = VK_NULL_HANDLE;
     VkFormat m_colorFormat = VK_FORMAT_UNDEFINED;
     VkFormat m_depthFormat = VK_FORMAT_UNDEFINED;
+    int32_t m_depthSampled = 0;
     VkExtent2D m_extent = {};
     int32_t m_suboptimal = 0;
     std::vector<VkImage> m_swapImages;

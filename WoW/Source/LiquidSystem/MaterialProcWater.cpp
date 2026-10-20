@@ -1,4 +1,5 @@
 #include "Liquid.h"
+#include "Engine/Source/Gx/Atmosphere.h"
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
 #include "Engine/Source/Gx/Gx.h"
 #include "Engine/Source/Model2/M2Light.h"
@@ -321,7 +322,9 @@ void Liquid::CMaterialProcWater::Render(Liquid::IEnvironment* environment, Liqui
 
     g_theGxDevicePtr->RsSet(GxRs_VertexShader, Liquid::CMaterialProcWater::s_vertexShaders[lightCount]);
     g_theGxDevicePtr->RsSet(GxRs_PixelShader, Liquid::CMaterialProcWater::s_pixelShader);
+    Atmosphere_BeginDraw(Atmosphere_WaterDraw);
     g_theGxDevicePtr->Draw(&batch, 1);
+    Atmosphere_EndDraw();
     g_theGxDevicePtr->RsPop();
 }
 
@@ -394,7 +397,9 @@ void Liquid::CMaterialProcWaterFFP::Render(Liquid::IEnvironment* environment, Li
     geomFactory->GetBuffers(GxVBF_PNCT2, &vertexBuf, &indexBuf, &batch);
     GxPrimVertexPtr(vertexBuf, GxVBF_PNCT2);
     g_theGxDevicePtr->PrimIndexPtr(indexBuf);
+    Atmosphere_BeginDraw(Atmosphere_WaterDraw);
     g_theGxDevicePtr->Draw(&batch, 1);
+    Atmosphere_EndDraw();
 
     GxXformPop(GxXform_Tex1);
     GxXformPop(GxXform_Tex0);

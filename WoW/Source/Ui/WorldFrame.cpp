@@ -15,6 +15,7 @@
 #include "Engine/Source/Frame/CSimpleTop.h"
 #include "Engine/Source/FrameScript/FrameScript.h"
 #include "Engine/Source/FrameXML/FrameXML.h"
+#include "Engine/Source/Gx/Atmosphere.h"
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
 #include "Engine/Source/Gx/CGxTexFlags.h"
 #include "Engine/Source/Gx/Gx.h"
@@ -952,6 +953,16 @@ void CGWorldFrame::UpdateScreenEffectParams() {
         }
     }
 
+    if (Atmosphere_Master()) {
+        float scaled = static_cast<float>(glowLevel) * Atmosphere_GlowScale();
+        if (scaled < 0.0f) {
+            scaled = 0.0f;
+        } else if (scaled > 255.0f) {
+            scaled = 255.0f;
+        }
+        glowLevel = static_cast<uint8_t>(scaled);
+    }
+
     int32_t params[3] = { underwater, glowLevel, level };
     CGWorldFrame::ffxEffectGlow->SetParameters(3, params);
 }
@@ -1649,6 +1660,7 @@ void CGWorldFrame::UpdateDayNight(float deltaSec) {
     }
 
     info->m_weatherIntensity = World::s_weather->m_densityBlend * World::s_weather->m_fogIntensity;
+    Atmosphere_ApplyTime(info->m_dayProgression, info->m_timeOfDay);
 }
 
 // VERIFY: 1381402d manual

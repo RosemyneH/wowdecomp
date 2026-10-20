@@ -272,15 +272,31 @@ int32_t VkContext::FinishCreateDevice() {
     vkGetDeviceQueue(this->m_device, this->m_queueFamily, 0, &this->m_queue);
 
     const VkFormat depthFormats[] = { VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D32_SFLOAT };
+    VkFormat depthFallback = VK_FORMAT_UNDEFINED;
+    this->m_depthSampled = 0;
 
     for (VkFormat format : depthFormats) {
         VkFormatProperties properties;
         vkGetPhysicalDeviceFormatProperties(this->m_physicalDevice, format, &properties);
+        VkFormatFeatureFlags features = properties.optimalTilingFeatures;
 
-        if (properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) {
+        if (!(features & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)) {
+            continue;
+        }
+
+        if (depthFallback == VK_FORMAT_UNDEFINED) {
+            depthFallback = format;
+        }
+
+        if (features & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) {
             this->m_depthFormat = format;
+            this->m_depthSampled = 1;
             break;
         }
+    }
+
+    if (this->m_depthFormat == VK_FORMAT_UNDEFINED) {
+        this->m_depthFormat = depthFallback;
     }
 
     return this->CreateDeviceResources();
@@ -608,6 +624,9 @@ int32_t VkContext::CreateSwapchain(uint32_t width, uint32_t height, int32_t vsyn
     depthInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     depthInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
     depthInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    if (this->m_depthSampled) {
+        depthInfo.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+    }
 
     if (!this->CreateImage(depthInfo, VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_VIEW_TYPE_2D, {}, this->m_depth)) {
         // ʕ ●ᴥ●ʔ✿ Don't keep a swapchain that has no depth target or framebuffers ✿ ʕ ●ᴥ●ʔ
@@ -734,6 +753,7 @@ void VkContext::DestroyDevice() {
     this->m_queue = VK_NULL_HANDLE;
     this->m_colorFormat = VK_FORMAT_UNDEFINED;
     this->m_depthFormat = VK_FORMAT_UNDEFINED;
+    this->m_depthSampled = 0;
     this->m_frameIndex = 0;
 }
 

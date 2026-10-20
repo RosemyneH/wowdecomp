@@ -15,6 +15,7 @@
 #include "Engine/Source/Base/RCString.h"
 #include "Engine/Source/ConsoleBase/ConsoleCommand.h"
 #include "Engine/Source/ConsoleBase/ConsoleVar.h"
+#include "Engine/Source/Gx/Atmosphere.h"
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
 #include "Engine/Source/Gx/CGxMatrixStack.h"
 #include "Engine/Source/Gx/CGxVertexPC.h"
@@ -1697,7 +1698,9 @@ void CWorld::Update(C3Vector* camPos, C3Vector* camTarget, C3Vector* position) {
 
     CWorldScene::LocateViewer3();
     DayNight::Update(CWorld::status.m_chunksChanged | CWorld::status.m_prepareAll, camPos);
-    CWorld::farFog = DayNight::GetInfo()->m_fog.m_end;
+    DayNight::DNInfo* atmosInfo = DayNight::GetInfo();
+    Atmosphere_NoteWorld(atmosInfo->m_playerPos.x, atmosInfo->m_playerPos.y, atmosInfo->m_playerPos.z, atmosInfo->m_cameraPos.x, atmosInfo->m_cameraPos.y, atmosInfo->m_cameraPos.z, atmosInfo->m_dayProgression, atmosInfo->m_weatherIntensity, atmosInfo->m_interiorMapObjDef != nullptr, atmosInfo->m_fog.m_color.r * (1.0f / 255.0f), atmosInfo->m_fog.m_color.g * (1.0f / 255.0f), atmosInfo->m_fog.m_color.b * (1.0f / 255.0f), atmosInfo->m_timeSec);
+    CWorld::farFog = atmosInfo->m_fog.m_end;
 
     if (!g_theGxDevicePtr->MasterEnable(GxMasterEnable_Fog) || !CWorldParam::cvar_distanceFog || !CWorldParam::cvar_distanceFog->m_intValue) {
         CWorld::farFog = 100000.0f;

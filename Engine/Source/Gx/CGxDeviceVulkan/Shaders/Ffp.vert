@@ -18,6 +18,9 @@ layout(location = 3) out float outFog;
 layout(location = 4) flat out ivec2 outTexIndex;
 layout(location = 5) flat out ivec4 outLayerTex;
 layout(location = 6) flat out ivec4 outAlphaTex;
+layout(location = 7) out vec3 outWorld;
+layout(location = 8) out vec3 outWorldNormal;
+layout(location = 9) out vec3 outView;
 
 // ʕ •ᴥ•ʔ✿ Row-major, matching C44Matrix. One record per instance or per terrain draw ✿ ʕ •ᴥ•ʔ
 struct GpuDrawItem {
@@ -138,6 +141,27 @@ void main() {
     }
 
     vec4 worldPos = vec4(position, 1.0) * worldMat;
+
+    // ʕ •ᴥ•ʔ✿ stageColorOp.w is 1 for grass and 2 for water. Those draws pack wind and waves into fogParams.zw ✿ ʕ •ᴥ•ʔ
+    if (u.stageColorOp.w == 1) {
+        float height = clamp(inPosition.z, 0.0, 2.0);
+        vec2 windDir = vec2(cos(u.ambient.w), sin(u.ambient.w));
+        float wave = sin(dot(worldPos.xy, windDir) * (6.28318 / max(u.matEmissive.w, 1.0)) + u.fogParams.w * 3.0);
+        float sway = wave * u.fogParams.z * 0.06 * height;
+        worldPos.x += windDir.x * sway;
+        worldPos.y += windDir.y * sway;
+        worldPos.z -= abs(sway) * 0.35;
+        vec2 away = worldPos.xy - u.lightPos[3].xy;
+        float dist = length(away);
+        float radius = u.lightAtten[3].x;
+        if (radius > 0.0 && dist < radius && dist > 0.001) {
+            worldPos.xy += away / dist * u.lightAtten[3].y * (1.0 - dist / radius) * height;
+        }
+    } else if (u.stageColorOp.w == 2 && u.fogParams.z > 0.0) {
+        float chop = sin(worldPos.x * 0.35 + u.fogParams.w) * sin(worldPos.y * 0.27 + u.fogParams.w * 0.8);
+        worldPos.z += chop * u.fogParams.z;
+    }
+
     vec4 viewPos = worldPos * u.view;
     gl_Position = viewPos * u.proj;
     gl_PointSize = u.misc.x;
@@ -179,6 +203,9 @@ void main() {
     }
 
     outColor = clamp(color, 0.0, 1.0);
+    outWorld = worldPos.xyz;
+    outWorldNormal = worldNormal;
+    outView = viewPos.xyz;
     outTexCoord0 = StageTexCoord(0, viewPos.xyz, viewNormal, tex0);
     outTexCoord1 = StageTexCoord(1, viewPos.xyz, viewNormal, tex1);
     outFog = u.flags.z != 0 ? clamp((u.fogParams.y - abs(viewPos.z)) / (u.fogParams.y - u.fogParams.x), 0.0, 1.0) : 1.0;

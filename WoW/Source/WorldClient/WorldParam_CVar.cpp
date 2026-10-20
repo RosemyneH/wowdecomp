@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <new>
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
+#include "Engine/Source/Gx/Atmosphere.h"
 #include "Engine/Source/Gx/WowDecompVk.h"
 #include "Engine/Source/Services/GfxSingletonManager.h"
 #include "Engine/Source/Services/Texture.h"
@@ -797,6 +798,7 @@ void CWorldParam::Initialize() {
     CVar::Register("vkUnlit", "Vulkan experiment: disable fixed-function lighting", 1, "0", VkExperimentCallback, CATEGORY_GRAPHICS, false, reinterpret_cast<void*>(1), false);
     CVar::Register("vkFxaa", "Vulkan experiment: fullscreen anti-aliasing", 1, "0", VkExperimentCallback, CATEGORY_GRAPHICS, false, reinterpret_cast<void*>(2), false);
     CVar::Register("vkSharpen", "Vulkan experiment: sharpen the resolved image", 1, "0", VkSharpenCallback, CATEGORY_GRAPHICS, false, nullptr, false);
+    Atmosphere_Register();
 
     AddConsoleDeviceDefaultCallback(CWorldParam::SetDefaults);
 

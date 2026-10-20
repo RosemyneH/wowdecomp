@@ -1,4 +1,5 @@
 #include "Liquid.h"
+#include "Engine/Source/Gx/Atmosphere.h"
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
 #include "Engine/Source/Gx/Gx.h"
 #include "Engine/Source/Model2/M2Light.h"
@@ -198,7 +199,9 @@ void Liquid::CMaterialWater::Render(Liquid::IEnvironment* environment, Liquid::I
     geomFactory->GetBuffers(GxVBF_PNCT2, &vertexBuf, &indexBuf, &batch);
     GxPrimVertexPtr(vertexBuf, GxVBF_PNCT2);
     g_theGxDevicePtr->PrimIndexPtr(indexBuf);
+    Atmosphere_BeginDraw(Atmosphere_WaterDraw);
     g_theGxDevicePtr->Draw(&batch, 1);
+    Atmosphere_EndDraw();
     g_theGxDevicePtr->RsPop();
 }
 
@@ -277,7 +280,9 @@ void Liquid::CMaterialWaterNoSpec::Render(Liquid::IEnvironment* environment, Liq
     geomFactory->GetBuffers(GxVBF_PNCT2, &vertexBuf, &indexBuf, &batch);
     GxPrimVertexPtr(vertexBuf, GxVBF_PNCT2);
     g_theGxDevicePtr->PrimIndexPtr(indexBuf);
+    Atmosphere_BeginDraw(Atmosphere_WaterDraw);
     g_theGxDevicePtr->Draw(&batch, 1);
+    Atmosphere_EndDraw();
     g_theGxDevicePtr->RsPop();
 }
 
@@ -350,7 +355,9 @@ void Liquid::CMaterialWaterFFP::Render(Liquid::IEnvironment* environment, Liquid
     geomFactory->GetBuffers(GxVBF_PNCT2, &vertexBuf, &indexBuf, &batch);
     GxPrimVertexPtr(vertexBuf, GxVBF_PNCT2);
     g_theGxDevicePtr->PrimIndexPtr(indexBuf);
+    Atmosphere_BeginDraw(Atmosphere_WaterDraw);
     g_theGxDevicePtr->Draw(&batch, 1);
+    Atmosphere_EndDraw();
 
     GxXformPop(GxXform_Tex1);
     GxXformPop(GxXform_Tex0);

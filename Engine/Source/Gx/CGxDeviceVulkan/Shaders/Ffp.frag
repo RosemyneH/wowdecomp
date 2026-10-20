@@ -10,6 +10,9 @@ layout(location = 0) in vec4 inColor;
 layout(location = 1) in vec3 inTexCoord0;
 layout(location = 2) in vec3 inTexCoord1;
 layout(location = 3) in float inFog;
+layout(location = 7) in vec3 inWorld;
+layout(location = 8) in vec3 inWorldNormal;
+layout(location = 9) in vec3 inView;
 
 layout(location = 0) out vec4 outColor;
 
@@ -103,6 +106,25 @@ void main() {
 
         if (u.stageColorOp.y >= 0) {
             color = Stage(1, texture(tex1, inTexCoord1.xy / inTexCoord1.z), color);
+        }
+    }
+
+    if (u.stageColorOp.w == 2) {
+        float normalLen = dot(inWorldNormal, inWorldNormal);
+        vec3 normal = normalLen > 1e-6 ? inWorldNormal * inversesqrt(normalLen) : vec3(0.0, 0.0, 1.0);
+        vec3 viewDir = normalize(-inView);
+        float fresnel = pow(1.0 - clamp(abs(dot(normal, viewDir)), 0.0, 1.0), 4.0);
+        vec3 deep = mix(vec3(0.04, 0.22, 0.2), vec3(0.55, 0.28, 0.12), u.lightAtten[3].z);
+        color.rgb = mix(deep, color.rgb, clamp(u.lightAtten[3].x, 0.15, 1.0));
+        vec3 sunDir = u.lightPos[0].w == 0.0 ? normalize(-u.lightPos[0].xyz) : vec3(0.0, 0.0, 1.0);
+        vec3 halfDir = normalize(sunDir + viewDir);
+        float spec = pow(max(dot(normal, halfDir), 0.0), 48.0);
+        color.rgb += vec3(1.0, 0.95, 0.85) * spec * fresnel * u.matEmissive.w;
+        float crest = sin(inWorld.x * 1.7 + u.fogParams.w) * sin(inWorld.y * 1.3 - u.fogParams.w * 0.7);
+        color.rgb = mix(color.rgb, vec3(0.86, 0.9, 0.92), clamp(crest - 0.55, 0.0, 1.0) * u.ambient.w);
+        if (u.lightAtten[3].y > 0.05) {
+            float ring = sin(length(inWorld.xy) * 2.5 - u.fogParams.w * 6.0);
+            color.rgb += vec3(0.7, 0.8, 0.85) * smoothstep(0.85, 1.0, ring) * u.lightAtten[3].y * 0.25;
         }
     }
 
