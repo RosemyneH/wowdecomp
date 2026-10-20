@@ -135,11 +135,18 @@ class CGxDeviceVulkan : public CGxDevice {
     int32_t m_atmosApplied = 0;
     int32_t m_atmosWorldDraw = 0;
     int32_t m_atmosSamples = 0;
+    int32_t m_atmosAltSamples = 0;
     float m_atmosEyeError = 1.0e30f;
     C44Matrix m_atmosView;
     C44Matrix m_atmosProj;
+    C44Matrix m_atmosAltView;
+    C44Matrix m_atmosAltProj;
     float m_atmosNear = 0.2f;
     float m_atmosFar = 1000.0f;
+    float m_atmosAltNear = 0.2f;
+    float m_atmosAltFar = 1000.0f;
+    float m_pendingNear = 0.2f;
+    float m_pendingFar = 1000.0f;
     VkImageAlloc m_postColor = {};
     VkImageLayout m_postColorLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     VkExtent2D m_postExtent = {};

@@ -875,6 +875,7 @@ void CGxDeviceVulkan::ISceneBegin() {
     this->m_atmosApplied = 0;
     this->m_atmosWorldDraw = 0;
     this->m_atmosSamples = 0;
+    this->m_atmosAltSamples = 0;
     this->m_atmosEyeError = 1.0e30f;
     Atmosphere_BeginFrame();
     this->IInvalidateCmdState();
@@ -1284,6 +1285,14 @@ void CGxDeviceVulkan::IApplyPost() {
 }
 
 void CGxDeviceVulkan::IApplyAtmosphere() {
+    if (this->m_atmosAltSamples > this->m_atmosSamples) {
+        this->m_atmosView = this->m_atmosAltView;
+        this->m_atmosProj = this->m_atmosAltProj;
+        this->m_atmosNear = this->m_atmosAltNear;
+        this->m_atmosFar = this->m_atmosAltFar;
+        this->m_atmosSamples = this->m_atmosAltSamples;
+    }
+
     if (this->m_atmosApplied || !Atmosphere_PostActive() || !this->m_atmosWorldDraw || this->m_passTarget) {
         return;
     }
@@ -1686,10 +1695,8 @@ void CGxDeviceVulkan::XformSetProjection(const C44Matrix& matrix) {
     if (projNative.d3 == 0.0f) {
         float minZ = -(projNative.d2 / (projNative.c2 + 1.0f));
         float maxZ = -(projNative.d2 / (projNative.c2 - 1.0f));
-        if (this->m_atmosSamples == 0) {
-            this->m_atmosNear = minZ;
-            this->m_atmosFar = maxZ;
-        }
+        this->m_pendingNear = minZ;
+        this->m_pendingFar = maxZ;
         projNative.c2 = maxZ / (maxZ - minZ);
         projNative.d2 = maxZ * minZ / (minZ - maxZ);
     } else {
@@ -2623,19 +2630,27 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
     if (fabsf(this->m_projNative.d3) < 1.0e-4f && fabsf(this->m_projNative.c3) > 0.5f && !this->m_passTarget) {
         CGxMatrixStack& viewStack = this->m_xforms[GxXform_View];
         const C44Matrix& view = viewStack.m_mtx[viewStack.m_level];
-        float cameraX, cameraY, cameraZ;
-        Atmosphere_Camera(cameraX, cameraY, cameraZ);
         C44Matrix invView = view.AffineInverse();
-        float dx = invView.d0 - cameraX;
-        float dy = invView.d1 - cameraY;
-        float dz = invView.d2 - cameraZ;
-        float err = dx * dx + dy * dy + dz * dz;
-        this->m_atmosWorldDraw = 1;
-        if (this->m_atmosSamples == 0 || err < this->m_atmosEyeError) {
-            this->m_atmosView = view;
-            this->m_atmosProj = this->m_projNative;
-            this->m_atmosEyeError = err;
-            this->m_atmosSamples++;
+        // ʕ •ᴥ•ʔ✿ The world camera sits at the origin. Keep the view that drew the most of the frame, and leave the horizon clip out ✿ ʕ •ᴥ•ʔ
+        float err = invView.d0 * invView.d0 + invView.d1 * invView.d1 + invView.d2 * invView.d2;
+        int32_t gameplay = err < 4.0f && this->m_pendingFar > 100.0f && this->m_pendingFar < 20000.0f;
+        if (gameplay) {
+            int32_t sameMain = this->m_atmosSamples > 0 && view == this->m_atmosView && fabsf(this->m_pendingFar - this->m_atmosFar) < 1.0f;
+            int32_t sameAlt = this->m_atmosAltSamples > 0 && view == this->m_atmosAltView && fabsf(this->m_pendingFar - this->m_atmosAltFar) < 1.0f;
+            if (this->m_atmosSamples == 0 || sameMain) {
+                this->m_atmosView = view;
+                this->m_atmosProj = this->m_projNative;
+                this->m_atmosNear = this->m_pendingNear;
+                this->m_atmosFar = this->m_pendingFar;
+                this->m_atmosSamples++;
+            } else if (this->m_atmosAltSamples == 0 || sameAlt) {
+                this->m_atmosAltView = view;
+                this->m_atmosAltProj = this->m_projNative;
+                this->m_atmosAltNear = this->m_pendingNear;
+                this->m_atmosAltFar = this->m_pendingFar;
+                this->m_atmosAltSamples++;
+            }
+            this->m_atmosWorldDraw = 1;
         }
     }
 

@@ -318,10 +318,11 @@ void Atmosphere_NoteLamp(float x, float y, float z, float range, float r, float 
     float oz = z - s_camera[2];
     float fromOrigin = x * x + y * y + z * z;
     float cameraSpan = s_camera[0] * s_camera[0] + s_camera[1] * s_camera[1] + s_camera[2] * s_camera[2];
-    if (cameraSpan > 400.0f * 400.0f && fromOrigin < 600.0f * 600.0f && ox * ox + oy * oy + oz * oz > 400.0f * 400.0f) {
-        x += s_camera[0];
-        y += s_camera[1];
-        z += s_camera[2];
+    // ʕ •ᴥ•ʔ✿ Depth comes back camera-relative. A light still in world yards has to come with it ✿ ʕ •ᴥ•ʔ
+    if (cameraSpan > 400.0f * 400.0f && fromOrigin > 600.0f * 600.0f && ox * ox + oy * oy + oz * oz < 800.0f * 800.0f) {
+        x -= s_camera[0];
+        y -= s_camera[1];
+        z -= s_camera[2];
     }
 
     int32_t limit = static_cast<int32_t>(Clamped(A_LampCount, 16.0f, static_cast<float>(Atmosphere_CollectLamps)));
@@ -497,10 +498,7 @@ void Atmosphere_FillGpu(AtmosGpu& gpu, const float viewProj[16], const float inv
     float chosenDist[Atmosphere_ShadeLamps];
 
     for (int32_t i = 0; i < s_lampCount; i++) {
-        float dx = s_lamps[i].x - s_camera[0];
-        float dy = s_lamps[i].y - s_camera[1];
-        float dz = s_lamps[i].z - s_camera[2];
-        float dist = dx * dx + dy * dy + dz * dz;
+        float dist = s_lamps[i].x * s_lamps[i].x + s_lamps[i].y * s_lamps[i].y + s_lamps[i].z * s_lamps[i].z;
         if (chosenCount < lampCap) {
             chosen[chosenCount] = i;
             chosenDist[chosenCount] = dist;
