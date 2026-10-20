@@ -32,6 +32,19 @@ struct OsGamepadOptions {
     int32_t cursorToggle;
     int32_t autorun;
     int32_t dpad;
+    int32_t axisBindings;
+    int32_t style;
+};
+
+enum {
+    OS_GAMEPAD_NONE = 0,
+    OS_GAMEPAD_STANDARD = 1,
+    OS_GAMEPAD_GAMECUBE = 2,
+};
+
+struct OsGamepadEdge {
+    char key[24];
+    int32_t down;
 };
 
 #if defined(WOWDECOMP_LINUX) || defined(WOWDECOMP_ANDROID)
@@ -39,6 +52,14 @@ void OsGamepadCamera(float* x, float* y);
 int32_t OsGamepadCursorMode();
 void OsGamepadSetOptions(const OsGamepadOptions* options);
 const char* OsGamepadConnectedName();
+int32_t OsGamepadKind();
+int32_t OsGamepadMapped();
+int32_t OsGamepadControlCount();
+int32_t OsGamepadControl(int32_t index, char* key, uint32_t keySize, char* label, uint32_t labelSize, int32_t* down);
+int32_t OsGamepadDrainEdges(OsGamepadEdge* out, int32_t max);
+const char* OsGamepadPopCapture();
+void OsGamepadSetCapture(int32_t on);
+int32_t OsGamepadCapture();
 #else
 inline void OsGamepadCamera(float* x, float* y) {
     if (x) *x = 0.0f;
@@ -47,6 +68,17 @@ inline void OsGamepadCamera(float* x, float* y) {
 inline int32_t OsGamepadCursorMode() { return 0; }
 inline void OsGamepadSetOptions(const OsGamepadOptions*) {}
 inline const char* OsGamepadConnectedName() { return ""; }
+inline int32_t OsGamepadKind() { return OS_GAMEPAD_NONE; }
+inline int32_t OsGamepadMapped() { return 0; }
+inline int32_t OsGamepadControlCount() { return 0; }
+inline int32_t OsGamepadControl(int32_t, char*, uint32_t, char*, uint32_t, int32_t* down) {
+    if (down) *down = 0;
+    return 0;
+}
+inline int32_t OsGamepadDrainEdges(OsGamepadEdge*, int32_t) { return 0; }
+inline const char* OsGamepadPopCapture() { return ""; }
+inline void OsGamepadSetCapture(int32_t) {}
+inline int32_t OsGamepadCapture() { return 0; }
 #endif
 void OsPollJoysticks(int32_t active);
 
