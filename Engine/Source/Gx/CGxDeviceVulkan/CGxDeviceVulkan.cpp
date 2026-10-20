@@ -874,6 +874,7 @@ void CGxDeviceVulkan::ISceneBegin() {
     this->m_passActive = 0;
     this->m_atmosApplied = 0;
     this->m_atmosWorldDraw = 0;
+    this->m_atmosSamples = 0;
     Atmosphere_BeginFrame();
     this->IInvalidateCmdState();
     this->ShaderConstantsClear();
@@ -1671,6 +1672,8 @@ void CGxDeviceVulkan::SceneClear(uint32_t mask, CImVector color) {
 
 void CGxDeviceVulkan::XformSetProjection(const C44Matrix& matrix) {
     int32_t wasPerspective = fabsf(this->m_projNative.d3) < 1.0e-4f && fabsf(this->m_projNative.c3) > 0.5f;
+    // ʕ •ᴥ•ʔ✿ Portal fills set the identity matrix. That is not the UI ortho, and compositing there fogs the wrong camera ✿ ʕ •ᴥ•ʔ
+    int32_t incomingIdentity = fabsf(matrix.a0 - 1.0f) < 1.0e-3f && fabsf(matrix.b1 - 1.0f) < 1.0e-3f && fabsf(matrix.c2 - 1.0f) < 1.0e-3f && fabsf(matrix.d3 - 1.0f) < 1.0e-3f && fabsf(matrix.d0) < 1.0e-3f && fabsf(matrix.a1) < 1.0e-3f;
     CGxDevice::XformSetProjection(matrix);
 
     C44Matrix projNative = matrix;
@@ -1682,8 +1685,10 @@ void CGxDeviceVulkan::XformSetProjection(const C44Matrix& matrix) {
     if (projNative.d3 == 0.0f) {
         float minZ = -(projNative.d2 / (projNative.c2 + 1.0f));
         float maxZ = -(projNative.d2 / (projNative.c2 - 1.0f));
-        this->m_atmosNear = minZ;
-        this->m_atmosFar = maxZ;
+        if (this->m_atmosSamples == 0) {
+            this->m_atmosNear = minZ;
+            this->m_atmosFar = maxZ;
+        }
         projNative.c2 = maxZ / (maxZ - minZ);
         projNative.d2 = maxZ * minZ / (minZ - maxZ);
     } else {
@@ -1706,7 +1711,7 @@ void CGxDeviceVulkan::XformSetProjection(const C44Matrix& matrix) {
     this->m_projNative = projNative;
 
     int32_t nowPerspective = fabsf(this->m_projNative.d3) < 1.0e-4f && fabsf(this->m_projNative.c3) > 0.5f;
-    if (wasPerspective && !nowPerspective) {
+    if (wasPerspective && !nowPerspective && !incomingIdentity) {
         this->IApplyAtmosphere();
     }
 }
@@ -1987,13 +1992,6 @@ void CGxDeviceVulkan::IBuildUniforms(VkDrawUniforms& uniforms) {
 
     if (WowDecompVk_Unlit()) {
         uniforms.flags[0] = 0;
-    }
-
-    int32_t mainView = fabsf(this->m_projNative.d3) < 1.0e-4f && fabsf(this->m_projNative.c3) > 0.5f && !this->m_passTarget;
-    if (mainView) {
-        this->m_atmosView = uniforms.view;
-        this->m_atmosProj = uniforms.proj;
-        this->m_atmosWorldDraw = 1;
     }
 
     int32_t drawKind = Atmosphere_DrawKind();
@@ -2621,11 +2619,23 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
         this->m_xforms[GxXform_Projection].m_dirty = 0;
     }
 
-    if (fabsf(this->m_projNative.d3) < 1.0e-4f && fabsf(this->m_projNative.c3) > 0.5f && !this->m_passTarget) {
-        CGxMatrixStack& view = this->m_xforms[GxXform_View];
-        this->m_atmosView = view.m_mtx[view.m_level];
-        this->m_atmosProj = this->m_projNative;
-        this->m_atmosWorldDraw = 1;
+    if (fabsf(this->m_projNative.d3) < 1.0e-4f && fabsf(this->m_projNative.c3) > 0.5f && !this->m_passTarget && this->m_atmosSamples < 64) {
+        CGxMatrixStack& viewStack = this->m_xforms[GxXform_View];
+        const C44Matrix& view = viewStack.m_mtx[viewStack.m_level];
+        float cameraX, cameraY, cameraZ;
+        Atmosphere_Camera(cameraX, cameraY, cameraZ);
+        C44Matrix invView = view.AffineInverse();
+        float dx = invView.d0 - cameraX;
+        float dy = invView.d1 - cameraY;
+        float dz = invView.d2 - cameraZ;
+        float cameraKnown = cameraX * cameraX + cameraY * cameraY + cameraZ * cameraZ;
+        int32_t matches = cameraKnown < 1.0f || dx * dx + dy * dy + dz * dz < 80.0f * 80.0f;
+        if (matches) {
+            this->m_atmosView = view;
+            this->m_atmosProj = this->m_projNative;
+            this->m_atmosWorldDraw = 1;
+            this->m_atmosSamples++;
+        }
     }
 
     if (pipeline != this->m_boundPipeline) {

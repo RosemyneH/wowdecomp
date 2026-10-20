@@ -134,6 +134,7 @@ class CGxDeviceVulkan : public CGxDevice {
     VkSampler m_atmosDepthSampler = VK_NULL_HANDLE;
     int32_t m_atmosApplied = 0;
     int32_t m_atmosWorldDraw = 0;
+    int32_t m_atmosSamples = 0;
     C44Matrix m_atmosView;
     C44Matrix m_atmosProj;
     float m_atmosNear = 0.2f;

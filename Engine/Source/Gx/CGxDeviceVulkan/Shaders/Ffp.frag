@@ -110,21 +110,23 @@ void main() {
     }
 
     if (u.stageColorOp.w == 2) {
-        float normalLen = dot(inWorldNormal, inWorldNormal);
-        vec3 normal = normalLen > 1e-6 ? inWorldNormal * inversesqrt(normalLen) : vec3(0.0, 0.0, 1.0);
+        float t = u.fogParams.w;
+        float wx = cos(inWorld.x * 0.11 + t * 1.3) * 0.11 * sin(inWorld.y * 0.09 - t * 0.8);
+        float wy = sin(inWorld.x * 0.11 + t * 1.3) * cos(inWorld.y * 0.09 - t * 0.8) * 0.09;
+        vec3 normal = normalize(vec3(-wx * u.fogParams.z, -wy * u.fogParams.z, 1.0));
         vec3 viewDir = normalize(-inView);
-        float fresnel = pow(1.0 - clamp(abs(dot(normal, viewDir)), 0.0, 1.0), 4.0);
-        vec3 deep = mix(vec3(0.04, 0.22, 0.2), vec3(0.55, 0.28, 0.12), u.lightAtten[3].z);
-        color.rgb = mix(deep, color.rgb, clamp(u.lightAtten[3].x, 0.15, 1.0));
-        vec3 sunDir = u.lightPos[0].w == 0.0 ? normalize(-u.lightPos[0].xyz) : vec3(0.0, 0.0, 1.0);
+        float fresnel = pow(1.0 - clamp(abs(dot(normal, viewDir)), 0.0, 1.0), 3.0);
+        vec3 deep = mix(vec3(0.03, 0.16, 0.14), vec3(0.45, 0.22, 0.1), u.lightAtten[3].z);
+        color.rgb = mix(deep, color.rgb, mix(0.45, 0.92, clamp(u.lightAtten[3].x, 0.0, 1.0)));
+        vec3 sunDir = u.lightPos[0].w == 0.0 ? normalize(-u.lightPos[0].xyz) : vec3(0.3, 0.2, 0.9);
         vec3 halfDir = normalize(sunDir + viewDir);
-        float spec = pow(max(dot(normal, halfDir), 0.0), 48.0);
-        color.rgb += vec3(1.0, 0.95, 0.85) * spec * fresnel * u.matEmissive.w;
-        float crest = sin(inWorld.x * 1.7 + u.fogParams.w) * sin(inWorld.y * 1.3 - u.fogParams.w * 0.7);
-        color.rgb = mix(color.rgb, vec3(0.86, 0.9, 0.92), clamp(crest - 0.55, 0.0, 1.0) * u.ambient.w);
+        float spec = pow(max(dot(normal, halfDir), 0.0), 28.0);
+        color.rgb += vec3(1.0, 0.96, 0.86) * (spec * 1.6 + fresnel * 0.45) * u.matEmissive.w;
+        float crest = sin(inWorld.x * 0.11 + t * 1.3) * sin(inWorld.y * 0.09 - t * 0.8);
+        color.rgb = mix(color.rgb, vec3(0.86, 0.91, 0.93), clamp(crest, 0.0, 1.0) * u.ambient.w);
         if (u.lightAtten[3].y > 0.05) {
-            float ring = sin(length(inWorld.xy) * 2.5 - u.fogParams.w * 6.0);
-            color.rgb += vec3(0.7, 0.8, 0.85) * smoothstep(0.85, 1.0, ring) * u.lightAtten[3].y * 0.25;
+            float ring = sin(length(inWorld.xy) * 1.7 - t * 6.0);
+            color.rgb += vec3(0.75, 0.84, 0.88) * smoothstep(0.82, 1.0, ring) * u.lightAtten[3].y * 0.35;
         }
     }
 

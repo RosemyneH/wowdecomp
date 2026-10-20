@@ -97,6 +97,30 @@ float Henyey(float cosTheta, float g) {
     return (1.0 - g2) / max(pow(1.0 + g2 - 2.0 * g * cosTheta, 1.5), 1e-3);
 }
 
+float ViewDist(float depth) {
+    float nearZ = max(a.texel.w, 0.05);
+    float farZ = max(a.player.w, nearZ + 1.0);
+    return nearZ * farZ / max(farZ - depth * (farZ - nearZ), 0.05);
+}
+
+int Place(vec3 reconstructed, float viewDist, out vec3 pos, out float dist) {
+    float fromCamera = length(reconstructed - a.camera.xyz);
+    float fromOrigin = length(reconstructed);
+    if (fromCamera > 0.4 && fromCamera < viewDist * 2.5 && fromCamera > viewDist * 0.35) {
+        pos = reconstructed;
+        dist = fromCamera;
+        return 1;
+    }
+    if (fromOrigin > 0.4 && fromOrigin < viewDist * 2.5 && fromOrigin > viewDist * 0.35) {
+        pos = reconstructed + a.camera.xyz;
+        dist = fromOrigin;
+        return 1;
+    }
+    pos = a.camera.xyz;
+    dist = viewDist;
+    return 0;
+}
+
 void main() {
     vec3 color = textureLod(colorTex, uv, 0.0).rgb;
     float depth = a.texel.z > 0.5 ? textureLod(depthTex, uv, 0.0).r : 1.0;
@@ -132,71 +156,68 @@ void main() {
         }
     }
 
-    if (a.shadow.x > 0.5 && sky == 0 && a.texel.z > 0.5) {
+    float viewDist = ViewDist(depth);
+    vec3 pos = world;
+    float dist = viewDist;
+    int sane = 0;
+    if (a.texel.z > 0.5 && sky == 0) {
+        sane = Place(world, viewDist, pos, dist);
+    }
+
+    if (a.shadow.x > 0.5 && sane == 1) {
         float vis = 1.0;
-        int taps = a.shadow.z > 1.25 ? 3 : 1;
-        for (int tap = 0; tap < 3; tap++) {
-            if (tap >= taps) {
-                break;
-            }
-            vec3 samplePos = world + vec3(float(tap - 1) * 0.35, 0.0, 0.0);
-            float worldVis = a.shadow2.x > 0.5 ? SunHit(samplePos, 70.0, 8) : 1.0;
-            float unitVis = a.shadow2.y > 0.5 ? SunHit(samplePos, 8.0, 4) : 1.0;
-            vis = min(vis, min(worldVis, unitVis));
-        }
-        vec3 cool = vec3(0.49, 0.58, 0.78);
-        vec3 warm = vec3(1.0, 0.9, 0.75);
-        color = mix(color, color * cool, (1.0 - vis) * a.shadow.y);
-        color = mix(color, color * warm, vis * a.shadow.w * dayAmt);
+        float worldVis = a.shadow2.x > 0.5 ? SunHit(pos, 50.0, 6) : 1.0;
+        float unitVis = a.shadow2.y > 0.5 ? SunHit(pos, 6.0, 3) : 1.0;
+        vis = min(worldVis, unitVis);
+        vec3 cool = vec3(0.62, 0.7, 0.84);
+        color = mix(color, color * cool, (1.0 - vis) * a.shadow.y * 0.65);
+        color = mix(color, color * vec3(1.0, 0.94, 0.82), vis * a.shadow.w * dayAmt);
     }
 
     if (a.night.x > 0.5 && nightAmt > 0.0) {
-        float dark = a.night.y * nightAmt;
-        dark *= mix(1.0, 1.0 + a.night.w * 0.3, nightAmt);
-        vec3 moon = vec3(0.61, 0.72, 1.0);
-        color = mix(color, color * moon, dark * 0.65);
+        float dark = a.night.y * nightAmt * 0.65;
+        vec3 moon = vec3(0.72, 0.8, 1.0);
+        color = mix(color, color * moon, dark * 0.4);
         color *= 1.0 - dark;
     }
 
     if (a.light2.z > 0.5 && sky == 0 && a.texel.z > 0.5) {
-        float dist = length(world - a.camera.xyz);
-        float height = world.z - a.player.z;
-        float dens = a.light2.w * exp(-max(height, 0.0) / a.fog.x);
-        float patchNoise = Noise(world.xy / 60.0 + a.wind.xy * a.wind.z * 0.15);
-        dens *= mix(1.0, mix(0.35, 1.6, patchNoise), a.fog.z);
-        if (height < 0.0) {
-            dens *= mix(1.0, a.fog.w, clamp(-height / 25.0, 0.0, 1.0));
+        float height = sane == 1 ? pos.z - a.player.z : 8.0;
+        float ground = exp(-max(height, 0.0) / max(a.fog.x, 4.0));
+        float patchNoise = sane == 1 ? Noise(pos.xy / 90.0 + a.wind.xy * a.wind.z * 0.04) : 0.5;
+        float dens = a.light2.w * ground * mix(1.0, mix(0.7, 1.35, patchNoise), a.fog.z);
+        if (sane == 1 && height < 0.0) {
+            dens *= mix(1.0, min(a.fog.w, 1.8), clamp(-height / 30.0, 0.0, 1.0));
         }
-        float reach = 1.0 - smoothstep(a.light.w * 0.6, a.light.w, dist);
-        float fogAmt = (1.0 - exp(-dens * dist)) * reach;
-        vec3 fogLit = a.fogColor.rgb * a.fog.y;
-        float toward = max(dot(normalize(world - a.camera.xyz), a.sun.xyz), 0.0);
-        fogLit += vec3(1.0, 0.9, 0.75) * toward * a.light.y * dayAmt;
-        color = mix(color, fogLit, clamp(fogAmt, 0.0, 0.85));
+        if (sane == 0) {
+            dens *= 0.35;
+        }
+        float fogAmt = (1.0 - exp(-dens * dist)) * smoothstep(40.0, 180.0, dist);
+        fogAmt = min(fogAmt, sane == 1 ? 0.38 : 0.12);
+        vec3 fogLit = a.fogColor.rgb * max(a.fog.y, 0.35);
+        color = mix(color, fogLit, fogAmt);
     }
 
-    if (a.light.x > 0.5 && a.texel.z > 0.5 && a.light.y > 0.0) {
-        vec3 ray = world - a.camera.xyz;
+    if (a.light.x > 0.5 && sane == 1 && a.light.y > 0.0) {
+        vec3 ray = pos - a.camera.xyz;
         float rayLen = length(ray);
-        if (rayLen > 0.5) {
+        if (rayLen > 1.0) {
             ray /= rayLen;
-            float march = min(rayLen, a.light.w);
-            int steps = a.light2.y > 2.5 ? 24 : (a.light2.y > 1.5 ? 16 : 8);
+            float march = min(dist, a.light.w);
+            int steps = a.light2.y > 2.5 ? 16 : (a.light2.y > 1.5 ? 10 : 6);
             float stepLen = march / float(steps);
-            float cosTheta = dot(ray, a.sun.xyz);
-            float phase = Henyey(cosTheta, a.light2.x);
+            float phase = Henyey(dot(ray, a.sun.xyz), a.light2.x);
             float accum = 0.0;
-            for (int i = 0; i < 24; i++) {
+            for (int i = 0; i < 16; i++) {
                 if (i >= steps) {
                     break;
                 }
                 vec3 p = a.camera.xyz + ray * (stepLen * (float(i) + 0.5));
-                float vis = SunHit(p, 24.0, 4);
-                float h = exp(-max(p.z - a.player.z, 0.0) / 40.0);
+                float vis = SunHit(p, 18.0, 3);
+                float h = exp(-max(p.z - a.player.z, 0.0) / 50.0);
                 accum += vis * h * stepLen;
             }
-            vec3 shaft = vec3(1.0, 0.9, 0.75) * accum * a.light.z * phase * a.light.y * nightScale * 0.35;
-            color += shaft;
+            color += vec3(1.0, 0.93, 0.8) * accum * a.light.z * phase * a.light.y * nightScale * 0.08;
         }
     }
 
@@ -231,12 +252,12 @@ void main() {
 
     float lampDay = mix(a.lamp.w, 1.0, nightAmt);
     int lampCount = int(a.lamp.z + 0.5);
-    if ((a.lamp.x > 0.5 || a.beacon.x > 0.5) && sky == 0) {
+    if ((a.lamp.x > 0.5 || a.beacon.x > 0.5) && sane == 1) {
         for (int i = 0; i < 64; i++) {
             if (i >= lampCount) {
                 break;
             }
-            vec3 toLamp = a.lamps[i].posRange.xyz - world;
+            vec3 toLamp = a.lamps[i].posRange.xyz - pos;
             float dist = length(toLamp);
             float range = max(a.lamps[i].posRange.w, 1.0);
             if (a.lamp.x > 0.5 && dist < range) {

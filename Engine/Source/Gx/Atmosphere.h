@@ -47,6 +47,7 @@ int32_t Atmosphere_Master();
 int32_t Atmosphere_PostActive();
 float Atmosphere_GlowScale();
 float Atmosphere_TimeSec();
+void Atmosphere_Camera(float& x, float& y, float& z);
 void Atmosphere_ApplyTime(float& dayProgression, uint32_t& timeOfDay);
 void Atmosphere_NoteWorld(float playerX, float playerY, float playerZ, float cameraX, float cameraY, float cameraZ, float day, float weather, int32_t interior, float fogR, float fogG, float fogB, float timeSec);
 void Atmosphere_NoteSun(float x, float y, float z, float brightness);

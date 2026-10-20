@@ -248,6 +248,12 @@ float Atmosphere_TimeSec() {
     return s_timeSec;
 }
 
+void Atmosphere_Camera(float& x, float& y, float& z) {
+    x = s_camera[0];
+    y = s_camera[1];
+    z = s_camera[2];
+}
+
 void Atmosphere_ApplyTime(float& dayProgression, uint32_t& timeOfDay) {
     Refresh();
     if (!On(A_Master) || !On(A_Time) || s_v[A_TimeMode] < 0.5f) {
@@ -360,7 +366,7 @@ void Atmosphere_GrassParams(float& wind, float& time, float& radius, float& forc
 }
 
 void Atmosphere_WaterParams(float& height, float& time, float& foam, float& glint, float& clarity, float& rain, float& sunset) {
-    height = Clamped(A_WaterWaves, 0.0f, 300.0f) * 0.01f * 0.45f;
+    height = Clamped(A_WaterWaves, 0.0f, 300.0f) * 0.01f * 2.4f;
     time = s_timeSec;
     foam = Clamped(A_WaterFoam, 0.0f, 100.0f) * 0.01f;
     glint = Clamped(A_WaterGlint, 0.0f, 300.0f) * 0.01f;
@@ -380,7 +386,14 @@ void Atmosphere_FillGpu(AtmosGpu& gpu, const float viewProj[16], const float inv
     }
 
     NormalizeSun();
-    float night = NightAmount();
+    float clockNight = NightAmount();
+    float sunNight = 1.0f - (s_sun[2] - 0.02f) / 0.32f;
+    if (sunNight < 0.0f) {
+        sunNight = 0.0f;
+    } else if (sunNight > 1.0f) {
+        sunNight = 1.0f;
+    }
+    float night = s_sunBrightness < 0.0f ? clockNight * 0.35f : (clockNight < sunNight ? clockNight : sunNight);
     if (s_interior && !On(A_NightIndoors)) {
         night = 0.0f;
     }
