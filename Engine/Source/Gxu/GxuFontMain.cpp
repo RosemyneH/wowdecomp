@@ -91,6 +91,11 @@ float g_indentPixelWidth;
 uint8_t g_fontStatsEnabled;
 
 int32_t g_fontMsdf;
+float g_fontMsdfRange = 4.0f;
+
+float GxuFontMsdfRange() {
+    return g_fontMsdfRange;
+}
 
 // STATIC: 0x00C7D2C4
 uint32_t g_heightPixels;
@@ -917,6 +922,26 @@ void GxuFontSetMsdfEnabled(int32_t enabled) {
 
         font->m_fontFlags = next;
         font->HandleScreenSizeChange();
+    }
+}
+
+void GxuFontSetMsdfRange(float range) {
+    if (range < 1.0f) {
+        range = 1.0f;
+    } else if (range > 8.0f) {
+        range = 8.0f;
+    }
+
+    if (range == g_fontMsdfRange) {
+        return;
+    }
+
+    g_fontMsdfRange = range;
+
+    for (CGxFont* font = g_fonts.Head(); font; font = g_fonts.Next(font)) {
+        if (font->m_fontFlags & GxFontFlag_Msdf) {
+            font->HandleScreenSizeChange();
+        }
     }
 }
 

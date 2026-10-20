@@ -94,7 +94,7 @@ int32_t CGxFont::UpdateDimensions() {
     this->m_baseline = static_cast<uint32_t>(baseline + 0.5);
 
     if (this->UsesMsdf()) {
-        this->m_cellHeight = pixelSize + static_cast<uint32_t>(kGxFontMsdfRange * 2.0f);
+        this->m_cellHeight = pixelSize + static_cast<uint32_t>(GxuFontMsdfRange() * 2.0f);
     } else if (this->m_fontFlags & 8) {
         this->m_cellHeight = pixelSize + 4;
     } else if (this->m_fontFlags & 1) {

@@ -1657,7 +1657,7 @@ void CGxDeviceVulkan::IBuildUniforms(VkDrawUniforms& uniforms) {
         this->IXformTex(tmu, uniforms.stageTexMode[tmu], uniforms.texMatrix[tmu]);
     }
 
-    uniforms.stageColorOp[2] = -1;
+    uniforms.stageColorOp[2] = WowDecompVk_MsdfView();
     uniforms.stageColorOp[3] = -1;
     uniforms.stageAlphaOp[2] = -1;
     uniforms.stageAlphaOp[3] = -1;
@@ -1708,6 +1708,8 @@ void CGxDeviceVulkan::IBuildUniforms(VkDrawUniforms& uniforms) {
     ColorToFloats(rs[GxRs_FogColor].m_value.m_data.u[0], uniforms.fogColor);
     uniforms.fogParams[0] = rs[GxRs_FogStart].m_value.m_data.f[0];
     uniforms.fogParams[1] = rs[GxRs_FogEnd].m_value.m_data.f[0];
+    uniforms.fogParams[2] = WowDecompVk_MsdfRange();
+    uniforms.fogParams[3] = WowDecompVk_MsdfSharp();
 
     float pointSize = rs[GxRs_PointScale].m_value.m_data.f[0];
     uniforms.misc[0] = pointSize > 1.0f && this->m_vk.m_features.largePoints ? pointSize : 1.0f;

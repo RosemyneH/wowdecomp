@@ -142,6 +142,9 @@ WowDecompAdvancedOptions = {
     vkSharpen = { text = "Sharpen", minValue = 0, maxValue = 4, valueStep = 1, tooltip = "Crisps the image. Zero is off. Useful after anti-aliasing." },
     vkWireframe = { text = "Wireframe", tooltip = "Draws depth-tested world geometry as lines through the Vulkan shaders." },
     vkUnlit = { text = "Unlit", tooltip = "Turns off fixed-function lighting in the Vulkan vertex shader." },
+    gxMsdfFonts = { text = "Distance-field fonts", tooltip = "Rebuilds UI fonts as multi-channel distance fields so edges stay smooth when the frame scales them." },
+    gxMsdfRange = { text = "Range", minValue = 1, maxValue = 8, valueStep = 1, tooltip = "Texels of distance stored around each glyph. Wider covers thick outlines. Narrower is sharper and can clip." },
+    gxMsdfSharp = { text = "Sharpness", minValue = 0.25, maxValue = 4, valueStep = 0.25, tooltip = "How hard the shader cuts the distance field. 1 matches the stored range." },
 };
 
 local function WowDecomp_Font(large)
@@ -190,13 +193,47 @@ local function WowDecomp_InstallAdvanced()
         subText:SetJustifyH("LEFT");
         subText:SetJustifyV("TOP");
         subText:SetHeight(32);
-        subText:SetText("Playtest settings. Full view, image effects, and Vulkan shader experiments.");
+        subText:SetText("Playtest settings. Scroll for distance-field fonts, image effects, and Vulkan shader experiments.");
     end
 
-    local view = CreateFrame("Frame", "VideoOptionsAdvancedPanelView", panel, "OptionsBoxTemplate");
+    local scroll = CreateFrame("ScrollFrame", "VideoOptionsAdvancedPanelScroll", panel);
+    scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, -64);
+    scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -28, 8);
+    scroll:EnableMouseWheel(true);
+
+    local child = CreateFrame("Frame", "VideoOptionsAdvancedPanelScrollChild", scroll);
+    child:SetWidth(400);
+    child:SetHeight(640);
+    scroll:SetScrollChild(child);
+
+    local function clampScroll()
+        local maxScroll = child:GetHeight() - scroll:GetHeight();
+        if maxScroll < 0 then
+            maxScroll = 0;
+        end
+        local current = scroll:GetVerticalScroll();
+        if current < 0 then
+            current = 0;
+        elseif current > maxScroll then
+            current = maxScroll;
+        end
+        scroll:SetVerticalScroll(current);
+    end
+
+    scroll:SetScript("OnMouseWheel", function(self, delta)
+        self:SetVerticalScroll(self:GetVerticalScroll() - delta * 48);
+        clampScroll();
+    end);
+    scroll:SetScript("OnSizeChanged", clampScroll);
+    panel:EnableMouseWheel(true);
+    panel:SetScript("OnMouseWheel", function(_, delta)
+        scroll:GetScript("OnMouseWheel")(scroll, delta);
+    end);
+
+    local view = CreateFrame("Frame", "VideoOptionsAdvancedPanelView", child, "OptionsBoxTemplate");
     view:SetWidth(380);
     view:SetHeight(44);
-    view:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -72);
+    view:SetPoint("TOPLEFT", child, "TOPLEFT", 16, -8);
     _G[view:GetName() .. "Title"]:SetText("View");
 
     WowDecomp_RegisterCheckbox(
@@ -212,7 +249,7 @@ local function WowDecomp_InstallAdvanced()
         WowDecomp_OnPlaytestCVarChanged
     );
 
-    local image = CreateFrame("Frame", "VideoOptionsAdvancedPanelImage", panel, "OptionsBoxTemplate");
+    local image = CreateFrame("Frame", "VideoOptionsAdvancedPanelImage", child, "OptionsBoxTemplate");
     image:SetWidth(380);
     image:SetHeight(96);
     image:SetPoint("TOPLEFT", view, "BOTTOMLEFT", 0, -28);
@@ -253,7 +290,7 @@ local function WowDecomp_InstallAdvanced()
     WowDecomp_SetupRegisteredControl(sharpen, panel, WowDecompAdvancedOptions.vkSharpen);
     sharpen.wowDecompReady = true;
 
-    local shaders = CreateFrame("Frame", "VideoOptionsAdvancedPanelShaders", panel, "OptionsBoxTemplate");
+    local shaders = CreateFrame("Frame", "VideoOptionsAdvancedPanelShaders", child, "OptionsBoxTemplate");
     shaders:SetWidth(380);
     shaders:SetHeight(150);
     shaders:SetPoint("TOPLEFT", image, "BOTTOMLEFT", 0, -28);
@@ -309,6 +346,156 @@ local function WowDecomp_InstallAdvanced()
         status:SetText(GetVulkanShaderStatus and GetVulkanShaderStatus() or "");
     end
 
+    local fonts = CreateFrame("Frame", "VideoOptionsAdvancedPanelFonts", child, "OptionsBoxTemplate");
+    fonts:SetWidth(380);
+    fonts:SetHeight(214);
+    fonts:SetPoint("TOPLEFT", shaders, "BOTTOMLEFT", 0, -28);
+    _G[fonts:GetName() .. "Title"]:SetText("Fonts");
+
+    local msdf = WowDecomp_RegisterCheckbox(
+        panel,
+        fonts,
+        "VideoOptionsAdvancedPanelMsdf",
+        "Distance-field fonts",
+        "gxMsdfFonts",
+        WowDecompAdvancedOptions.gxMsdfFonts.tooltip,
+        fonts,
+        12,
+        -8,
+        WowDecomp_RefreshMsdfStatus
+    );
+    msdf:SetHitRectInsets(0, -180, 0, 0);
+
+    if smallFont then
+        local viewLabel = fonts:CreateFontString(nil, "ARTWORK", smallFont);
+        viewLabel:SetPoint("TOPLEFT", fonts, "TOPLEFT", 16, -40);
+        viewLabel:SetText("View");
+    end
+
+    local drop = CreateFrame("Frame", "VideoOptionsAdvancedPanelMsdfView", fonts, "UIDropDownMenuTemplate");
+    drop:SetPoint("TOPLEFT", fonts, "TOPLEFT", 48, -32);
+    UIDropDownMenu_SetWidth(150, drop);
+    UIDropDownMenu_JustifyText("LEFT", drop);
+    panel.msdfView = "0";
+
+    local function viewText(value)
+        if value == "1" then
+            return "Color channels";
+        end
+        if value == "2" then
+            return "Signed distance";
+        end
+        return "Shaded";
+    end
+
+    UIDropDownMenu_Initialize(drop, function()
+        local function choice(text, value)
+            local info = UIDropDownMenu_CreateInfo();
+            info.text = text;
+            info.value = value;
+            info.checked = panel.msdfView == value;
+            info.func = function(button)
+                panel.msdfView = button.value;
+                UIDropDownMenu_SetText(viewText(button.value), drop);
+                SetCVar("gxMsdfView", button.value);
+                if button.value ~= "0" and not msdf:GetChecked() then
+                    msdf:SetChecked(true);
+                    WowDecomp_ApplyPlaytestCVar(msdf);
+                end
+                WowDecomp_RefreshMsdfStatus();
+                if VideoOptionsFrameApply then
+                    VideoOptionsFrameApply:Enable();
+                end
+            end
+            UIDropDownMenu_AddButton(info);
+        end
+        choice("Shaded", "0");
+        choice("Color channels", "1");
+        choice("Signed distance", "2");
+    end);
+
+    local function msdfSlider(name, cvar, entry, low, high, y)
+        local slider = CreateFrame("Slider", name, fonts, "OptionsSliderTemplate");
+        slider:SetWidth(200);
+        slider:SetPoint("TOPLEFT", fonts, "TOPLEFT", 16, y);
+        slider.type = CONTROLTYPE_SLIDER;
+        slider.cvar = cvar;
+        slider.tooltipText = entry.tooltip;
+        _G[name .. "Low"]:SetText(low);
+        _G[name .. "High"]:SetText(high);
+        slider:SetScript("OnValueChanged", function(self, value)
+            if not self.wowDecompReady then
+                return;
+            end
+            local step = entry.valueStep or 1;
+            local snapped = math.floor(value / step + 0.5) * step;
+            BlizzardOptionsPanel_Slider_OnValueChanged(self, snapped);
+            local text = step >= 1 and tostring(math.floor(snapped + 0.5)) or string.format("%.2f", snapped);
+            SetCVar(cvar, text);
+            WowDecomp_RefreshMsdfStatus();
+            if VideoOptionsFrameApply then
+                VideoOptionsFrameApply:Enable();
+            end
+        end);
+        BlizzardOptionsPanel_RegisterControl(slider, panel);
+        WowDecomp_SetupRegisteredControl(slider, panel, entry);
+        slider.wowDecompReady = true;
+        return slider;
+    end
+
+    msdfSlider("VideoOptionsAdvancedPanelMsdfRange", "gxMsdfRange", WowDecompAdvancedOptions.gxMsdfRange, "1", "8", -78);
+    msdfSlider("VideoOptionsAdvancedPanelMsdfSharp", "gxMsdfSharp", WowDecompAdvancedOptions.gxMsdfSharp, "Soft", "Hard", -118);
+
+    if smallFont then
+        local fontStatus = fonts:CreateFontString("VideoOptionsAdvancedPanelMsdfStatus", "ARTWORK", smallFont);
+        fontStatus:SetPoint("TOPLEFT", fonts, "TOPLEFT", 16, -162);
+        fontStatus:SetWidth(348);
+        fontStatus:SetJustifyH("LEFT");
+        fontStatus:SetJustifyV("TOP");
+        fontStatus:SetHeight(40);
+    end
+
+    function WowDecomp_RefreshMsdfStatus()
+        local fontStatus = _G["VideoOptionsAdvancedPanelMsdfStatus"];
+        if fontStatus then
+            local on = GetCVar("gxMsdfFonts") == "1";
+            local view = GetCVar("gxMsdfView") or "0";
+            if not on then
+                fontStatus:SetText("Distance fields are off. UI fonts use the alpha atlas.");
+            elseif view == "1" then
+                fontStatus:SetText("Showing the red, green, and blue channels. Colored edges mean the field is present.");
+            elseif view == "2" then
+                fontStatus:SetText("Showing the median distance. Ink is white and the outside is black.");
+            else
+                fontStatus:SetText("Distance fields are on. Range " .. (GetCVar("gxMsdfRange") or "4") .. ", sharpness " .. (GetCVar("gxMsdfSharp") or "1") .. ".");
+            end
+        end
+        if drop then
+            panel.msdfView = GetCVar("gxMsdfView") or panel.msdfView or "0";
+            UIDropDownMenu_SetText(viewText(panel.msdfView), drop);
+        end
+    end
+
+    local previousRefresh = panel.refresh;
+    panel.refresh = function(self)
+        if previousRefresh then
+            previousRefresh(self);
+        end
+        WowDecomp_RefreshMsdfStatus();
+    end
+
+    local previousDefault = panel.default;
+    panel.default = function(self)
+        if previousDefault then
+            previousDefault(self);
+        end
+        SetCVar("gxMsdfView", "0");
+        self.msdfView = "0";
+        WowDecomp_RefreshMsdfStatus();
+    end
+
+    WowDecomp_RefreshMsdfStatus();
+
     panel:SetScript("OnUpdate", function(self, elapsed)
         self.wowDecompStatusTimer = (self.wowDecompStatusTimer or 0) + elapsed;
         if self.wowDecompStatusTimer < 0.25 then
@@ -323,6 +510,9 @@ if VideoOptionsFrame then
     VideoOptionsFrame:HookScript("OnShow", function()
         WowDecomp_InstallAdvanced();
         WowDecomp_OnPlaytestCVarChanged();
+        if WowDecomp_RefreshMsdfStatus then
+            WowDecomp_RefreshMsdfStatus();
+        end
     end);
 end
 

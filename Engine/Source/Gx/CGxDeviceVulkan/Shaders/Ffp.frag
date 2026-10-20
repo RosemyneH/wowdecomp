@@ -39,14 +39,29 @@ void main() {
     vec2 uvWidth = max(fwidth(uv), vec2(1e-6));
     int colorOp = u.stageColorOp.x;
 
-    // ʕ •ᴥ•ʔ✿ Color ops 6/7/8 are MSDF, 1px outline, and 2px outline ✿ ʕ •ᴥ•ʔ
+    // ʕ •ᴥ•ʔ✿ Color ops 6/7/8 are MSDF, 1px outline, and 2px outline. fogParams.zw and stageColorOp.z are the live range, sharpness, and view ✿ ʕ •ᴥ•ʔ
     if (colorOp >= 6 && colorOp <= 8) {
         vec3 msdf = texture(tex0, uv).rgb;
         float sd = MsdfMedian(msdf.r, msdf.g, msdf.b) - 0.5;
-        float screenPxRange = max(0.5 * dot(vec2(4.0 / 256.0), vec2(1.0) / uvWidth), 1.0);
+        int msdfView = u.stageColorOp.z;
+
+        if (msdfView == 1) {
+            outColor = vec4(msdf, 1.0);
+            return;
+        }
+
+        if (msdfView == 2) {
+            float gray = clamp(sd + 0.5, 0.0, 1.0);
+            outColor = vec4(vec3(gray), 1.0);
+            return;
+        }
+
+        float range = u.fogParams.z > 0.0 ? u.fogParams.z : 4.0;
+        float sharp = u.fogParams.w > 0.0 ? u.fogParams.w : 1.0;
+        float screenPxRange = max(0.5 * dot(vec2(range / 256.0), vec2(1.0) / uvWidth), 1.0) * sharp;
         float dist = sd * screenPxRange;
         float outlinePx = colorOp == 8 ? 2.0 : (colorOp == 7 ? 1.0 : 0.0);
-        // ʕ •ᴥ•ʔ✿ The field only covers four texels. An outline that reaches the rim stays a box ✿ ʕ •ᴥ•ʔ
+        // ʕ •ᴥ•ʔ✿ The field only covers the chosen range. An outline that reaches the rim stays a box ✿ ʕ •ᴥ•ʔ
         outlinePx = min(outlinePx, max(0.5 * screenPxRange - 1.0, 0.0));
         float body = clamp(dist + 0.5, 0.0, 1.0);
         float alpha = clamp(dist + 0.5 + outlinePx, 0.0, 1.0);

@@ -258,7 +258,7 @@ void CGxString::InitializeTextLine(const char* text, uint32_t numBytes, CImVecto
     double pixelHeight = fontPixelHeight;
     float scale = pixelHeight / this->m_currentFace->GetPixelSize();
     bool msdf = this->m_currentFace->UsesMsdf();
-    float msdfPad = msdf ? kGxFontMsdfRange * scale : 0.0f;
+    float msdfPad = msdf ? GxuFontMsdfRange() * scale : 0.0f;
     float cellHeight = ScreenToPixelHeight((this->m_flags >> 7) & 1, this->m_currentFontHeight);
 
     if (!msdf && (this->m_currentFace->m_fontFlags & 8)) {

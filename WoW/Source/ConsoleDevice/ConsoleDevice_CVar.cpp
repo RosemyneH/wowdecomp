@@ -9,6 +9,7 @@
 #include "Engine/Source/Gx/CGxDevice/Types.h"
 #include "Engine/Source/Gx/CGxFormat.h"
 #include "Engine/Source/Gx/Gx.h"
+#include "Engine/Source/Gx/WowDecompVk.h"
 #include "Engine/Source/Gxu/GxuFont.h"
 #include "Engine/Source/Os/Input.h"
 #include "Engine/Source/Storm/H/storm.h"
@@ -590,6 +591,43 @@ static bool CVGxMsdfFontsCallback(CVar* var, const char* oldValue, const char* v
     return true;
 }
 
+static bool CVGxMsdfRangeCallback(CVar* var, const char* oldValue, const char* value, void* arg) {
+    float range = SStrToFloat(value);
+
+    if (range < 1.0f || range > 8.0f) {
+        ConsoleWrite("gxMsdfRange must be 1-8.", DEFAULT_COLOR);
+        return false;
+    }
+
+    GxuFontSetMsdfRange(range);
+    WowDecompVk_SetMsdfRange(range);
+    return true;
+}
+
+static bool CVGxMsdfSharpCallback(CVar* var, const char* oldValue, const char* value, void* arg) {
+    float sharp = SStrToFloat(value);
+
+    if (sharp < 0.25f || sharp > 4.0f) {
+        ConsoleWrite("gxMsdfSharp must be 0.25-4.", DEFAULT_COLOR);
+        return false;
+    }
+
+    WowDecompVk_SetMsdfSharp(sharp);
+    return true;
+}
+
+static bool CVGxMsdfViewCallback(CVar* var, const char* oldValue, const char* value, void* arg) {
+    int32_t view = SStrToInt(value);
+
+    if (view < 0 || view > 2) {
+        ConsoleWrite("gxMsdfView must be 0, 1, or 2.", DEFAULT_COLOR);
+        return false;
+    }
+
+    WowDecompVk_SetMsdfView(view);
+    return true;
+}
+
 // VERIFY: 62bcef94 auto
 // OFFSET: 0x00769C90
 void RegisterStereoCVars() {
@@ -641,4 +679,7 @@ void RegisterGxCVars() {
     s_cvWindowResizeLock = CVar::Register("windowResizeLock", "prevent resizing in windowed mode", 1, "0", CVGxWindowResizeLockCallback, CATEGORY_GRAPHICS, false, nullptr, false);
     s_cvFixedFunction = CVar::Register("fixedFunction", "Force fixed function rendering", 3, "0", nullptr, CATEGORY_GRAPHICS, false, nullptr, false);
     CVar::Register("gxMsdfFonts", "sample UI fonts as multi-channel distance fields", 1, "0", CVGxMsdfFontsCallback, CATEGORY_GRAPHICS, false, nullptr, false);
+    CVar::Register("gxMsdfRange", "distance-field range in atlas texels", 1, "4", CVGxMsdfRangeCallback, CATEGORY_GRAPHICS, false, nullptr, false);
+    CVar::Register("gxMsdfSharp", "distance-field edge sharpness", 1, "1", CVGxMsdfSharpCallback, CATEGORY_GRAPHICS, false, nullptr, false);
+    CVar::Register("gxMsdfView", "0 shaded, 1 color channels, 2 signed distance", 1, "0", CVGxMsdfViewCallback, CATEGORY_GRAPHICS, false, nullptr, false);
 }

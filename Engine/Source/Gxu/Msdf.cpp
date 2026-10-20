@@ -772,7 +772,7 @@ double Median(double a, double b, double c) {
 
 float FieldValue(double distance) {
     // ʕ •ᴥ•ʔ✿ Raw distance is negative inside. The shader treats values above 0.5 as ink ✿ ʕ •ᴥ•ʔ
-    double value = (-distance) / static_cast<double>(kGxFontMsdfRange) + 0.5;
+    double value = (-distance) / static_cast<double>(GxuFontMsdfRange()) + 0.5;
     return static_cast<float>(std::clamp(value, 0.0, 1.0));
 }
 
@@ -914,7 +914,7 @@ bool DiagonalArtifact(const float a[3], const float b[3], const float c[3], cons
 
 // ʕ •ᴥ•ʔ✿ Filtering two agreeing texels can still paint a ring just outside the stroke ✿ ʕ •ᴥ•ʔ
 void FlattenArtifacts(float* field, int width, int height) {
-    float span = 1.1111111111111111f / static_cast<float>(kGxFontMsdfRange);
+    float span = 1.1111111111111111f / GxuFontMsdfRange();
     float diagonal = span * 1.41421356f;
     std::vector<char> error(static_cast<size_t>(width) * height);
 
@@ -1035,7 +1035,7 @@ bool MsdfRasterizeGlyph(FT_Face face, uint32_t pixelSize, uint32_t code, uint32_
         edges.insert(edges.end(), contour.begin(), contour.end());
     }
 
-    double range = static_cast<double>(kGxFontMsdfRange);
+    double range = static_cast<double>(GxuFontMsdfRange());
     int left = 0;
     int right = 1;
 

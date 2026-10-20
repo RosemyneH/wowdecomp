@@ -5,6 +5,9 @@ static int32_t s_wireframe;
 static int32_t s_unlit;
 static int32_t s_fxaa;
 static int32_t s_sharpen;
+static float s_msdfRange = 4.0f;
+static float s_msdfSharp = 1.0f;
+static int32_t s_msdfView;
 static int32_t s_reload;
 static char s_status[512] = "Built-in Vulkan shaders. Drop SPIR-V in Shaders/Vulkan and reload.";
 
@@ -44,6 +47,48 @@ void WowDecompVk_SetSharpen(int32_t amount) {
 
 int32_t WowDecompVk_Sharpen() {
     return s_sharpen;
+}
+
+void WowDecompVk_SetMsdfRange(float range) {
+    if (range < 1.0f) {
+        range = 1.0f;
+    } else if (range > 8.0f) {
+        range = 8.0f;
+    }
+
+    s_msdfRange = range;
+}
+
+float WowDecompVk_MsdfRange() {
+    return s_msdfRange;
+}
+
+void WowDecompVk_SetMsdfSharp(float sharp) {
+    if (sharp < 0.25f) {
+        sharp = 0.25f;
+    } else if (sharp > 4.0f) {
+        sharp = 4.0f;
+    }
+
+    s_msdfSharp = sharp;
+}
+
+float WowDecompVk_MsdfSharp() {
+    return s_msdfSharp;
+}
+
+void WowDecompVk_SetMsdfView(int32_t view) {
+    if (view < 0) {
+        view = 0;
+    } else if (view > 2) {
+        view = 2;
+    }
+
+    s_msdfView = view;
+}
+
+int32_t WowDecompVk_MsdfView() {
+    return s_msdfView;
 }
 
 void WowDecompVk_RequestShaderReload() {
