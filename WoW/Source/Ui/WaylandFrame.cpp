@@ -1,6 +1,7 @@
 #include "WaylandFrame.h"
 
 #include "Engine/Source/Base/Handle.h"
+#include "Engine/Source/Frame/CScriptObject.h"
 #include "Engine/Source/Frame/CSimpleTexture.h"
 #include "Engine/Source/FrameScript/FrameScript.h"
 #include "Engine/Source/Gx/CGxTex.h"
@@ -47,7 +48,7 @@ const char* kFrameLua = R"lua(
 local id, title, w, h = ...
 local parent = UIParent
 if not parent then return end
-local frame = CreateFrame("Frame", nil, parent)
+local frame = CreateFrame("Frame", "WowdecompSurface" .. id, parent)
 frame:SetSize((w or 640) + 16, (h or 400) + 36)
 frame:SetPoint("CENTER", parent, "CENTER", 40, 20)
 frame:SetBackdrop({
@@ -71,32 +72,42 @@ label:SetPoint("TOPLEFT", 28, -9)
 label:SetText(title or "Wayland")
 local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
 close:SetPoint("TOPRIGHT", 2, 2)
+close:SetFrameLevel(frame:GetFrameLevel() + 10)
 close:SetScript("OnClick", function() WaylandFrame_Close(id) end)
 local tex = frame:CreateTexture(nil, "ARTWORK")
 tex:SetPoint("TOPLEFT", 8, -28)
 tex:SetPoint("BOTTOMRIGHT", -8, 8)
-tex:EnableMouse(true)
+local hit = CreateFrame("Frame", nil, frame)
+hit:SetPoint("TOPLEFT", 8, -28)
+hit:SetPoint("BOTTOMRIGHT", -8, 8)
+hit:EnableMouse(true)
+hit:EnableMouseWheel(true)
+hit:SetFrameLevel(frame:GetFrameLevel() + 2)
 local function point(button, down)
     local x, y = GetCursorPosition()
-    local scale = tex:GetEffectiveScale()
+    local scale = hit:GetEffectiveScale()
     if not scale or scale == 0 then scale = 1 end
     x, y = x / scale, y / scale
-    local left, top = tex:GetLeft(), tex:GetTop()
-    local tw, th = tex:GetWidth(), tex:GetHeight()
+    local left, top = hit:GetLeft(), hit:GetTop()
+    local tw, th = hit:GetWidth(), hit:GetHeight()
     if not left or not top or not tw or tw == 0 or not th or th == 0 then return end
     WaylandFrame_Pointer(id, (x - left) / tw, (top - y) / th, button or 0, down or 0)
 end
-tex:SetScript("OnUpdate", function()
-    if tex.IsMouseOver and tex:IsMouseOver() then point(0, 0) end
+hit:SetScript("OnUpdate", function()
+    if hit:IsMouseOver() then point(0, 0) end
 end)
-tex:SetScript("OnMouseDown", function(_, button)
+hit:SetScript("OnMouseDown", function(_, button)
     WaylandFrame_Focus(id, 1)
     local map = { LeftButton = 1, RightButton = 2, MiddleButton = 3 }
     point(map[button] or 1, 1)
 end)
-tex:SetScript("OnMouseUp", function(_, button)
+hit:SetScript("OnMouseUp", function(_, button)
     local map = { LeftButton = 1, RightButton = 2, MiddleButton = 3 }
     point(map[button] or 1, 0)
+end)
+hit:SetScript("OnMouseWheel", function(_, delta)
+    point(0, 0)
+    WaylandFrame_Scroll(id, delta or 0)
 end)
 return tex
 )lua";
@@ -108,6 +119,39 @@ int32_t LuaClose(lua_State* L) {
 
 int32_t LuaFocus(lua_State* L) {
     WaylandEmbedFocus((int32_t)luaL_checknumber(L, 1), (int32_t)luaL_checknumber(L, 2));
+    return 0;
+}
+
+CSimpleTexture* TextureOnStack(lua_State* L) {
+    if (!lua_istable(L, -1)) return nullptr;
+    lua_rawgeti(L, -1, 0);
+    CSimpleTexture* texture = nullptr;
+    if (lua_islightuserdata(L, -1)) {
+        auto* object = static_cast<CScriptObject*>(lua_touserdata(L, -1));
+        if (object && object->IsA(CSimpleTexture::GetObjectType())) texture = static_cast<CSimpleTexture*>(object);
+    }
+    lua_pop(L, 1);
+    return texture;
+}
+
+void HideNamed(lua_State* L, int32_t id) {
+    if (!L) return;
+    int top = lua_gettop(L);
+    char name[64];
+    std::snprintf(name, sizeof(name), "WowdecompSurface%d", id);
+    lua_getfield(L, LUA_GLOBALSINDEX, name);
+    if (lua_istable(L, -1)) {
+        lua_getfield(L, -1, "Hide");
+        if (lua_isfunction(L, -1)) {
+            lua_pushvalue(L, -2);
+            lua_pcall(L, 1, 0, 0);
+        }
+    }
+    lua_settop(L, top);
+}
+
+int32_t LuaScroll(lua_State* L) {
+    WaylandEmbedScroll((int32_t)luaL_checknumber(L, 1), (int32_t)luaL_checknumber(L, 2));
     return 0;
 }
 
@@ -174,6 +218,8 @@ void WaylandFrame_Register(lua_State* L) {
     lua_setfield(L, LUA_GLOBALSINDEX, "WaylandFrame_Focus");
     lua_pushcfunction(L, LuaPointer);
     lua_setfield(L, LUA_GLOBALSINDEX, "WaylandFrame_Pointer");
+    lua_pushcfunction(L, LuaScroll);
+    lua_setfield(L, LUA_GLOBALSINDEX, "WaylandFrame_Scroll");
 }
 
 int32_t WaylandFrame_Open(const char* spec, int32_t width, int32_t height, int32_t* frameRef, char* error, uint32_t errorLen) {
@@ -202,12 +248,21 @@ int32_t WaylandFrame_Open(const char* spec, int32_t width, int32_t height, int32
     lua_pushnumber(L, width);
     lua_pushnumber(L, height);
     if (lua_pcall(L, 4, 1, 0) != 0) {
+        const char* why = lua_tostring(L, -1);
         WaylandEmbedClose(id);
         lua_pop(L, 1);
-        if (error && errorLen) std::snprintf(error, errorLen, "could not build the frame");
+        HideNamed(L, id);
+        if (error && errorLen) std::snprintf(error, errorLen, "%s", why && why[0] ? why : "could not build the frame");
         return 0;
     }
-    CSimpleTexture* texture = lua_isuserdata(L, -1) ? static_cast<CSimpleTexture*>(lua_touserdata(L, -1)) : nullptr;
+    CSimpleTexture* texture = TextureOnStack(L);
+    if (!texture) {
+        WaylandEmbedClose(id);
+        lua_pop(L, 1);
+        HideNamed(L, id);
+        if (error && errorLen) std::snprintf(error, errorLen, "frame texture was not created");
+        return 0;
+    }
     int top = lua_gettop(L);
     lua_getfield(L, top, "GetParent");
     int32_t ref = LUA_NOREF;
@@ -238,15 +293,16 @@ int32_t WaylandFrame_Open(const char* spec, int32_t width, int32_t height, int32
 void HideFrame(Live& live) {
     lua_State* L = FrameScript_GetContext();
     if (!L || live.frameRef == LUA_NOREF) return;
+    int top = lua_gettop(L);
     lua_rawgeti(L, LUA_REGISTRYINDEX, live.frameRef);
-    if (lua_isuserdata(L, -1)) {
+    if (lua_istable(L, -1)) {
         lua_getfield(L, -1, "Hide");
         if (lua_isfunction(L, -1)) {
             lua_pushvalue(L, -2);
             lua_pcall(L, 1, 0, 0);
         }
     }
-    lua_pop(L, 1);
+    lua_settop(L, top);
 }
 
 void ReleaseLive(Live& live) {

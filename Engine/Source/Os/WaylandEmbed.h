@@ -19,6 +19,7 @@ void WaylandEmbedClose(int32_t id);
 void WaylandEmbedService();
 int32_t WaylandEmbedPixels(int32_t id, WaylandPixels* out);
 void WaylandEmbedPointer(int32_t id, int32_t x, int32_t y, int32_t button, int32_t down);
+void WaylandEmbedScroll(int32_t id, int32_t delta);
 void WaylandEmbedFocus(int32_t id, int32_t focused);
 void WaylandEmbedClearFocus();
 void WaylandEmbedKeySym(int32_t id, uint32_t keysym, int32_t down);
@@ -36,6 +37,7 @@ inline void WaylandEmbedClose(int32_t) {}
 inline void WaylandEmbedService() {}
 inline int32_t WaylandEmbedPixels(int32_t, WaylandPixels*) { return 0; }
 inline void WaylandEmbedPointer(int32_t, int32_t, int32_t, int32_t, int32_t) {}
+inline void WaylandEmbedScroll(int32_t, int32_t) {}
 inline void WaylandEmbedFocus(int32_t, int32_t) {}
 inline void WaylandEmbedClearFocus() {}
 inline void WaylandEmbedKeySym(int32_t, uint32_t, int32_t) {}
