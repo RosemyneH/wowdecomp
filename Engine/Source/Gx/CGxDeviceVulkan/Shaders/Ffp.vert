@@ -89,7 +89,7 @@ void main() {
         GpuDrawItem item = gpu.items[gl_InstanceIndex];
         worldMat = item.world;
 
-        if (gpuMode == 2) {
+        if (gpuMode >= 2) {
             tex0 = item.tex0;
             tex1 = item.tex1;
             lightPos = item.lightPos;

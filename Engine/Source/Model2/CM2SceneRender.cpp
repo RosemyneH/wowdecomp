@@ -1244,6 +1244,286 @@ void CM2SceneRender::DrawCallback() {
     CShaderEffect::UpdateProjMatrix();
 }
 
+// ʕ •ᴥ•ʔ✿ Same opaque texture on one skeleton. Later geosets only repeat the bind ✿ ʕ •ᴥ•ʔ
+static int32_t CharacterBatchMerges(const M2Element* element) {
+    if (CShaderEffect::s_enableShaders || !g_theGxDevicePtr->GpuSkinSupported()) {
+        return 0;
+    }
+
+    if (!element || element->m_type != 0 || (element->m_flags & 7) || element->m_alpha < 0.99998999f) {
+        return 0;
+    }
+
+    CM2Model* model = element->m_model;
+    M2Batch* batch = element->m_batch;
+    M2SkinSection* section = element->m_skinSection;
+
+    if (!model || !batch || !section || (model->m_fFlags & 0x2000)) {
+        return 0;
+    }
+
+    if ((batch->m_flags & 0x40) || (batch->m_shader & 0x4000)) {
+        return 0;
+    }
+
+    CM2Shared* shared = model->m_shared;
+
+    if (!shared || !shared->m_data || !shared->m_skinData || !shared->m_skinSections || (shared->m_cache && (shared->m_cache->m_flags & 8))) {
+        return 0;
+    }
+
+    M2Data* data = shared->m_data;
+    uint32_t boneCount = data->m_bones.m_count;
+    uint32_t sectionIndex = static_cast<uint32_t>(section - shared->m_skinSections);
+
+    if (!boneCount || boneCount > 256 || section->m_boneCount <= 1 || section->m_boneInfluences < 1 || section->m_boneInfluences > 4) {
+        return 0;
+    }
+
+    if (!section->m_vertexCount || !section->m_indexCount || sectionIndex >= shared->m_skinData->m_skinSections.m_count) {
+        return 0;
+    }
+
+    if (static_cast<uint32_t>(section->m_vertexStart) + section->m_vertexCount > data->m_vertices.m_count) {
+        return 0;
+    }
+
+    if (batch->m_materialIndex >= data->m_materials.m_count) {
+        return 0;
+    }
+
+    M2Material* material = &data->m_materials[batch->m_materialIndex];
+
+    if (material->m_blendMode || (material->m_flags & 0x18)) {
+        return 0;
+    }
+
+    if (batch->m_textureCount) {
+        if (!model->m_textures) {
+            return 0;
+        }
+
+        if (static_cast<uint32_t>(batch->m_textureComboIndex) + batch->m_textureCount > data->m_textureCombos.m_count) {
+            return 0;
+        }
+
+        if (static_cast<uint32_t>(batch->m_textureTransformComboIndex) + batch->m_textureCount > data->m_textureTransformCombos.m_count) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+static int32_t SameCharacterBatch(const M2Element* a, const M2Element* b) {
+    if (a->m_effect != b->m_effect || a->m_vertexPermute != b->m_vertexPermute || a->m_pixelPermute != b->m_pixelPermute || a->m_shadowValue != b->m_shadowValue) {
+        return 0;
+    }
+
+    M2Batch* batchA = a->m_batch;
+    M2Batch* batchB = b->m_batch;
+
+    if (batchA->m_materialIndex != batchB->m_materialIndex || batchA->m_colorIndex != batchB->m_colorIndex || batchA->m_shader != batchB->m_shader || batchA->m_textureCount != batchB->m_textureCount) {
+        return 0;
+    }
+
+    if ((a->m_skinSection->m_boneInfluences <= 1) != (b->m_skinSection->m_boneInfluences <= 1)) {
+        return 0;
+    }
+
+    M2Data* data = a->m_model->m_shared->m_data;
+
+    for (uint32_t i = 0; i < batchA->m_textureCount; i++) {
+        uint32_t comboA = data->m_textureCombos[i + batchA->m_textureComboIndex];
+        uint32_t comboB = data->m_textureCombos[i + batchB->m_textureComboIndex];
+        CTexture* textureA = comboA < data->m_textures.m_count ? a->m_model->m_textures[comboA] : nullptr;
+        CTexture* textureB = comboB < data->m_textures.m_count ? b->m_model->m_textures[comboB] : nullptr;
+
+        if (textureA != textureB) {
+            return 0;
+        }
+
+        if (data->m_textureTransformCombos[i + batchA->m_textureTransformComboIndex] != data->m_textureTransformCombos[i + batchB->m_textureTransformComboIndex]) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+struct CharacterMesh {
+    CM2Shared* shared;
+    uint16_t sections[32];
+    uint32_t sectionCount;
+    CGxBuf* verts;
+    CGxBuf* indices;
+    uint32_t indexCount;
+    uint32_t vertexCount;
+};
+
+static CharacterMesh* CharacterMeshFor(CM2Shared* shared, M2Element* elements, uint32_t* indices, uint32_t slot, uint32_t run) {
+    static std::vector<CharacterMesh> cached;
+    uint16_t sections[32];
+
+    for (uint32_t n = 0; n < run; n++) {
+        M2SkinSection* section = elements[indices[slot + n]].m_skinSection;
+        sections[n] = static_cast<uint16_t>(section - shared->m_skinSections);
+    }
+
+    for (CharacterMesh& mesh : cached) {
+        if (mesh.shared == shared && mesh.sectionCount == run && !memcmp(mesh.sections, sections, run * sizeof(uint16_t))) {
+            return &mesh;
+        }
+    }
+
+    M2Data* data = shared->m_data;
+    M2SkinProfile* skin = shared->m_skinData;
+    uint32_t vertexCount = 0;
+    uint32_t indexCount = 0;
+
+    for (uint32_t n = 0; n < run; n++) {
+        M2SkinSection* section = elements[indices[slot + n]].m_skinSection;
+        uint32_t indexStart = skin->m_skinSections[sections[n]].m_indexStart;
+
+        if (indexStart + section->m_indexCount > skin->m_indices.m_count) {
+            return nullptr;
+        }
+
+        vertexCount += section->m_vertexCount;
+        indexCount += section->m_indexCount;
+    }
+
+    CharacterMesh mesh = {};
+    mesh.shared = shared;
+    mesh.sectionCount = run;
+    mesh.vertexCount = vertexCount;
+    mesh.indexCount = indexCount;
+    memcpy(mesh.sections, sections, run * sizeof(uint16_t));
+
+    CGxPool* vpool = g_theGxDevicePtr->PoolCreate(GxPoolTarget_Vertex, GxPoolUsage_Static, static_cast<int32_t>(sizeof(M2Vertex) * vertexCount), GxPoolHintBit_Unk1, shared->m_fileNameWithoutPath);
+    CGxPool* ipool = g_theGxDevicePtr->PoolCreate(GxPoolTarget_Index, GxPoolUsage_Static, static_cast<int32_t>(sizeof(uint16_t) * indexCount), GxPoolHintBit_Unk0, shared->m_fileNameWithoutPath);
+
+    if (!vpool || !ipool) {
+        return nullptr;
+    }
+
+    mesh.verts = g_theGxDevicePtr->BufCreate(vpool, sizeof(M2Vertex), vertexCount, 0);
+    mesh.indices = g_theGxDevicePtr->BufCreate(ipool, sizeof(uint16_t), indexCount, 0);
+
+    if (!mesh.verts || !mesh.indices) {
+        return nullptr;
+    }
+
+    M2Vertex* dst = reinterpret_cast<M2Vertex*>(g_theGxDevicePtr->BufLock(mesh.verts));
+    uint16_t* indexOut = reinterpret_cast<uint16_t*>(g_theGxDevicePtr->BufLock(mesh.indices));
+
+    if (!dst || !indexOut) {
+        return nullptr;
+    }
+
+    uint32_t vertexBase = 0;
+    uint32_t indexBase = 0;
+
+    for (uint32_t n = 0; n < run; n++) {
+        M2SkinSection* section = elements[indices[slot + n]].m_skinSection;
+        uint32_t sectionIndex = sections[n];
+        memcpy(dst + vertexBase, &data->m_vertices[section->m_vertexStart], sizeof(M2Vertex) * section->m_vertexCount);
+
+        uint32_t indexStart = skin->m_skinSections[sectionIndex].m_indexStart;
+        uint16_t bias = static_cast<uint16_t>(vertexBase + static_cast<uint16_t>(-static_cast<int32_t>(section->m_vertexStart)));
+
+        for (uint32_t j = 0; j < section->m_indexCount; j++) {
+            indexOut[indexBase + j] = static_cast<uint16_t>(bias + skin->m_indices[indexStart + j]);
+        }
+
+        vertexBase += section->m_vertexCount;
+        indexBase += section->m_indexCount;
+    }
+
+    g_theGxDevicePtr->BufUnlock(mesh.verts, 0);
+    g_theGxDevicePtr->BufUnlock(mesh.indices, 0);
+    mesh.verts->m_hasData = 1;
+    mesh.indices->m_hasData = 1;
+    cached.push_back(mesh);
+    return &cached.back();
+}
+
+static uint32_t CharacterRun(M2Element* elements, uint32_t* indices, uint32_t count, uint32_t slot) {
+    M2Element* element = &elements[indices[slot]];
+
+    if (!CharacterBatchMerges(element)) {
+        return 1;
+    }
+
+    uint32_t run = 1;
+    uint32_t verts = element->m_skinSection->m_vertexCount;
+
+    while (slot + run < count && run < 32) {
+        M2Element* other = &elements[indices[slot + run]];
+
+        if (other->m_model != element->m_model || other->m_type != 0 || !CharacterBatchMerges(other) || !SameCharacterBatch(element, other)) {
+            break;
+        }
+
+        if (verts + other->m_skinSection->m_vertexCount > 65535) {
+            break;
+        }
+
+        verts += other->m_skinSection->m_vertexCount;
+        run++;
+    }
+
+    return run;
+}
+
+static int32_t DrawCharacterRun(CM2SceneRender* render, M2Element* elements, uint32_t* indices, uint32_t slot, uint32_t run) {
+    M2Element* element = &elements[indices[slot]];
+    CM2Shared* shared = element->m_model->m_shared;
+    CharacterMesh* mesh = CharacterMeshFor(shared, elements, indices, slot, run);
+
+    if (!mesh) {
+        return 0;
+    }
+
+    render->m_curBatch = element->m_batch;
+    render->m_curSkinSection = element->m_skinSection;
+    render->m_curMaterial = &render->m_data->m_materials[element->m_batch->m_materialIndex];
+    element->m_effect->SetCurrent();
+    render->SetupLighting();
+    render->SetupMaterial();
+    render->SetupTextures();
+    CShaderEffect::SetShaders(element->m_vertexPermute, element->m_pixelPermute);
+
+    uint32_t influences = element->m_skinSection->m_boneInfluences > 1 ? 4 : 1;
+    g_theGxDevicePtr->GpuSkinMesh(1);
+    g_theGxDevicePtr->GpuSkinInfluences(influences);
+
+    if (!g_theGxDevicePtr->GpuSkinBind(element->m_model->m_boneMatrices, shared->m_data->m_bones.m_count)) {
+        g_theGxDevicePtr->GpuSkinMesh(0);
+        return 0;
+    }
+
+    GxPrimVertexPtr(mesh->verts, GxVBF_PBNT2);
+    g_theGxDevicePtr->PrimIndexPtr(mesh->indices);
+
+    CGxBatch batch;
+    batch.m_primType = GxPrim_Triangles;
+    batch.m_start = 0;
+    batch.m_count = mesh->indexCount;
+    batch.m_minIndex = 0;
+    batch.m_maxIndex = static_cast<uint16_t>(mesh->vertexCount - 1);
+    g_theGxDevicePtr->Draw(&batch, 1);
+    g_theGxDevicePtr->GpuSkinBind(nullptr, 0);
+    g_theGxDevicePtr->GpuSkinMesh(0);
+
+    M2Element* last = &elements[indices[slot + run - 1]];
+    render->m_curElement = last;
+    render->m_curBatch = last->m_batch;
+    render->m_curSkinSection = last->m_skinSection;
+    render->m_curMaterial = &render->m_data->m_materials[last->m_batch->m_materialIndex];
+    return 1;
+}
+
 // VERIFY: ae7d8da4 manual
 // OFFSET: 0x00823130
 void CM2SceneRender::Draw(M2PASS pass, M2Element* elements, uint32_t* indices, uint32_t count) {
@@ -1312,9 +1592,17 @@ void CM2SceneRender::Draw(M2PASS pass, M2Element* elements, uint32_t* indices, u
         this->m_cache->LinkToSharedUpdateList(this->m_curShared);
 
         switch (this->m_curElement->m_type) {
-            case 0:
-                this->DrawBatch();
+            case 0: {
+                uint32_t run = CharacterRun(elements, indices, count, i);
+
+                if (run > 1 && DrawCharacterRun(this, elements, indices, i, run)) {
+                    i += run - 1;
+                } else {
+                    this->DrawBatch();
+                }
+
                 break;
+            }
             case 1:
                 this->DrawBatchProj();
                 break;

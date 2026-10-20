@@ -36,7 +36,7 @@ TSFixedArray<TalentTabInfo*> CGTalentInfo::m_tabs;
 TSFixedArray<TalentTabInfo*> CGTalentInfo::m_petTabs;
 
 // STATIC: 0x00C21030
-CGTalentGroup_C CGTalentInfo::m_talentGroups[2];
+CGTalentGroup_C CGTalentInfo::m_talentGroups[CGTalentInfo::kTalentGroupLimit];
 
 // STATIC: 0x00C210D8
 CGTalentGroup_C CGTalentInfo::m_petTalentGroup;
@@ -57,7 +57,7 @@ int32_t CGTalentInfo_Inspect::m_unspentTalentPoints;
 TSFixedArray<TalentTabInfo*> CGTalentInfo_Inspect::m_tabs;
 
 // STATIC: 0x00C21138
-CGTalentGroup_C CGTalentInfo_Inspect::m_talentGroups[2];
+CGTalentGroup_C CGTalentInfo_Inspect::m_talentGroups[CGTalentInfo::kTalentGroupLimit];
 
 // VERIFY: 05fa25fb auto
 // OFFSET: 0x005C57C0
@@ -916,7 +916,7 @@ static void ReadTalentGroups(CDataStore* msg, uint32_t* activeGroup, int32_t* un
     msg->Get(num);
 
     if (numGroups) {
-        *numGroups = num;
+        *numGroups = num > count ? count : num;
     }
 
     uint8_t active;
@@ -1026,7 +1026,7 @@ void CGTalentInfo::ResetTalentGroups(int32_t pet) {
         return;
     }
 
-    for (uint32_t i = 0; i < 2; i++) {
+    for (uint32_t i = 0; i < CGTalentInfo::kTalentGroupLimit; i++) {
         CGTalentInfo::m_talentGroups[i].Reset();
     }
 
@@ -1038,7 +1038,7 @@ void CGTalentInfo::ResetTalentGroups(int32_t pet) {
 // VERIFY: b1d0ceef manual
 // OFFSET: 0x005C9AD0
 void CGTalentInfo_Inspect::Reset() {
-    for (uint32_t i = 0; i < 2; i++) {
+    for (uint32_t i = 0; i < CGTalentInfo::kTalentGroupLimit; i++) {
         CGTalentInfo_Inspect::m_talentGroups[i].Reset();
     }
 
@@ -1115,7 +1115,7 @@ void CGTalentInfo::EnterWorld() {
     CGPlayer_C* player = ClntObjMgrGetActivePlayerObj();
     BuildTabInfo(player, &CGTalentInfo::m_tabs, 0);
     CGTalentInfo::m_tabsInitialized = 1;
-    UpdateTalentGroups(&CGTalentInfo::m_tabs, CGTalentInfo::m_talentGroups, 2, CGTalentInfo::m_activeTalentGroup, CGTalentInfo::m_numTalentGroups, CGTalentInfo::m_unspentTalentPoints);
+    UpdateTalentGroups(&CGTalentInfo::m_tabs, CGTalentInfo::m_talentGroups, CGTalentInfo::kTalentGroupLimit, CGTalentInfo::m_activeTalentGroup, CGTalentInfo::m_numTalentGroups, CGTalentInfo::m_unspentTalentPoints);
 }
 
 // VERIFY: 62894563 auto
@@ -1153,10 +1153,10 @@ void CGTalentInfo::UpdateTalentData(CDataStore* msg) {
     uint32_t oldNumGroups = CGTalentInfo::m_numTalentGroups;
     uint32_t oldActiveGroup = CGTalentInfo::m_activeTalentGroup;
     CGTalentInfo::ResetTalentGroups(0);
-    ReadTalentGroups(msg, &CGTalentInfo::m_activeTalentGroup, &CGTalentInfo::m_unspentTalentPoints, CGTalentInfo::m_talentGroups, 2, &CGTalentInfo::m_numTalentGroups);
+    ReadTalentGroups(msg, &CGTalentInfo::m_activeTalentGroup, &CGTalentInfo::m_unspentTalentPoints, CGTalentInfo::m_talentGroups, CGTalentInfo::kTalentGroupLimit, &CGTalentInfo::m_numTalentGroups);
 
     if (CGTalentInfo::m_tabsInitialized) {
-        UpdateTalentGroups(&CGTalentInfo::m_tabs, CGTalentInfo::m_talentGroups, 2, CGTalentInfo::m_activeTalentGroup, CGTalentInfo::m_numTalentGroups, CGTalentInfo::m_unspentTalentPoints);
+        UpdateTalentGroups(&CGTalentInfo::m_tabs, CGTalentInfo::m_talentGroups, CGTalentInfo::kTalentGroupLimit, CGTalentInfo::m_activeTalentGroup, CGTalentInfo::m_numTalentGroups, CGTalentInfo::m_unspentTalentPoints);
     }
 
     FrameScript_SignalEvent(SCRIPT_EVENT_PLAYER_TALENT_UPDATE, nullptr);
@@ -1201,7 +1201,7 @@ void CGTalentInfo_Inspect::SetInspectTarget(const WOWGUID& guid) {
     if (player) {
         BuildTabInfo(player, &CGTalentInfo_Inspect::m_tabs, 0);
         CGTalentInfo_Inspect::m_inspectTarget = guid;
-        UpdateTalentGroups(&CGTalentInfo_Inspect::m_tabs, CGTalentInfo_Inspect::m_talentGroups, 2, CGTalentInfo_Inspect::m_activeTalentGroup, CGTalentInfo_Inspect::m_numTalentGroups, CGTalentInfo_Inspect::m_unspentTalentPoints);
+        UpdateTalentGroups(&CGTalentInfo_Inspect::m_tabs, CGTalentInfo_Inspect::m_talentGroups, CGTalentInfo::kTalentGroupLimit, CGTalentInfo_Inspect::m_activeTalentGroup, CGTalentInfo_Inspect::m_numTalentGroups, CGTalentInfo_Inspect::m_unspentTalentPoints);
     }
 }
 
@@ -1213,9 +1213,9 @@ void CGTalentInfo_Inspect::UpdateTalentData(CDataStore* msg) {
     }
 
     CGTalentInfo_Inspect::Reset();
-    ReadTalentGroups(msg, &CGTalentInfo_Inspect::m_activeTalentGroup, &CGTalentInfo_Inspect::m_unspentTalentPoints, CGTalentInfo_Inspect::m_talentGroups, 2, &CGTalentInfo_Inspect::m_numTalentGroups);
+    ReadTalentGroups(msg, &CGTalentInfo_Inspect::m_activeTalentGroup, &CGTalentInfo_Inspect::m_unspentTalentPoints, CGTalentInfo_Inspect::m_talentGroups, CGTalentInfo::kTalentGroupLimit, &CGTalentInfo_Inspect::m_numTalentGroups);
 
     if (CGTalentInfo_Inspect::m_inspectTarget.m_guid) {
-        UpdateTalentGroups(&CGTalentInfo_Inspect::m_tabs, CGTalentInfo_Inspect::m_talentGroups, 2, CGTalentInfo_Inspect::m_activeTalentGroup, CGTalentInfo_Inspect::m_numTalentGroups, CGTalentInfo_Inspect::m_unspentTalentPoints);
+        UpdateTalentGroups(&CGTalentInfo_Inspect::m_tabs, CGTalentInfo_Inspect::m_talentGroups, CGTalentInfo::kTalentGroupLimit, CGTalentInfo_Inspect::m_activeTalentGroup, CGTalentInfo_Inspect::m_numTalentGroups, CGTalentInfo_Inspect::m_unspentTalentPoints);
     }
 }

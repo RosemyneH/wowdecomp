@@ -5127,7 +5127,16 @@ static int32_t TargetUpdateProc(WOWGUID guid, void* param) {
     CGUnit_C* searcher = static_cast<CGUnit_C*>(param);
     CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(guid, TYPEMASK_UNIT, __FILE__, __LINE__));
 
-    if (!unit || unit == searcher || !UnitMatchesTargetType(searcher, unit, s_nearestType)) {
+    if (!unit || unit == searcher) {
+        return 1;
+    }
+
+    // ʕ •ᴥ•ʔ✿ Culled bodies stay on the visible list. Tab-target was faction-checking the whole crowd ✿ ʕ •ᴥ•ʔ
+    if (!unit->m_worldObject || !World::QueryObjectVisible(unit->m_worldObject)) {
+        return 1;
+    }
+
+    if (!UnitMatchesTargetType(searcher, unit, s_nearestType)) {
         return 1;
     }
 

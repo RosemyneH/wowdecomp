@@ -151,9 +151,10 @@ void CGxDevice::DrawInstanced(CGxBatch* batch, const C44Matrix* worlds, uint32_t
     world.m_mtx[world.m_level] = saved;
 }
 
-int32_t CGxDevice::DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t count) {
+int32_t CGxDevice::DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t count, int32_t mode) {
     (void)draws;
     (void)count;
+    (void)mode;
     return 0;
 }
 

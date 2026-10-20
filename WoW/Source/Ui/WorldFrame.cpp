@@ -1492,9 +1492,15 @@ static int32_t UnitUpdateProc(WOWGUID guid, void* param) {
 
     switch (object->m_obj->m_type) {
         case TYPEMASK_OBJECT | TYPEMASK_UNIT:
-        case TYPEMASK_OBJECT | TYPEMASK_UNIT | TYPEMASK_PLAYER:
-            static_cast<CGUnit_C*>(object)->UpdateDisplay(FrameTime::s_curTimeMs);
+        case TYPEMASK_OBJECT | TYPEMASK_UNIT | TYPEMASK_PLAYER: {
+            CGUnit_C* unit = static_cast<CGUnit_C*>(object);
+            // ʕ •ᴥ•ʔ✿ Culled bodies still sit on the visible list. A Dalaran crowd was ticking all of them ✿ ʕ •ᴥ•ʔ
+            if (!unit->IsActivePlayer() && unit->m_worldObject && !World::QueryObjectVisible(unit->m_worldObject)) {
+                break;
+            }
+            unit->UpdateDisplay(FrameTime::s_curTimeMs);
             break;
+        }
 
         case TYPEMASK_OBJECT | TYPEMASK_GAMEOBJECT:
             static_cast<CGGameObject_C*>(object)->UpdateDisplay(FrameTime::s_curTimeMs);
@@ -1516,7 +1522,15 @@ static int32_t PostAnimateVisibleUnit(WOWGUID guid, void* param) {
     CGObject_C* object = ClntObjMgrObjectPtr(guid, TYPEMASK_OBJECT, __FILE__, __LINE__);
 
     if (object && (object->m_obj->m_type & TYPEMASK_UNIT)) {
-        static_cast<CGUnit_C*>(object)->PostAnimate(static_cast<CGWorldFrame*>(param));
+        CGUnit_C* unit = static_cast<CGUnit_C*>(object);
+        // ʕ •ᴥ•ʔ✿ Culled bodies stay on the visible list. A plate cannot show, so skip the screen test ✿ ʕ •ᴥ•ʔ
+        if (!unit->IsActivePlayer() && unit->m_worldObject && !World::QueryObjectVisible(unit->m_worldObject)) {
+            if (unit->m_namePlateFrame) {
+                unit->DestroyNamePlate();
+            }
+            return 1;
+        }
+        unit->PostAnimate(static_cast<CGWorldFrame*>(param));
     }
 
     return 1;

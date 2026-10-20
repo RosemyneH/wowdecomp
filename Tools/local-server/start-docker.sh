@@ -53,7 +53,15 @@ fi
 export DOCKER_CDN_EXTERNAL_PORT="$cdn_port"
 
 compose() {
-    "${DOCKER[@]}" compose -f "$SERVER_DIR/docker-compose.yml" "${COMPOSE_EXTRA[@]}" "$@"
+    local files=(-f "$SERVER_DIR/docker-compose.yml")
+    # ʕ •ᴥ•ʔ✿ -f drops the automatic override. Without this, release recreates the stock worldserver and the bots stay offline. ✿ ʕ •ᴥ•ʔ
+    if [[ -f "$SERVER_DIR/docker-compose.override.yml" ]]; then
+        files+=(-f "$SERVER_DIR/docker-compose.override.yml")
+    elif [[ "${WOWDECOMP_PLAYERBOTS:-}" == "1" ]]; then
+        echo "WOWDECOMP_PLAYERBOTS=1 but $SERVER_DIR/docker-compose.override.yml is missing." >&2
+        exit 1
+    fi
+    "${DOCKER[@]}" compose "${files[@]}" "${COMPOSE_EXTRA[@]}" "$@"
 }
 
 if ! "${DOCKER[@]}" image inspect "acore/ac-wotlk-worldserver:master" >/dev/null 2>&1; then

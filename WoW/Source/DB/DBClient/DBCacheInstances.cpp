@@ -46,7 +46,7 @@ DBCache<ItemStats_C, int32_t, HASHKEY_INT> g_itemDBCache('WIDB', "itemcache.wdb"
 DBCache<NPCText, int32_t, HASHKEY_INT> g_npcTextDBCache('WNPC', "npccache.wdb", CMSG_QUERY_NPC_TEXT, 0, true, true, 0);
 
 // STATIC: 0x00C5D938
-DBCache<NameCache, uint64_t, CHashKeyGUID> g_nameDBCache('WNAM', "namecache.wdb", CMSG_NAME_QUERY, 0, false, false, 256);
+DBCache<NameCache, uint64_t, CHashKeyGUID> g_nameDBCache('WNAM', "namecache.wdb", CMSG_NAME_QUERY, 0, false, false, 4096);
 
 // STATIC: 0x00C5D9C0
 DBCache<GuildStats_C, int32_t, HASHKEY_INT> g_guildInfoCache('WGLD', "guildcache.wdb", CMSG_QUERY_GUILD_INFO, 0, false, false, 0);

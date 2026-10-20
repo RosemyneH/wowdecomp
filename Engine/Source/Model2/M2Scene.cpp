@@ -1640,6 +1640,30 @@ CM2Scene::~CM2Scene() {
     delete[] this->m_hitVerts;
 }
 
+template <class T>
+static void ReserveDoubling(TSGrowableArray<T>& list, uint32_t extra) {
+    uint32_t need = list.m_count + extra;
+
+    if (need <= list.m_alloc) {
+        return;
+    }
+
+    uint32_t alloc = list.m_alloc < 256 ? 256 : list.m_alloc;
+
+    while (alloc < need) {
+        uint32_t next = alloc << 1;
+
+        if (next < alloc) {
+            alloc = need;
+            break;
+        }
+
+        alloc = next;
+    }
+
+    list.Reserve(alloc - list.m_count, 0);
+}
+
 // VERIFY: 7bb79c57 manual
 // OFFSET: 0x00821930
 M2Element* CM2Scene::AddParticleElement(CParticleEmitter2* emitter, CM2Model* model, float depth, float alpha, int32_t split, uint32_t& index, uint32_t& additiveCount) {
@@ -1647,6 +1671,7 @@ M2Element* CM2Scene::AddParticleElement(CParticleEmitter2* emitter, CM2Model* mo
         return nullptr;
     }
 
+    ReserveDoubling(this->m_elements, 1);
     M2Element* element = this->m_elements.New();
 
     if (!element) {
@@ -1674,8 +1699,10 @@ M2Element* CM2Scene::AddParticleElement(CParticleEmitter2* emitter, CM2Model* mo
 
     if (blend > 1 || alpha < 0.99998999f) {
         TSGrowableArray<uint32_t>* list = (!split || (emitter->m_flags & 0x40000)) ? &this->m_passElements[2] : &this->m_passElements[1];
+        ReserveDoubling(*list, 1);
         list->New(index);
     } else {
+        ReserveDoubling(this->m_passElements[0], 1);
         this->m_passElements[0].New(index);
     }
 
@@ -1986,6 +2013,73 @@ int32_t M2SkinTake(CM2Model* model, M2SkinSection* section, int32_t texCoord, in
 
 // VERIFY: d0feeb6c manual
 // OFFSET: 0x00821A20
+struct ElementShaderMemo {
+    uint64_t key;
+    uint32_t vertexPermute;
+    uint32_t pixelPermute;
+    uint32_t shadowValue;
+    uint32_t stamp;
+};
+
+static ElementShaderMemo s_elementShaderMemo[64];
+static uint32_t s_elementShaderStamp;
+
+// -- ʕ •ᴥ•ʔ✿ Same inputs as ComputeElementShaders. A miss returns 0 so the batch is computed ✿ ʕ •ᴥ•ʔ
+static int32_t ElementShaderKey(const M2Material* material, const CM2Lighting* lighting, uint32_t boneInfluences, int32_t type, float alpha, uint64_t& key) {
+    uint32_t alphaBits = 0;
+
+    if (material->m_blendMode > 6) {
+        return 0;
+    }
+
+    if (material->m_blendMode == 1) {
+        int32_t bits = static_cast<int32_t>(alpha * 224.0f);
+
+        if (bits < 0 || bits > 255) {
+            return 0;
+        }
+
+        alphaBits = static_cast<uint32_t>(bits);
+    }
+
+    uint32_t boneBucket = boneInfluences > 2 ? 2u : boneInfluences;
+    key = uint64_t(material->m_blendMode)
+        | (uint64_t(material->m_flags & 1u) << 8)
+        | (uint64_t((material->m_flags >> 8) & 1u) << 9)
+        | (uint64_t(boneBucket) << 10)
+        | (uint64_t(type == 1) << 12)
+        | (uint64_t(alphaBits) << 13)
+        | (uint64_t(lighting->m_lightCount) << 21)
+        | (uint64_t(lighting->m_flags & 0x18u) << 53);
+    return 1;
+}
+
+static void ApplyElementShaders(M2Element* element, const M2Material* material, const CM2Lighting* lighting) {
+    uint64_t key = 0;
+
+    if (!ElementShaderKey(material, lighting, element->m_skinSection->m_boneInfluences, element->m_type, element->m_alpha, key)) {
+        CM2Scene::ComputeElementShaders(element);
+        return;
+    }
+
+    uint32_t slot = static_cast<uint32_t>(key ^ (key >> 32)) & 63u;
+    ElementShaderMemo& memo = s_elementShaderMemo[slot];
+
+    if (memo.stamp == s_elementShaderStamp && memo.key == key) {
+        element->m_vertexPermute = memo.vertexPermute;
+        element->m_pixelPermute = memo.pixelPermute;
+        element->m_shadowValue = memo.shadowValue;
+        return;
+    }
+
+    CM2Scene::ComputeElementShaders(element);
+    memo.key = key;
+    memo.vertexPermute = element->m_vertexPermute;
+    memo.pixelPermute = element->m_pixelPermute;
+    memo.shadowValue = element->m_shadowValue;
+    memo.stamp = s_elementShaderStamp;
+}
+
 int32_t CM2Scene::Animate(const C3Vector& cameraPos) {
     this->m_frameStamp++;
 
@@ -2038,6 +2132,11 @@ int32_t CM2Scene::Animate(const C3Vector& cameraPos) {
 
     this->m_elements.m_count = 0;
 
+    if (++s_elementShaderStamp == 0) {
+        memset(s_elementShaderMemo, 0, sizeof(s_elementShaderMemo));
+        s_elementShaderStamp = 1;
+    }
+
     uint32_t elementIndex = 0;
 
     while (this->m_drawList) {
@@ -2083,6 +2182,12 @@ int32_t CM2Scene::Animate(const C3Vector& cameraPos) {
         int32_t optimized = optGeo != nullptr;
         int32_t depthSort = (this->m_cache->m_flags & 1) && !(model->m_flags & 1) && (model->m_fFlags & 0x40);
         uint32_t batchCount = optGeo ? optGeo->m_batchCount : skinData->m_batches.m_count;
+        uint32_t room = batchCount * 2 + data->m_ribbons.m_count + 1;
+        ReserveDoubling(this->m_elements, room);
+        ReserveDoubling(this->m_doodadElements, batchCount);
+        ReserveDoubling(this->m_passElements[0], room);
+        ReserveDoubling(this->m_passElements[1], room);
+        ReserveDoubling(this->m_passElements[2], room);
 
         for (uint32_t i = 0; i < batchCount; i++) {
             M2Batch* batch;
@@ -2159,11 +2264,11 @@ int32_t CM2Scene::Animate(const C3Vector& cameraPos) {
             element->m_batch = batch;
             element->m_skinSection = section;
             element->m_effect = effect;
-            CM2Scene::ComputeElementShaders(element);
+            ApplyElementShaders(element, material, lighting);
 
             float sortDepth;
 
-            if (transparent < 1) {
+            if (transparent < 1 || model->m_scaleSq > 400.0f) {
                 element->m_depth = model->m_scaleSq;
                 sortDepth = model->m_scaleSq;
             } else if (data->m_flags & 0x10) {
@@ -2458,8 +2563,9 @@ int32_t CM2Scene::Animate(const C3Vector& cameraPos) {
         }
 
         if (j - i <= 1) {
+            // -- ʕ •ᴥ•ʔ✿ Type 2 and type 0 share a permute. Only type 1 clears the shadow ✿ ʕ •ᴥ•ʔ
             this->m_elements.m_data[index].m_type = 0;
-            CM2Scene::ComputeElementShaders(&this->m_elements.m_data[index]);
+            ReserveDoubling(this->m_passElements[0], 1);
             this->m_passElements[0].New(index);
             out--;
             i++;

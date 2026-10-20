@@ -481,10 +481,11 @@ static C3Vector* s_clipInVerts[32];
 static C3Vector* s_clipOutVerts[32];
 
 // STATIC: 0x00ADEEE8
-static float s_horizonMinZ = 0.998046875f;
+// ʕ •ᴥ•ʔ✿ Behind the main scene (it ends at 0.94) and in front of the sky. The old 0.001 slice made every triangle fight ✿ ʕ •ᴥ•ʔ
+static float s_horizonMinZ = 0.945f;
 
 // STATIC: 0x00ADEEEC
-static float s_horizonMaxZ = 0.9990234375f;
+static float s_horizonMaxZ = 0.998f;
 
 // VERIFY: 8564474b manual
 // OFFSET: 0x005EEB70
@@ -1210,7 +1211,7 @@ void World::PrepareAreaOfInterest(const C3Vector& position) {
     }
 
     // ʕ •ᴥ•ʔ✿ High-detail chunks stay in the resident ring. Full view past that is the WDL ✿ ʕ •ᴥ•ʔ
-    float detailFar = static_cast<float>(CMapRenderChunk::DetailChunkRadius()) * 33.333332f;
+    float detailFar = World::DetailSpanYards();
 
     if (streamDistance > detailFar) {
         streamDistance = detailFar;
@@ -1364,6 +1365,96 @@ float World::EffectiveFarClip() {
     }
 
     return farClip;
+}
+
+float World::ViewFarClip() {
+    float farClip = World::s_farClip;
+
+    if (!CWorldParamSlider::ExtendedViewEnabled()) {
+        return farClip;
+    }
+
+    // ʕ •ᴥ•ʔ✿ The resident ring is already in memory. From high up that ring is farther away than its horizontal radius ✿ ʕ •ᴥ•ʔ
+    float detailFar = World::DetailSpanYards();
+    float rise = CWorldScene::s_activeWorldView.z;
+
+    if (rise < 0.0f) {
+        rise = -rise;
+    }
+
+    if (rise > 20000.0f) {
+        rise = 20000.0f;
+    }
+
+    float reach = sqrtf(detailFar * detailFar + rise * rise) + 400.0f;
+
+    if (farClip < reach) {
+        farClip = reach;
+    }
+
+    return farClip;
+}
+
+float World::DetailSpanYards() {
+    float full = static_cast<float>(CMapRenderChunk::DetailChunkRadius()) * 33.333332f;
+
+    if (!CWorldParamSlider::ExtendedViewEnabled()) {
+        return full;
+    }
+
+    // ʕ •ᴥ•ʔ✿ Straight overhead puts the whole ring on screen. Past 700 yards up, keep a smaller disk and let the map mesh carry the rest ✿ ʕ •ᴥ•ʔ
+    float rise = CWorldScene::s_activeWorldView.z;
+
+    if (rise < 0.0f) {
+        rise = -rise;
+    }
+
+    if (rise < 700.0f) {
+        return full;
+    }
+
+    float span = full * (700.0f / rise);
+
+    if (span < 450.0f) {
+        span = 450.0f;
+    }
+
+    if (span > full) {
+        span = full;
+    }
+
+    return span;
+}
+
+void World::HorizonClip(float& nearZ, float& farZ) {
+    CGCamera* camera = CGWorldFrame::GetActiveCamera();
+    float cameraFar = camera ? camera->m_farZ : World::s_farClip;
+    float detailFar = World::DetailSpanYards();
+
+    // ʕ •ᴥ•ʔ✿ The continent mesh starts one tile inside the resident ring, not at the camera ✿ ʕ •ᴥ•ʔ
+    nearZ = detailFar - 400.0f;
+
+    if (nearZ > cameraFar - 120.0f) {
+        nearZ = cameraFar - 120.0f;
+    }
+
+    if (nearZ < 80.0f) {
+        nearZ = 80.0f;
+    }
+
+    farZ = World::s_horizonFarClipScale * World::EffectiveFarClip();
+
+    if (farZ < 48000.0f) {
+        farZ = 48000.0f;
+    }
+
+    if (farZ > 60000.0f) {
+        farZ = 60000.0f;
+    }
+
+    if (farZ < nearZ + 100.0f) {
+        farZ = nearZ + 100.0f;
+    }
 }
 
 float World::ValidateFarClip(float farClip, int32_t mapID) {
@@ -2086,29 +2177,10 @@ int32_t CWorldScene::FrustumCull(const C3Vector& center, float radius) {
 // OFFSET: 0x00791170
 void CWorldScene::BuildHorizonProjection(C44Matrix* projection) {
     CGCamera* camera = CGWorldFrame::GetActiveCamera();
-    float farZ = camera->m_farZ;
     float fov = camera->FOV();
-    // ʕ •ᴥ•ʔ✿ Horizon starts where the resident terrain ring ends and reaches the far side of the continent ✿ ʕ •ᴥ•ʔ
-    float detailFar = static_cast<float>(CMapRenderChunk::DetailChunkRadius()) * 33.333332f;
-    float horizonNear = detailFar - 400.0f;
-    float horizonFar = World::s_horizonFarClipScale * World::EffectiveFarClip();
-
-    if (horizonFar < 48000.0f) {
-        horizonFar = 48000.0f;
-    }
-
-    if (horizonNear < 200.0f) {
-        horizonNear = 200.0f;
-    }
-
-    if (farZ - 50.0f < horizonNear) {
-        horizonNear = farZ - 50.0f;
-    }
-
-    if (horizonFar < horizonNear + 100.0f) {
-        horizonFar = horizonNear + 100.0f;
-    }
-
+    float horizonNear;
+    float horizonFar;
+    World::HorizonClip(horizonNear, horizonFar);
     GxuXformCreateProjection_Exact(fov * 0.60000002f, camera->m_aspect, horizonNear, horizonFar, *projection);
 }
 
@@ -2494,6 +2566,7 @@ void CWorldScene::CullEntitysInterior(TSList<CMapBaseObjLink, TSGetExplicitLink<
             CM2Model* model = entity->m_model;
 
             if (model) {
+                // ʕ •ᴥ•ʔ✿ AnimateST is the only draw-list insert. Dropping this hides the body ✿ ʕ •ᴥ•ʔ
                 model->SetAnimating(1);
 
                 uint32_t lit = !(entity->m_staticFlags & 0x4);
@@ -2553,8 +2626,8 @@ void CWorldScene::UpdateSortedModels() {
 
                 C3Vector delta = C3Vector(entity->m_sphere.c.x - CWorldScene::s_activeWorldView.x, entity->m_sphere.c.y - CWorldScene::s_activeWorldView.y, entity->m_sphere.c.z - CWorldScene::s_activeWorldView.z);
 
+                // ʕ •ᴥ•ʔ✿ This ring only marks near. Flag 0x8 is cleared below, so animating here never draws ✿ ʕ •ᴥ•ʔ
                 if (delta.x * delta.x + delta.z * delta.z + delta.y * delta.y < 1111.1111f) {
-                    animating = 1;
                     nearFlags = 2;
                 }
 
@@ -4661,6 +4734,29 @@ void CWorldScene::CullModelSplitBody(CM2Model* model, uint32_t boneId, int32_t s
     }
 }
 
+static void ClearModelOutside(CM2Model* model) {
+    model->m_fFlags &= ~0x2000u;
+
+    for (CM2Model* attached = model->m_attachList; attached; attached = attached->m_attachNext) {
+        ClearModelOutside(attached);
+    }
+}
+
+static int32_t EntityInsideFrustum(const CAaSphere& sphere) {
+    const CFrustum& frustum = CWorldScene::frustumStack[CWorldScene::frustumIndex];
+    float pad = sphere.r + 3.0f;
+
+    for (uint32_t i = 0; i < 6; i++) {
+        const C4Plane& plane = frustum.planes[i];
+
+        if (plane.n.x * sphere.c.x + plane.n.y * sphere.c.y + plane.n.z * sphere.c.z + plane.d < pad) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
 // VERIFY: a400f932 manual
 // OFFSET: 0x00793980
 void CWorldScene::RenderEntitys() {
@@ -4673,7 +4769,12 @@ void CWorldScene::RenderEntitys() {
 
         if (entity->m_model) {
             if (entity->m_model->IsLoaded(0, 1)) {
-                CWorldScene::CullModelSplitBody(entity->m_model, entity->unk_00A4, (entity->m_staticFlags >> 14) & 1);
+                // ʕ •ᴥ•ʔ✿ A crowd body three yards inside the view skips the per-attachment box walk ✿ ʕ •ᴥ•ʔ
+                if (((entity->m_staticFlags >> 14) & 1) == 0 && EntityInsideFrustum(entity->m_sphere)) {
+                    ClearModelOutside(entity->m_model);
+                } else {
+                    CWorldScene::CullModelSplitBody(entity->m_model, entity->unk_00A4, (entity->m_staticFlags >> 14) & 1);
+                }
             } else if (streaming) {
                 entity->m_model->LinkToAsyncHead(0);
             }
@@ -5198,18 +5299,15 @@ void CWorldScene::RenderHorizon() {
     g_theGxDevicePtr->RsPush();
     GxRsSet(GxRs_DepthTest, 3);
     // ʕ •ᴥ•ʔ✿ Fog is in yards. Full view leaves the low-detail continent visible instead of fading it into the sky ✿ ʕ •ᴥ•ʔ
-    float detailFar = static_cast<float>(CMapRenderChunk::DetailChunkRadius()) * 33.333332f;
-    float horizonFar = World::s_horizonFarClipScale * World::EffectiveFarClip();
-
-    if (horizonFar < 48000.0f) {
-        horizonFar = 48000.0f;
-    }
+    float horizonNear;
+    float horizonFar;
+    World::HorizonClip(horizonNear, horizonFar);
 
     if (CWorldParamSlider::ExtendedViewEnabled()) {
         GxRsSet(GxRs_Fog, 0);
     } else {
         GxRsSet(GxRs_Fog, 1);
-        GxRsSet(GxRs_FogStart, detailFar);
+        GxRsSet(GxRs_FogStart, horizonNear);
         GxRsSet(GxRs_FogEnd, horizonFar);
     }
     DayNight::DNInfo* info = DayNight::GetInfo();

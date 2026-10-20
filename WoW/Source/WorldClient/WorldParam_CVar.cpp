@@ -476,10 +476,16 @@ bool CWorldParam::ExtendedViewCallback(CVar* var, const char* oldValue, const ch
         CWorldParam::cvar_horizonFarClip->Set(full ? "48" : "4", true, true, false, true);
     }
 
+    if (full) {
+        CWorld::enables |= Enable_LowDetail;
+    } else {
+        CWorld::enables &= ~Enable_LowDetail;
+    }
+
     if (CWorldParam::cvar_farClip) {
         float farClip = CWorldParam::cvar_farClip->m_floatValue;
 
-        if (farClip > CWorldParamSlider::kFarclipMaxRetail) {
+        if (!full && farClip > CWorldParamSlider::kFarclipMaxRetail) {
             farClip = CWorldParamSlider::kFarclipMaxRetail;
         }
 

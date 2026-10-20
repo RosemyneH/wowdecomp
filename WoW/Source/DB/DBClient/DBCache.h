@@ -386,6 +386,7 @@ template <class T, class TKey, class THashKey>
 void DBCache<T, TKey, THashKey>::SendSingleQuery(DBCACHEHASH* hash) {
     CDataStore msg;
     msg.Put(this->m_queryOpcode);
+    // ʕ •ᴥ•ʔ✿ This core reads CMSG_NAME_QUERY as a full uint64. A packed guid is short and the session throws the packet away. ✿ ʕ •ᴥ•ʔ
     DBCacheWriteKey(msg, hash->m_id);
 
     if (this->m_sendRequester) {

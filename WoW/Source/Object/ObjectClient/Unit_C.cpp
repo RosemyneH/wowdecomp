@@ -20103,6 +20103,27 @@ static void NamePlateSort(CGNamePlateFrame* frame) {
 // OFFSET: 0x007256C0
 void CGUnit_C::NamePlateAddOrUpdate(const C3Vector& position, CGWorldFrame* worldFrame) {
     if (!this->m_namePlateFrame) {
+        // ʕ •ᴥ•ʔ✿ Stacking already only places 48. Past that, a Dalaran crowd builds a frame per body ✿ ʕ •ᴥ•ʔ
+        uint32_t count = 0;
+        for (CGNamePlateFrame* frame = s_namePlates.Head(); frame; frame = s_namePlates.Next(frame)) {
+            count++;
+        }
+
+        if (count >= 48) {
+            CGNamePlateFrame* farthest = s_namePlates.Tail();
+            float mine = NamePlateScreenCenterDistanceSquared(position);
+
+            if (!farthest || NamePlateScreenCenterDistanceSquared(farthest->m_position) <= mine) {
+                return;
+            }
+
+            CGUnit_C* other = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(farthest->m_guid, TYPEMASK_UNIT, __FILE__, __LINE__));
+
+            if (other && other != this) {
+                other->DestroyNamePlate();
+            }
+        }
+
         this->m_namePlateFrame = CGNamePlateFrame::GetNewNameplateFrame(worldFrame);
         this->m_namePlateFrame->Initialize(this);
         this->m_namePlateFrame->Show();
@@ -20140,19 +20161,87 @@ void CGUnit_C::NamePlateAddOrUpdate(const C3Vector& position, CGWorldFrame* worl
     }
 }
 
-// VERIFY: b1479e18 auto
-// OFFSET: 0x00725890
-static float PlatePx(const char* name) {
-    CVar* cvar = CVar::Lookup(name);
+struct NameplateLayout {
+    bool stacking;
+    bool stackFriendly;
+    bool onlyBoss;
+    int32_t friendlyMode;
+    float origin;
+    float xSpace;
+    float ySpace;
+    float maxRaise;
+    float upper;
+    float width;
+    float height;
+    float friendlyWidth;
+    float friendlyHeight;
+};
+
+static CVar* CachedNameplateCVar(CVar*& slot, const char* name) {
+    if (!slot) slot = CVar::Lookup(name);
+    return slot;
+}
+
+static float CachedNameplateFloat(CVar*& slot, const char* name) {
+    CVar* cvar = CachedNameplateCVar(slot, name);
     return cvar ? cvar->m_floatValue : 0.0f;
 }
 
-static bool PlateFriendly(CGNamePlateFrame* frame) {
+// VERIFY: b1479e18 auto
+// OFFSET: 0x00725890
+static NameplateLayout LoadNameplateLayout() {
+    static CVar* stacking;
+    static CVar* origin;
+    static CVar* stackFriendly;
+    static CVar* friendlyMode;
+    static CVar* onlyBoss;
+    static CVar* xSpace;
+    static CVar* ySpace;
+    static CVar* maxRaise;
+    static CVar* upper;
+    static CVar* width;
+    static CVar* height;
+    static CVar* friendlyWidth;
+    static CVar* friendlyHeight;
+
+    NameplateLayout layout = {};
+    CVar* stackingCVar = CachedNameplateCVar(stacking, "nameplateStacking");
+    CVar* originCVar = CachedNameplateCVar(origin, "nameplateOriginPos");
+    layout.stacking = stackingCVar && stackingCVar->m_intValue;
+    if (originCVar && (originCVar->m_modified || layout.stacking)) layout.origin = originCVar->m_floatValue / 1024.0f;
+
+    layout.width = CachedNameplateFloat(width, "nameplateHitboxWidth");
+    layout.height = CachedNameplateFloat(height, "nameplateHitboxHeight");
+    if (!layout.stacking) return layout;
+
+    CVar* friendly = CachedNameplateCVar(stackFriendly, "nameplateStackFriendly");
+    CVar* mode = CachedNameplateCVar(friendlyMode, "nameplateStackFriendlyMode");
+    CVar* bossCap = CachedNameplateCVar(onlyBoss, "nameplateUpperBorderOnlyBoss");
+    layout.stackFriendly = !friendly || friendly->m_intValue != 0;
+    layout.friendlyMode = mode ? mode->m_intValue : 0;
+    layout.onlyBoss = bossCap && bossCap->m_intValue;
+    layout.xSpace = CachedNameplateFloat(xSpace, "nameplateXSpace");
+    layout.ySpace = CachedNameplateFloat(ySpace, "nameplateYSpace");
+    layout.maxRaise = CachedNameplateFloat(maxRaise, "nameplateMaxRaiseDistance");
+    layout.upper = CachedNameplateFloat(upper, "nameplateUpperBorder");
+    layout.friendlyWidth = CachedNameplateFloat(friendlyWidth, "nameplateFriendlyHitboxWidth");
+    layout.friendlyHeight = CachedNameplateFloat(friendlyHeight, "nameplateFriendlyHitboxHeight");
+    if (layout.xSpace <= 0.0f) layout.xSpace = 130.0f;
+    if (layout.ySpace <= 0.0f) layout.ySpace = 20.0f;
+    if (layout.maxRaise <= 0.0f) layout.maxRaise = 200.0f;
+    if (layout.upper <= 0.0f) layout.upper = 30.0f;
+    layout.xSpace /= 1024.0f;
+    layout.ySpace /= 1024.0f;
+    layout.maxRaise /= 1024.0f;
+    layout.upper /= 1024.0f;
+    return layout;
+}
+
+static bool PlateFriendly(CGNamePlateFrame* frame, int32_t mode) {
     CGPlayer_C* player = ClntObjMgrGetActivePlayerObj();
     CGUnit_C* unit = frame ? static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(frame->m_guid, TYPEMASK_UNIT, __FILE__, __LINE__)) : nullptr;
     if (!player || !unit) return false;
-    CVar* mode = CVar::Lookup("nameplateStackFriendlyMode");
-    if (mode && mode->m_intValue == 1) return frame->m_healthBarColor.g > frame->m_healthBarColor.r + 20;
+    if (mode == 1) return frame->m_healthBarColor.g > frame->m_healthBarColor.r + 20;
     int32_t reaction = player->UnitReaction(unit);
     return reaction >= 5 || (reaction == 4 && !player->CanAttack(unit));
 }
@@ -20162,31 +20251,24 @@ static bool PlateBoss(CGNamePlateFrame* frame) {
     return unit && unit->GetCreatureClassification() == 3;
 }
 
-static float PlateOrigin() {
-    CVar* stacking = CVar::Lookup("nameplateStacking");
-    CVar* origin = CVar::Lookup("nameplateOriginPos");
-    if (!origin) return 0.0f;
-    if (origin->m_modified || (stacking && stacking->m_intValue)) return origin->m_floatValue / 1024.0f;
-    return 0.0f;
+static void ApplyPlateSize(CGNamePlateFrame* frame, float width, float height) {
+    if (width > 0.0f) frame->SetWidth(width / 1024.0f);
+    if (height > 0.0f) frame->SetHeight(height / 1024.0f);
 }
 
-static void ApplyNameplateHitboxes() {
+static void ApplyNameplateHitboxes(const NameplateLayout& layout) {
+    // ʕ •ᴥ•ʔ✿ Stacking off uses the shared hitbox. Reaction stays on the friendly override ✿ ʕ •ᴥ•ʔ
+    if (layout.stacking || (layout.width <= 0.0f && layout.height <= 0.0f)) return;
+
     for (CGNamePlateFrame* frame = s_namePlates.Head(); frame; frame = s_namePlates.Next(frame)) {
-        bool friendly = PlateFriendly(frame);
-        float width = friendly ? PlatePx("nameplateFriendlyHitboxWidth") : 0.0f;
-        float height = friendly ? PlatePx("nameplateFriendlyHitboxHeight") : 0.0f;
-        if (width <= 0.0f) width = PlatePx("nameplateHitboxWidth");
-        if (height <= 0.0f) height = PlatePx("nameplateHitboxHeight");
-        if (width > 0.0f) frame->SetWidth(width / 1024.0f);
-        if (height > 0.0f) frame->SetHeight(height / 1024.0f);
+        ApplyPlateSize(frame, layout.width, layout.height);
     }
 }
 
 void CGUnit_C::UnitNameplatesReposition(CGWorldFrame* worldFrame) {
-    CVar* stacking = CVar::Lookup("nameplateStacking");
-    float origin = PlateOrigin();
+    NameplateLayout layout = LoadNameplateLayout();
 
-    if (stacking && stacking->m_intValue) {
+    if (layout.stacking) {
         struct Plate {
             CGNamePlateFrame* frame;
             float x;
@@ -20198,12 +20280,14 @@ void CGUnit_C::UnitNameplatesReposition(CGWorldFrame* worldFrame) {
         Plate plates[48];
         int count = 0;
 
+        bool needFriendly = !layout.stackFriendly || layout.friendlyWidth > 0.0f || layout.friendlyHeight > 0.0f;
+
         for (CGNamePlateFrame* frame = s_namePlates.Head(); frame && count < 48; frame = s_namePlates.Next(frame)) {
             plates[count].frame = frame;
             plates[count].x = frame->m_position.x;
-            plates[count].y = frame->m_position.y + origin;
+            plates[count].y = frame->m_position.y + layout.origin;
             plates[count].base = plates[count].y;
-            plates[count].friendly = PlateFriendly(frame);
+            plates[count].friendly = needFriendly && PlateFriendly(frame, layout.friendlyMode);
             plates[count].boss = PlateBoss(frame);
             count++;
         }
@@ -20218,40 +20302,31 @@ void CGUnit_C::UnitNameplatesReposition(CGWorldFrame* worldFrame) {
             plates[j] = key;
         }
 
-        bool stackFriendly = true;
-        if (CVar* friendly = CVar::Lookup("nameplateStackFriendly")) stackFriendly = friendly->m_intValue != 0;
-        float xSpace = PlatePx("nameplateXSpace");
-        float ySpace = PlatePx("nameplateYSpace");
-        float maxRaise = PlatePx("nameplateMaxRaiseDistance");
-        float upper = PlatePx("nameplateUpperBorder");
-        if (xSpace <= 0.0f) xSpace = 130.0f;
-        if (ySpace <= 0.0f) ySpace = 20.0f;
-        if (maxRaise <= 0.0f) maxRaise = 200.0f;
-        if (upper <= 0.0f) upper = 30.0f;
-        xSpace /= 1024.0f;
-        ySpace /= 1024.0f;
-        maxRaise /= 1024.0f;
-        upper /= 1024.0f;
-        CVar* bossCap = CVar::Lookup("nameplateUpperBorderOnlyBoss");
-        bool onlyBoss = bossCap && bossCap->m_intValue;
         float top = worldFrame->GetHeight();
         if (top < 0.2f) top = 0.75f;
-        float cap = top - upper;
+        float cap = top - layout.upper;
 
         for (int i = 0; i < count; i++) {
-            if (!stackFriendly && plates[i].friendly) continue;
+            if (!layout.stackFriendly && plates[i].friendly) continue;
 
             for (int j = 0; j < i; j++) {
-                if (!stackFriendly && plates[j].friendly) continue;
-                if (fabsf(plates[i].x - plates[j].x) < xSpace && plates[i].y < plates[j].y + ySpace) plates[i].y = plates[j].y + ySpace;
+                if (!layout.stackFriendly && plates[j].friendly) continue;
+                if (fabsf(plates[i].x - plates[j].x) < layout.xSpace && plates[i].y < plates[j].y + layout.ySpace) plates[i].y = plates[j].y + layout.ySpace;
             }
 
-            if (plates[i].y > plates[i].base + maxRaise) plates[i].y = plates[i].base + maxRaise;
-            if ((!onlyBoss || plates[i].boss) && plates[i].y > cap) plates[i].y = cap;
+            if (plates[i].y > plates[i].base + layout.maxRaise) plates[i].y = plates[i].base + layout.maxRaise;
+            if ((!layout.onlyBoss || plates[i].boss) && plates[i].y > cap) plates[i].y = cap;
         }
 
         for (int i = 0; i < count; i++) {
             CGNamePlateFrame* frame = plates[i].frame;
+            float width = layout.width;
+            float height = layout.height;
+            if (plates[i].friendly) {
+                if (layout.friendlyWidth > 0.0f) width = layout.friendlyWidth;
+                if (layout.friendlyHeight > 0.0f) height = layout.friendlyHeight;
+            }
+            ApplyPlateSize(frame, width, height);
             frame->SetPoint(FRAMEPOINT_TOP, worldFrame, FRAMEPOINT_BOTTOMLEFT, plates[i].x, plates[i].y, 1);
             frame->SetFrameDepth(frame->m_position.z - worldFrame->m_layoutDepth, true);
         }
@@ -20261,7 +20336,7 @@ void CGUnit_C::UnitNameplatesReposition(CGWorldFrame* worldFrame) {
         while (frame) {
             CGNamePlateFrame* next = s_namePlates.Next(frame);
             C3Vector position = frame->m_position;
-            position.y += origin;
+            position.y += layout.origin;
 
             if (s_cvNameplateAllowOverlap && s_cvNameplateAllowOverlap->m_intValue) {
                 frame->SetPoint(FRAMEPOINT_TOP, worldFrame, FRAMEPOINT_BOTTOMLEFT, position.x, position.y, 1);
@@ -20274,7 +20349,7 @@ void CGUnit_C::UnitNameplatesReposition(CGWorldFrame* worldFrame) {
         }
     }
 
-    ApplyNameplateHitboxes();
+    ApplyNameplateHitboxes(layout);
     CLayoutFrame::ResizePending();
 }
 
@@ -20447,6 +20522,24 @@ int32_t CGUnit_C::ShouldShowNamePlate(CGWorldFrame* worldFrame, C3Vector* positi
         return 0;
     }
 
+    // ʕ •ᴥ•ʔ✿ Distance before faction. A crowd fails this and never pays for reaction checks ✿ ʕ •ᴥ•ʔ
+    MapRec* map = g_mapDB.GetRecord(CGGameUI::m_iCurrentMapID);
+
+    if (!map || map->m_instanceType != 4) {
+        C3Vector delta = this->GetPosition() - target->GetPosition();
+        static CVar* distanceCVar;
+        if (!distanceCVar) {
+            distanceCVar = CVar::Lookup("nameplateDistance");
+        }
+        float limit = distanceCVar ? distanceCVar->m_floatValue : 41.0f;
+        if (limit < 1.0f) {
+            limit = 1.0f;
+        }
+        if (delta.y * delta.y + delta.x * delta.x + delta.z * delta.z > limit * limit) {
+            return 0;
+        }
+    }
+
     CGPlayer_C* player = ClntObjMgrGetActivePlayerObj();
 
     if (!player) {
@@ -20519,19 +20612,6 @@ int32_t CGUnit_C::ShouldShowNamePlate(CGWorldFrame* worldFrame, C3Vector* positi
 
     if (!World::QueryObjectVisible(this->m_worldObject) || !GetNamePlateScreenPos(this, worldFrame, position)) {
         return 0;
-    }
-
-    MapRec* map = g_mapDB.GetRecord(CGGameUI::m_iCurrentMapID);
-
-    if (!map || map->m_instanceType != 4) {
-        C3Vector delta = this->GetPosition() - target->GetPosition();
-
-        float limit = 41.0f;
-        if (CVar* distance = CVar::Lookup("nameplateDistance")) limit = distance->m_floatValue;
-        if (limit < 1.0f) limit = 1.0f;
-        if (delta.y * delta.y + delta.x * delta.x + delta.z * delta.z > limit * limit) {
-            return 0;
-        }
     }
 
     return 1;

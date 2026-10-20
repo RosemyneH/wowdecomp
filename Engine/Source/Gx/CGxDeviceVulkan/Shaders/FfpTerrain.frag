@@ -40,6 +40,26 @@ vec2 BlendUv(vec3 coord) {
 
 void main() {
     vec4 color = inColor;
+
+    // ʕ •ᴥ•ʔ✿ Mode 3 is the chunk shadow overlay. One indirect draw, the shadow map picked from the bindless table ✿ ʕ •ᴥ•ʔ
+    if (int(u.misc.y) == 3) {
+        if (inLayerTex.x >= 0) {
+            color = Stage(0, texture(terrainTextures[nonuniformEXT(inLayerTex.x)], inTexCoord0.xy / inTexCoord0.z), color);
+        }
+
+        if (u.stageColorOp.y >= 0 && inAlphaTex.x >= 0) {
+            color = Stage(1, texture(terrainTextures[nonuniformEXT(inAlphaTex.x)], inTexCoord1.xy / inTexCoord1.z), color);
+        }
+
+        if (u.flags.w > 0 && color.a * 255.0 < float(u.flags.w)) {
+            discard;
+        }
+
+        color.rgb = mix(u.fogColor.rgb, color.rgb, inFog);
+        outColor = color;
+        return;
+    }
+
     int layers = 0;
 
     // -- ʕ •ᴥ•ʔ✿ One chunk. Layer 0 replaces. Later layers lerp by coverage, the same src-alpha blend the multi-pass used ✿ ʕ •ᴥ•ʔ

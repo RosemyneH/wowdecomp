@@ -21,7 +21,7 @@
 #include "WoW/Source/UIUtil/Tooltip.h"
 
 // STATIC: 0x00AD05E8
-static int32_t s_activateTalentGroupSpells[2] = { 63645, 63644 };
+static int32_t s_activateTalentGroupSpells[] = { 63645, 63644, 80203, 80204, 80353, 80354, 80355, 80356 };
 
 // VERIFY: 29096ec7 manual
 // OFFSET: 0x005C5CC0
@@ -90,7 +90,7 @@ static int32_t Script_SetActiveTalentGroup(lua_State* L) {
 
     uint32_t group = static_cast<uint32_t>(lua_tonumber(L, 1)) - 1;
 
-    if (group != CGTalentInfo::m_activeTalentGroup && group < CGTalentInfo::m_numTalentGroups && group < 2) {
+    if (group != CGTalentInfo::m_activeTalentGroup && group < CGTalentInfo::m_numTalentGroups && group < CGTalentInfo::kTalentGroupLimit) {
         Spell_C_ClickSpell(s_activateTalentGroupSpells[group], nullptr, ClntObjMgrGetActivePlayer());
     }
 

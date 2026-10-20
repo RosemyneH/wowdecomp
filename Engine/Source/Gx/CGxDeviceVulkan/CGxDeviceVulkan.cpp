@@ -1917,6 +1917,32 @@ static void WriteBonePalette(uint8_t* dst, const C44Matrix* bones, uint32_t bone
     }
 }
 
+// ʕ •ᴥ•ʔ✿ The ring cursor returns to 0 when the frame slot is prepared. That is the only generation the device file can see ✿ ʕ •ᴥ•ʔ
+struct BonePaletteCache {
+    const C44Matrix* bones = nullptr;
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VkDeviceSize offset = 0;
+    uint32_t count = 0;
+    uint32_t base = 0;
+    uint32_t epoch = 0;
+};
+
+static BonePaletteCache s_bonePalette;
+static uint32_t s_boneEpoch = 0;
+static int32_t s_boneRingOpen = 0;
+
+static void NoteBoneRing(VkDeviceSize cursor) {
+    if (cursor != 0) {
+        return;
+    }
+
+    if (s_boneRingOpen) {
+        s_boneEpoch++;
+    }
+
+    s_boneRingOpen = 1;
+}
+
 int32_t CGxDeviceVulkan::GpuSkinBind(const C44Matrix* bones, uint32_t boneCount) {
     this->m_skinActive = 0;
     this->m_skinStride = 0;
@@ -1928,6 +1954,16 @@ int32_t CGxDeviceVulkan::GpuSkinBind(const C44Matrix* bones, uint32_t boneCount)
 
     this->m_vk.PrepareFrame();
     VkFrame& frame = this->m_vk.Frame();
+    NoteBoneRing(frame.boneCursor);
+
+    // ʕ •ᴥ•ʔ✿ The next M2 geoset binds this same skeleton. Keep the slot so Draw's push matches and is skipped ✿ ʕ •ᴥ•ʔ
+    if (s_bonePalette.bones == bones && s_bonePalette.count == boneCount && s_bonePalette.epoch == s_boneEpoch && s_bonePalette.buffer == frame.bones.buffer && frame.bones.mapped) {
+        this->m_skinOffset = s_bonePalette.offset;
+        this->m_skinMatrixBase = s_bonePalette.base;
+        this->m_skinActive = 1;
+        return 1;
+    }
+
     VkDeviceSize cursor = 0;
     VkDeviceSize slot = 0;
 
@@ -1939,6 +1975,12 @@ int32_t CGxDeviceVulkan::GpuSkinBind(const C44Matrix* bones, uint32_t boneCount)
     frame.boneCursor = cursor + slot;
     this->m_skinOffset = cursor;
     this->m_skinMatrixBase = static_cast<uint32_t>(cursor / sizeof(C44Matrix));
+    s_bonePalette.bones = bones;
+    s_bonePalette.buffer = frame.bones.buffer;
+    s_bonePalette.offset = cursor;
+    s_bonePalette.count = boneCount;
+    s_bonePalette.base = this->m_skinMatrixBase;
+    s_bonePalette.epoch = s_boneEpoch;
     this->m_skinActive = 1;
     return 1;
 }
@@ -1954,6 +1996,7 @@ int32_t CGxDeviceVulkan::GpuSkinBindInstances(const C44Matrix* const* bones, uin
 
     this->m_vk.PrepareFrame();
     VkFrame& frame = this->m_vk.Frame();
+    NoteBoneRing(frame.boneCursor);
     VkDeviceSize cursor = 0;
     VkDeviceSize slot = 0;
 
@@ -2130,7 +2173,7 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
     int32_t forceWire = WowDecompVk_Wireframe() && depthTestOn;
     key.fill = (gameWire || forceWire) && this->m_vk.m_features.fillModeNonSolid;
     key.pass = this->m_passTarget != nullptr;
-    key.bindless = this->m_gpuDrawMode == 2 && this->m_bindless;
+    key.bindless = this->m_gpuDrawMode >= 2 && this->m_bindless;
 
     VkPipeline pipeline = this->IPipeline(key);
 
@@ -2163,6 +2206,11 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
         }
 
         if (texId) {
+            if (texId->m_apiSpecificData && !GxCpuPtrOk(texId->m_apiSpecificData)) {
+                texId->m_apiSpecificData = nullptr;
+                texId->m_needsCreation = 1;
+            }
+
             if (texId->m_needsCreation || !texId->m_apiSpecificData) {
                 this->ITexReady(texId);
             }
@@ -2172,7 +2220,8 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
             }
             texture = static_cast<VkTexture*>(texId->m_apiSpecificData);
 
-            if (!texture) {
+            if (!texture || !GxCpuPtrOk(texture)) {
+                texture = nullptr;
                 disableTexStage[tmu] = 1;
             }
         }
@@ -2550,7 +2599,9 @@ static float TerrainSlotFloat(uint32_t index) {
     return index == ~0u ? -1.0f : static_cast<float>(index);
 }
 
-int32_t CGxDeviceVulkan::DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t count) {
+static_assert(offsetof(GxTerrainDraw, indexCount) == sizeof(GpuDrawItem), "terrain record");
+
+int32_t CGxDeviceVulkan::DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t count, int32_t mode) {
     if (!draws || !count || !this->m_primIndexBuf || !this->m_vk.m_features.drawIndirectFirstInstance) {
         return 0;
     }
@@ -2565,33 +2616,29 @@ int32_t CGxDeviceVulkan::DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t c
     }
 
     for (uint32_t i = 0; i < count; ++i) {
-        items[i] = {};
-        memcpy(items[i].world, &draws[i].world, sizeof(items[i].world));
-        memcpy(items[i].tex0, &draws[i].tex0, sizeof(items[i].tex0));
-        memcpy(items[i].tex1, &draws[i].tex1, sizeof(items[i].tex1));
-        memcpy(items[i].lightPos, draws[i].lightPos, sizeof(items[i].lightPos));
-        memcpy(items[i].lightDiffuse, draws[i].lightDiffuse, sizeof(items[i].lightDiffuse));
-        memcpy(items[i].lightAmbient, draws[i].lightAmbient, sizeof(items[i].lightAmbient));
-        memcpy(items[i].lightAtten, draws[i].lightAtten, sizeof(items[i].lightAtten));
+        // ʕ •ᴥ•ʔ✿ The ring is coherent and uncached. Patching one float there reads a whole line back off the bus ✿ ʕ •ᴥ•ʔ
+        GpuDrawItem item;
+        memcpy(&item, &draws[i].world, sizeof(item));
 
-        // -- ʕ •ᴥ•ʔ✿ ambient.w is the color slot. atten.w is the alpha slot. rgb and xyz stay the light ✿ ʕ •ᴥ•ʔ
         uint32_t layers = draws[i].layerCount > 4 ? 4 : draws[i].layerCount;
 
         if (layers) {
             for (uint32_t k = 0; k < 4; ++k) {
-                items[i].lightAmbient[k][3] = k < layers ? TerrainSlotFloat(draws[i].layerTex[k]) : -1.0f;
-                items[i].lightAtten[k][3] = k < layers ? TerrainSlotFloat(draws[i].layerAlpha[k]) : -1.0f;
+                item.lightAmbient[k][3] = k < layers ? TerrainSlotFloat(draws[i].layerTex[k]) : -1.0f;
+                item.lightAtten[k][3] = k < layers ? TerrainSlotFloat(draws[i].layerAlpha[k]) : -1.0f;
             }
         } else {
-            items[i].lightAmbient[0][3] = TerrainSlotFloat(draws[i].texIndex0);
-            items[i].lightAmbient[1][3] = -1.0f;
-            items[i].lightAmbient[2][3] = -1.0f;
-            items[i].lightAmbient[3][3] = -1.0f;
-            items[i].lightAtten[0][3] = TerrainSlotFloat(draws[i].texIndex1);
-            items[i].lightAtten[1][3] = -1.0f;
-            items[i].lightAtten[2][3] = -1.0f;
-            items[i].lightAtten[3][3] = -1.0f;
+            item.lightAmbient[0][3] = TerrainSlotFloat(draws[i].texIndex0);
+            item.lightAmbient[1][3] = -1.0f;
+            item.lightAmbient[2][3] = -1.0f;
+            item.lightAmbient[3][3] = -1.0f;
+            item.lightAtten[0][3] = TerrainSlotFloat(draws[i].texIndex1);
+            item.lightAtten[1][3] = -1.0f;
+            item.lightAtten[2][3] = -1.0f;
+            item.lightAtten[3][3] = -1.0f;
         }
+
+        memcpy(&items[i], &item, sizeof(item));
         commands[i].indexCount = draws[i].indexCount;
         commands[i].instanceCount = 1;
         commands[i].firstIndex = draws[i].firstIndex;
@@ -2599,7 +2646,7 @@ int32_t CGxDeviceVulkan::DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t c
         commands[i].firstInstance = first + i;
     }
 
-    this->m_gpuDrawMode = 2;
+    this->m_gpuDrawMode = mode == 3 ? 3 : 2;
     this->m_indirectCount = count;
     this->m_indirectOffset = indirectOffset;
 

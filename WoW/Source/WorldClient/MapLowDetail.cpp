@@ -2,14 +2,18 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <string>
+#include <unordered_map>
 #include <vector>
 #include "Engine/Source/BlizzardCore/SFile2-Core.h"
 #include "Engine/Source/Storm/H/storm.h"
+#include "Engine/Source/Tempest/C44Matrix.h"
 #include "Engine/Source/Tempest/CMath.h"
 #include "WoW/Source/WorldClient/CWorldOcclusion.h"
 #include "WoW/Source/WorldClient/FVBBList.h"
 #include "WoW/Source/WorldClient/Map.h"
 #include "WoW/Source/WorldClient/MapArea.h"
+#include "WoW/Source/WorldClient/MapLight.h"
 #include "WoW/Source/WorldClient/SortTable.h"
 #include "WoW/Source/WorldClient/MapObj.h"
 #include "WoW/Source/WorldClient/MapObjDef.h"
@@ -18,6 +22,9 @@
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
 #include "Engine/Source/Gx/Gx.h"
 #include "Engine/Source/Gx/CGxVertexPC.h"
+#include "Engine/Source/Gx/CGxVertexPCT.h"
+#include "Engine/Source/Services/Texture.h"
+#include "Engine/Source/ShaderEffect/Types.h"
 
 // VERIFY: 3763adce auto
 // OFFSET: 0x007C06E0
@@ -97,26 +104,76 @@ void CMapLowDetail::CullHorizonAreas(const C3Vector* pos) {
         maxRow = 63;
     }
 
-    // ʕ •ᴥ•ʔ✿ Full view draws the continent mesh, so the facing list is not rebuilt while you look around ✿ ʕ •ᴥ•ʔ
-    if (!CWorldParamSlider::ExtendedViewEnabled()) {
-        for (int32_t r = minRow; r <= maxRow; r++) {
-            for (int32_t c = minCol; c <= maxCol; c++) {
-                CMapAreaLow* area = this->m_areas[64 * r + c];
+    float horizonNear;
+    float horizonFar;
+    World::HorizonClip(horizonNear, horizonFar);
+    (void)horizonFar;
+    const int32_t extended = CWorldParamSlider::ExtendedViewEnabled();
 
-                if (!area) {
+    for (int32_t r = minRow; r <= maxRow; r++) {
+        for (int32_t c = minCol; c <= maxCol; c++) {
+            CMapAreaLow* area = this->m_areas[64 * r + c];
+
+            if (!area) {
+                continue;
+            }
+
+            if (!extended && CWorldScene::FrustumCull(&area->m_bbox)) {
+                continue;
+            }
+
+            if (extended) {
+                float vx = area->m_sphere.c.x - pos->x;
+                float vy = area->m_sphere.c.y - pos->y;
+                float vz = area->m_sphere.c.z - pos->z;
+                float forward = vx * CWorldScene::camVec.x + vy * CWorldScene::camVec.y + vz * CWorldScene::camVec.z;
+
+                if (forward < -area->m_sphere.r) {
                     continue;
                 }
+            }
 
-                if (CWorldScene::FrustumCull(&area->m_bbox) || CWorldOcclusion::QueryVolumes(&area->m_sphere)) {
+            float x = pos->x;
+
+            if (x < area->m_bbox.b.x) {
+                x = area->m_bbox.b.x;
+            } else if (x > area->m_bbox.t.x) {
+                x = area->m_bbox.t.x;
+            }
+
+            float y = pos->y;
+
+            if (y < area->m_bbox.b.y) {
+                y = area->m_bbox.b.y;
+            } else if (y > area->m_bbox.t.y) {
+                y = area->m_bbox.t.y;
+            }
+
+            float dx = pos->x - x;
+            float dy = pos->y - y;
+
+            // ʕ •ᴥ•ʔ✿ Overlap the resident ring by one tile. Drawing the whole continent every frame was the draw flood ✿ ʕ •ᴥ•ʔ
+            float limit = extended ? World::DetailSpanYards() - 400.0f : horizonNear;
+
+            if (limit < 64.0f) {
+                limit = 64.0f;
+            }
+
+            if (dx * dx + dy * dy < limit * limit) {
+                continue;
+            }
+
+            if (!extended) {
+                if (CWorldOcclusion::QueryVolumes(&area->m_sphere)) {
                     continue;
                 }
 
                 if (World::s_farClip > 300.0f && CWorldOcclusion::QueryBuffer(&area->m_bbox, 40)) {
                     continue;
                 }
-
-                CWorldScene::AddHorizonChunk(area);
             }
+
+            CWorldScene::AddHorizonChunk(area);
         }
     }
 
@@ -262,173 +319,475 @@ void CMapLowDetail::Load(const char* mapPath, const char* mapName) {
     }
 }
 
-// ʕ •ᴥ•ʔ✿ Full view used to draw every WDL tile on its own. A still view keeps one mesh per hundred tiles ✿ ʕ •ᴥ•ʔ
-void CMap::DrawHorizonList() {
-    constexpr uint32_t kTiles = 100;
-    constexpr uint32_t kVerts = 545;
-    constexpr uint32_t kIndices = 3072;
+static C3Vector LodNormal(const int16_t* heights, int32_t row, int32_t col) {
+    auto height = [&](int32_t r, int32_t c) {
+        return static_cast<float>(heights[r * 17 + c]);
+    };
 
-    struct Batch {
-        CGxPool* vpool;
-        CGxPool* ipool;
+    float dzRow = row == 0 ? height(1, col) - height(0, col) : row == 16 ? height(16, col) - height(15, col) : (height(row + 1, col) - height(row - 1, col)) * 0.5f;
+    float dzCol = col == 0 ? height(row, 1) - height(row, 0) : col == 16 ? height(row, 16) - height(row, 15) : (height(row, col + 1) - height(row, col - 1)) * 0.5f;
+    C3Vector normal(dzRow, dzCol, 33.333332f);
+    normal.NormalizeSafe();
+    return normal;
+}
+
+// ʕ •ᴥ•ʔ✿ Mod2x treats 128 as the map photo. The sun lifts faces toward it and the shade keeps the zone ambient ✿ ʕ •ᴥ•ʔ
+static void ShadeLodTile(CGxBuf* verts, const int16_t* heights, const C3Vector& toward, const C3Vector& ambient, const C3Vector& diffuse) {
+    CGxVertexPCT* vertex = reinterpret_cast<CGxVertexPCT*>(g_theGxDevicePtr->BufLock(verts));
+    float day = (ambient.x + ambient.y + ambient.z + diffuse.x + diffuse.y + diffuse.z) * (1.0f / 3.0f);
+
+    if (day < 0.15f) {
+        day = 0.15f;
+    }
+
+    if (day > 1.15f) {
+        day = 1.15f;
+    }
+
+    for (int32_t row = 0; row < 17; ++row) {
+        for (int32_t col = 0; col < 17; ++col) {
+            C3Vector normal = LodNormal(heights, row, col);
+            float ndotl = normal.x * toward.x + normal.y * toward.y + normal.z * toward.z;
+
+            if (ndotl < 0.0f) {
+                ndotl = 0.0f;
+            }
+
+            float mul = (1.08f + 0.7f * (ndotl - 0.42f)) * day;
+
+            if (mul < 0.12f) {
+                mul = 0.12f;
+            }
+
+            C3Vector tone = ambient + diffuse * ndotl;
+            float luma = (tone.x + tone.y + tone.z) * (1.0f / 3.0f);
+            C3Vector rgb = luma > 0.02f ? tone * (mul / luma) : C3Vector(mul, mul, mul);
+
+            auto channel = [](float value) {
+                if (value < 0.0f) {
+                    value = 0.0f;
+                }
+
+                if (value > 1.0f) {
+                    value = 1.0f;
+                }
+
+                return static_cast<uint8_t>(value * 127.5f + 0.5f);
+            };
+
+            vertex->c = CImVector(channel(rgb.z), channel(rgb.y), channel(rgb.x), 0xFF);
+            vertex++;
+        }
+    }
+
+    g_theGxDevicePtr->BufUnlock(verts, 0);
+}
+
+static std::unordered_map<std::string, std::string>& MinimapTable() {
+    static std::unordered_map<std::string, std::string> table;
+    static int32_t loaded = 0;
+
+    if (loaded) {
+        return table;
+    }
+
+    loaded = 1;
+    SFileImpl* file = nullptr;
+    SFileOpenFile("textures\\Minimap\\md5translate.trs", &file);
+
+    if (!file) {
+        return table;
+    }
+
+    uint32_t size = SFileGetFileSize(file, nullptr);
+    char* data = static_cast<char*>(SMemAlloc(size + 1, __FILE__, __LINE__, 0));
+    SFileReadFile(file, data, size, nullptr, nullptr, 0);
+    SFileCloseFile(file);
+    data[size] = 0;
+
+    char* line = data;
+
+    while (line && *line) {
+        char* next = std::strchr(line, '\n');
+
+        if (next) {
+            *next = 0;
+            next++;
+        }
+
+        if (std::strncmp(line, "dir:", 4) == 0 || !line[0]) {
+            line = next;
+            continue;
+        }
+
+        if (line[std::strlen(line) - 1] == '\r') {
+            line[std::strlen(line) - 1] = 0;
+        }
+
+        char* tab = std::strchr(line, '\t');
+
+        if (!tab) {
+            tab = std::strchr(line, ' ');
+        }
+
+        if (tab && tab[1]) {
+            *tab = 0;
+            table.emplace(line, tab + 1);
+        }
+
+        line = next;
+    }
+
+    SMemFree(data, nullptr, 0, 0);
+    return table;
+}
+
+static CTexture* LoadMinimap(uint32_t tileX, uint32_t tileY) {
+    char key[128];
+    SStrPrintf(key, sizeof(key), "%s\\map%02u_%02u.blp", CMap::mapName, tileX, tileY);
+    const auto& table = MinimapTable();
+    auto found = table.find(key);
+
+    if (found == table.end()) {
+        return nullptr;
+    }
+
+    char path[260];
+    SStrPrintf(path, sizeof(path), "textures\\Minimap\\%s", found->second.c_str());
+    // ʕ •ᴥ•ʔ✿ These BLPs have no mip chain. A mip filter samples the empty levels and turns the map into a grid ✿ ʕ •ᴥ•ʔ
+    CStatus status;
+    CGxTexFlags texFlags(GxTex_Linear, 0, 0, 0, 0, 0, 1);
+    CTexture* texture = TextureCreate(path, texFlags, &status, 1);
+
+    if (!texture || !SStrCmp(texture->m_filename, "SolidTexture", 32)) {
+        return nullptr;
+    }
+
+    return texture;
+}
+
+// ʕ •ᴥ•ʔ✿ One mesh and one minimap texture per ADT. Buildings stay on the horizon object pass ✿ ʕ •ᴥ•ʔ
+void CMap::DrawHorizonList() {
+    constexpr int32_t kGrid = 17;
+    constexpr uint32_t kVerts = 289;
+
+    struct Tile {
+        CMapAreaLow* area;
         CGxBuf* verts;
         CGxBuf* indices;
         uint32_t indexCount;
-        uint32_t maxIndex;
+        uint32_t baseVertex;
+        uint32_t firstIndex;
+        CTexture* texture;
+        int32_t tried;
+        int32_t lightStamp;
     };
 
-    static std::vector<Batch> batches;
+    static std::vector<Tile> tiles;
+    static CGxPool* vertPool = nullptr;
+    static CGxPool* indexPool = nullptr;
     static char* builtFrom = nullptr;
+
+    for (uint32_t i = 0; i < 4096; ++i) {
+        CMapAreaLow* area = CMap::s_lowDetail.m_areas[i];
+
+        if (area) {
+            area->m_flags &= ~2u;
+        }
+    }
 
     CMapAreaLow* next = nullptr;
 
     for (CMapAreaLow* area = CWorldScene::sortTable.m_horizonChunkList.Head(); area; area = next) {
         next = CWorldScene::sortTable.m_horizonChunkList.Next(area);
+        area->m_flags |= 2u;
         area->m_horizonLink.Unlink();
     }
 
-    // ʕ •ᴥ•ʔ✿ Turning changes which tiles are in front. Rebuilding that set every frame is the hitch ✿ ʕ •ᴥ•ʔ
     if (builtFrom != CMap::s_lowDetail.m_data) {
-        std::vector<CMapAreaLow*> solid;
+        for (Tile& tile : tiles) {
+            if (tile.verts) {
+                g_theGxDevicePtr->BufDestroy(tile.verts);
+            }
+
+            if (tile.indices) {
+                g_theGxDevicePtr->BufDestroy(tile.indices);
+            }
+        }
+
+        if (vertPool) {
+            g_theGxDevicePtr->PoolDestroy(vertPool);
+            vertPool = nullptr;
+        }
+
+        if (indexPool) {
+            g_theGxDevicePtr->PoolDestroy(indexPool);
+            indexPool = nullptr;
+        }
+
+        tiles.clear();
+
+        uint32_t tileCount = 0;
+        uint32_t indexTotal = 0;
 
         for (uint32_t i = 0; i < 4096; ++i) {
             CMapAreaLow* area = CMap::s_lowDetail.m_areas[i];
 
-            if (area && static_cast<int32_t>(area->m_indexCount) > 0) {
-                solid.push_back(area);
+            if (!area || static_cast<int32_t>(area->m_indexCount) <= 0 || !area->m_heights) {
+                continue;
             }
+
+            uint32_t indexCount = 0;
+            const uint16_t* holes = area->m_holes;
+
+            for (int32_t row = 0; row < 16; ++row) {
+                for (int32_t col = 0; col < 16; ++col) {
+                    if (holes && (holes[row] & (1 << col)) != 0) {
+                        continue;
+                    }
+
+                    indexCount += 6;
+                }
+            }
+
+            if (!indexCount) {
+                continue;
+            }
+
+            tileCount++;
+            indexTotal += indexCount;
         }
-        for (Batch& batch : batches) {
-            if (batch.verts) {
-                g_theGxDevicePtr->BufDestroy(batch.verts);
-            }
 
-            if (batch.indices) {
-                g_theGxDevicePtr->BufDestroy(batch.indices);
-            }
-
-            if (batch.vpool) {
-                g_theGxDevicePtr->PoolDestroy(batch.vpool);
-            }
-
-            if (batch.ipool) {
-                g_theGxDevicePtr->PoolDestroy(batch.ipool);
-            }
+        if (tileCount) {
+            vertPool = g_theGxDevicePtr->PoolCreate(GxPoolTarget_Vertex, GxPoolUsage_Static, static_cast<int32_t>(tileCount * kVerts * sizeof(CGxVertexPCT)), static_cast<EGxPoolHintBits>(0), "LodVerts");
+            indexPool = g_theGxDevicePtr->PoolCreate(GxPoolTarget_Index, GxPoolUsage_Static, static_cast<int32_t>(indexTotal * sizeof(uint16_t)), static_cast<EGxPoolHintBits>(0), "LodIdx");
         }
 
-        batches.clear();
+        uint32_t vertAt = 0;
+        uint32_t indexAt = 0;
 
-        for (size_t base = 0; base < solid.size(); base += kTiles) {
-            uint32_t count = static_cast<uint32_t>(std::min(solid.size() - base, static_cast<size_t>(kTiles)));
-            Batch batch = {};
-            uint32_t indexTotal = 0;
+        for (uint32_t i = 0; i < 4096; ++i) {
+            CMapAreaLow* area = CMap::s_lowDetail.m_areas[i];
 
-            for (uint32_t tile = 0; tile < count; ++tile) {
-                indexTotal += solid[base + tile]->m_indexCount;
+            if (!area || static_cast<int32_t>(area->m_indexCount) <= 0 || !area->m_heights) {
+                continue;
             }
 
-            batch.vpool = g_theGxDevicePtr->PoolCreate(GxPoolTarget_Vertex, GxPoolUsage_Static, static_cast<int32_t>(count * kVerts * sizeof(CGxVertexPC)), static_cast<EGxPoolHintBits>(0), "HorizonVerts");
-            batch.ipool = g_theGxDevicePtr->PoolCreate(GxPoolTarget_Index, GxPoolUsage_Static, static_cast<int32_t>(indexTotal * sizeof(uint16_t)), static_cast<EGxPoolHintBits>(0), "HorizonIdx");
-            batch.verts = g_theGxDevicePtr->BufCreate(batch.vpool, sizeof(CGxVertexPC), count * kVerts, 0);
-            batch.indices = g_theGxDevicePtr->BufCreate(batch.ipool, sizeof(uint16_t), indexTotal, 0);
+            uint16_t scratch[16 * 16 * 6];
+            uint32_t indexCount = 0;
+            const uint16_t* holes = area->m_holes;
 
-            CGxVertexPC* vertex = reinterpret_cast<CGxVertexPC*>(g_theGxDevicePtr->BufLock(batch.verts));
-            uint16_t* indices = reinterpret_cast<uint16_t*>(g_theGxDevicePtr->BufLock(batch.indices));
+            for (int32_t row = 0; row < 16; ++row) {
+                for (int32_t col = 0; col < 16; ++col) {
+                    int32_t blocked = holes && (holes[row] & (1 << col)) != 0;
 
-            for (uint32_t tile = 0; tile < count; ++tile) {
-                CMapAreaLow* area = solid[base + tile];
-                uint32_t height = 0;
-                float x = area->m_topLeft.x;
-
-                for (int32_t row = 0; row < 17; ++row) {
-                    float y = area->m_topLeft.y;
-
-                    for (int32_t col = 0; col < 17; ++col) {
-                        vertex->p.x = x;
-                        vertex->p.y = y;
-                        vertex->p.z = area->m_heights[height++];
-                        vertex->c = CImVector(0xFF, 0xFF, 0xFF, 0xFF);
-                        vertex++;
-                        y -= 33.333332f;
+                    if (blocked) {
+                        continue;
                     }
 
-                    x -= 33.333332f;
-                }
-
-                x = area->m_topLeft.x - 16.666666f;
-
-                for (int32_t row = 0; row < 16; ++row) {
-                    float y = area->m_topLeft.y - 16.666666f;
-
-                    for (int32_t col = 0; col < 16; ++col) {
-                        vertex->p.x = x;
-                        vertex->p.y = y;
-                        vertex->p.z = area->m_heights[height++];
-                        vertex->c = CImVector(0xFF, 0xFF, 0xFF, 0xFF);
-                        vertex++;
-                        y -= 33.333332f;
-                    }
-
-                    x -= 33.333332f;
-                }
-
-                uint32_t origin = tile * kVerts;
-                uint32_t outer = origin;
-                uint32_t inner = origin + 289;
-                const uint16_t* holeRow = area->m_holes;
-
-                for (uint32_t row = 0; row < 16; ++row) {
-                    for (int32_t col = 0; col < 16; ++col) {
-                        if (!holeRow || (holeRow[row] & (1 << col)) == 0) {
-                            *indices++ = static_cast<uint16_t>(inner);
-                            *indices++ = static_cast<uint16_t>(outer + 1);
-                            *indices++ = static_cast<uint16_t>(outer);
-                            *indices++ = static_cast<uint16_t>(inner);
-                            *indices++ = static_cast<uint16_t>(outer + 18);
-                            *indices++ = static_cast<uint16_t>(outer + 1);
-                            *indices++ = static_cast<uint16_t>(inner);
-                            *indices++ = static_cast<uint16_t>(outer + 17);
-                            *indices++ = static_cast<uint16_t>(outer + 18);
-                            *indices++ = static_cast<uint16_t>(inner);
-                            *indices++ = static_cast<uint16_t>(outer);
-                            *indices++ = static_cast<uint16_t>(outer + 17);
-                        }
-
-                        outer++;
-                        inner++;
-                    }
-
-                    outer++;
+                    uint16_t a = static_cast<uint16_t>(row * kGrid + col);
+                    uint16_t b = static_cast<uint16_t>(a + 1);
+                    uint16_t c = static_cast<uint16_t>(a + kGrid);
+                    uint16_t d = static_cast<uint16_t>(c + 1);
+                    scratch[indexCount++] = a;
+                    scratch[indexCount++] = b;
+                    scratch[indexCount++] = c;
+                    scratch[indexCount++] = b;
+                    scratch[indexCount++] = d;
+                    scratch[indexCount++] = c;
                 }
             }
 
-            g_theGxDevicePtr->BufUnlock(batch.verts, 0);
-            g_theGxDevicePtr->BufUnlock(batch.indices, 0);
-            batch.verts->m_hasData = 1;
-            batch.indices->m_hasData = 1;
-            batch.indexCount = indexTotal;
-            batch.maxIndex = count * kVerts - 1;
-            batches.push_back(batch);
+            if (!indexCount) {
+                continue;
+            }
+
+            Tile tile = {};
+            tile.area = area;
+            tile.indexCount = indexCount;
+            tile.baseVertex = vertAt / sizeof(CGxVertexPCT);
+            tile.firstIndex = indexAt / sizeof(uint16_t);
+            tile.verts = g_theGxDevicePtr->BufCreate(vertPool, sizeof(CGxVertexPCT), kVerts, vertAt);
+            tile.indices = g_theGxDevicePtr->BufCreate(indexPool, sizeof(uint16_t), indexCount, indexAt);
+            vertAt += kVerts * sizeof(CGxVertexPCT);
+            indexAt += indexCount * sizeof(uint16_t);
+
+            CGxVertexPCT* vertex = reinterpret_cast<CGxVertexPCT*>(g_theGxDevicePtr->BufLock(tile.verts));
+            uint16_t* indices = reinterpret_cast<uint16_t*>(g_theGxDevicePtr->BufLock(tile.indices));
+
+            for (int32_t row = 0; row < kGrid; ++row) {
+                for (int32_t col = 0; col < kGrid; ++col) {
+                    vertex->p.x = area->m_topLeft.x - static_cast<float>(row) * 33.333332f;
+                    vertex->p.y = area->m_topLeft.y - static_cast<float>(col) * 33.333332f;
+                    vertex->p.z = area->m_heights[row * 17 + col];
+                    vertex->c = CImVector(0xFF, 0xFF, 0xFF, 0xFF);
+                    vertex->tc.x = static_cast<float>(col) / 16.0f;
+                    vertex->tc.y = static_cast<float>(row) / 16.0f;
+                    vertex++;
+                }
+            }
+
+            memcpy(indices, scratch, indexCount * sizeof(uint16_t));
+            g_theGxDevicePtr->BufUnlock(tile.verts, 0);
+            g_theGxDevicePtr->BufUnlock(tile.indices, 0);
+            tile.verts->m_hasData = 1;
+            tile.indices->m_hasData = 1;
+            tiles.push_back(tile);
         }
 
         builtFrom = CMap::s_lowDetail.m_data;
     }
 
-    GxRsSet(GxRs_Culling, 0);
+    int32_t loads = 0;
+    const int32_t budget = CWorldParamSlider::ExtendedViewEnabled() ? 8 : 4;
 
-    for (const Batch& batch : batches) {
-        GxPrimVertexPtr(batch.verts, GxVBF_PC);
-        g_theGxDevicePtr->PrimIndexPtr(batch.indices);
+    for (Tile& tile : tiles) {
+        if (!(tile.area->m_flags & 2u) || tile.tried || loads >= budget) {
+            continue;
+        }
+
+        tile.texture = LoadMinimap(tile.area->m_index.x, tile.area->m_index.y);
+        tile.tried = 1;
+        loads++;
+    }
+
+    C3Vector toward(0.0f, 0.0f, 1.0f);
+    C3Vector ambient(0.45f, 0.48f, 0.52f);
+    C3Vector diffuse(0.55f, 0.52f, 0.48f);
+
+    if (CMap::s_mapLight) {
+        toward = -CMap::s_mapLight->m_light.m_dir;
+
+        if (toward.SquaredMag() > 0.00001f) {
+            toward.NormalizeSafe();
+        } else {
+            toward = C3Vector(0.0f, 0.0f, 1.0f);
+        }
+
+        ambient = CMap::s_mapLight->m_light.m_ambColor;
+        diffuse = CMap::s_mapLight->m_light.m_dirColor;
+    }
+
+    auto quantize = [](float value) {
+        return static_cast<int32_t>(value * 64.0f);
+    };
+
+    int32_t key[9] = {
+        quantize(toward.x), quantize(toward.y), quantize(toward.z),
+        quantize(ambient.x), quantize(ambient.y), quantize(ambient.z),
+        quantize(diffuse.x), quantize(diffuse.y), quantize(diffuse.z)
+    };
+    static int32_t lightKey[9] = {};
+    static int32_t lightStamp = 1;
+
+    if (std::memcmp(key, lightKey, sizeof(key)) != 0) {
+        std::memcpy(lightKey, key, sizeof(key));
+        lightStamp++;
+    }
+
+    g_theGxDevicePtr->m_xforms[GxXform_Tex0].Identity();
+    g_theGxDevicePtr->m_texGen[0].Identity();
+    GxRsSet(GxRs_Culling, 0);
+    GxRsSet(GxRs_Lighting, 0);
+    GxRsSet(GxRs_TexGen0, GxTexGen_Disabled);
+    GxRsSet(GxRs_TextureShader0, 0);
+    GxRsSet(GxRs_TextureCoord0, 0);
+    GxRsSet(GxRs_AlphaOp0, GxTexOp_Mod);
+    GxRsSet(GxRs_Texture1, static_cast<void*>(nullptr));
+
+    static std::vector<GxTerrainDraw> batch;
+    batch.clear();
+    C44Matrix world;
+    CGxMatrixStack& worldStack = g_theGxDevicePtr->m_xforms[GxXform_World];
+    world = worldStack.m_mtx[worldStack.m_level];
+    C44Matrix ident;
+    ident.Identity();
+    CGxBuf* bindVerts = nullptr;
+    CGxBuf* bindIndices = nullptr;
+    CGxTex* bindTex = nullptr;
+    int32_t bindless = g_theGxDevicePtr->TerrainBindless();
+
+    for (Tile& tile : tiles) {
+        if (!(tile.area->m_flags & 2u)) {
+            continue;
+        }
+
+        CGxTex* gx = nullptr;
+
+        if (tile.texture && SStrCmp(tile.texture->m_filename, "SolidTexture", 32) != 0) {
+            gx = TextureGetGxTex(tile.texture, 0, nullptr);
+        }
+
+        if (gx && tile.lightStamp != lightStamp) {
+            ShadeLodTile(tile.verts, tile.area->m_heights, toward, ambient, diffuse);
+            tile.lightStamp = lightStamp;
+        }
+
+        if (gx && bindless) {
+            GxTexSetWrap(gx, GxTex_Clamp, GxTex_Clamp);
+            uint32_t slot = g_theGxDevicePtr->TerrainTextureSlot(gx);
+
+            if (slot != ~0u) {
+                GxTerrainDraw draw = {};
+                draw.world = world;
+                draw.tex0 = ident;
+                draw.tex1 = ident;
+                draw.layerCount = 1;
+                draw.layerTex[0] = slot;
+                draw.layerTex[1] = ~0u;
+                draw.layerTex[2] = ~0u;
+                draw.layerTex[3] = ~0u;
+                draw.layerAlpha[0] = ~0u;
+                draw.layerAlpha[1] = ~0u;
+                draw.layerAlpha[2] = ~0u;
+                draw.layerAlpha[3] = ~0u;
+                draw.indexCount = tile.indexCount;
+                draw.firstIndex = tile.firstIndex;
+                draw.baseVertex = static_cast<int32_t>(tile.baseVertex);
+                batch.push_back(draw);
+
+                if (!bindVerts) {
+                    bindVerts = tile.verts;
+                    bindIndices = tile.indices;
+                    bindTex = gx;
+                }
+
+                continue;
+            }
+        }
+
+        if (gx) {
+            GxTexSetWrap(gx, GxTex_Clamp, GxTex_Clamp);
+            GxRsSet(GxRs_ColorOp0, GxTexOp_Mod2x);
+            GxRsSet(GxRs_Texture0, static_cast<void*>(gx));
+        } else {
+            GxRsSet(GxRs_ColorOp0, GxTexOp_Mod);
+            GxRsSet(GxRs_Texture0, static_cast<void*>(nullptr));
+        }
+
+        GxPrimVertexPtr(tile.verts, GxVBF_PCT);
+        g_theGxDevicePtr->PrimIndexPtr(tile.indices);
 
         CGxBatch draw;
         draw.m_primType = GxPrim_Triangles;
         draw.m_start = 0;
-        draw.m_count = batch.indexCount;
+        draw.m_count = tile.indexCount;
         draw.m_minIndex = 0;
-        draw.m_maxIndex = batch.maxIndex;
+        draw.m_maxIndex = kVerts - 1;
         g_theGxDevicePtr->Draw(&draw, 1);
     }
 
+    // ʕ •ᴥ•ʔ✿ One indirect draw for the whole continent. A draw per map tile was the overhead view ✿ ʕ •ᴥ•ʔ
+    if (!batch.empty() && bindVerts && bindTex) {
+        // ʕ •ᴥ•ʔ✿ The stage stays off with a null texture, and the shader then draws vertex color only ✿ ʕ •ᴥ•ʔ
+        GxRsSet(GxRs_ColorOp0, GxTexOp_Mod2x);
+        GxRsSet(GxRs_Texture0, static_cast<void*>(bindTex));
+        GxPrimVertexPtr(bindVerts, GxVBF_PCT);
+        g_theGxDevicePtr->PrimIndexPtr(bindIndices);
+        g_theGxDevicePtr->DrawTerrainBatch(batch.data(), static_cast<uint32_t>(batch.size()), 2);
+    }
+
+    GxRsSet(GxRs_Texture0, static_cast<CTexture*>(nullptr));
 }
 
 // VERIFY: c20afbce manual

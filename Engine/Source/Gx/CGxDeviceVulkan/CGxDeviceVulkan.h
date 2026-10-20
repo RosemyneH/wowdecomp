@@ -219,7 +219,7 @@ class CGxDeviceVulkan : public CGxDevice {
     virtual void GpuSkinMesh(int32_t bindPose);
     virtual int32_t GpuSkinMesh() const;
     virtual void GpuSkinInfluences(uint32_t count);
-    virtual int32_t DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t count);
+    virtual int32_t DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t count, int32_t mode = 2);
     virtual int32_t TerrainBindless();
     virtual uint32_t TerrainTextureSlot(CGxTex* tex);
     virtual uint64_t ResidentHeapBytes() const;

@@ -228,7 +228,7 @@ class CGxDevice {
     virtual void GpuSkinMesh(int32_t bindPose) { (void)bindPose; }
     virtual int32_t GpuSkinMesh() const { return 0; }
     virtual void GpuSkinInfluences(uint32_t count) { (void)count; }
-    virtual int32_t DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t count);
+    virtual int32_t DrawTerrainBatch(const GxTerrainDraw* draws, uint32_t count, int32_t mode = 2);
     virtual int32_t TerrainBindless() { return 0; }
     virtual uint32_t TerrainTextureSlot(CGxTex*) { return ~0u; }
     virtual uint64_t ResidentHeapBytes() const { return 0; }

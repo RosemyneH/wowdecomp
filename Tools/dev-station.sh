@@ -33,7 +33,7 @@ DETAILS_SRC="${WOWDECOMP_DETAILS:-$HOME/Repos/Details-WotLK}"
 
 usage() {
     cat <<EOF
-Usage: $0 [all|deps|addons|scope|build|test|launch|release|smoke]
+Usage: $0 [all|deps|addons|scope|build|test|launch|release|release-bots|smoke]
 
   all      deps, WASM packages, symlinked scope, client/host build, tests, smoke launch
   deps     wasm32 rust std + clang wasm linker
@@ -43,13 +43,16 @@ Usage: $0 [all|deps|addons|scope|build|test|launch|release|smoke]
   test     headless host tests against Addons/Wasm/dist
   launch   start AzerothCore in Docker, then RelWithDebInfo WowClient64 -datadir <play scope>
   release  build Release (-O3 -DNDEBUG) into a separate tree and launch that binary with MSDF fonts
+  release-bots
+           release, with the CPU profiler on and the playerbots worldserver
   smoke    start the client, require it to stay up, then stop it
 
   WowClient64 -datadir /path/to/client   install root (the folder that contains Data/)
 
 Env: WOWDECOMP_GAME_SRC (this host defaults to ~/Games/client) WOWDECOMP_PLAY_DIR
      WOWDECOMP_BUILD_DIR WOWDECOMP_RELEASE_BUILD_DIR WOWDECOMP_REALM_HOST
-     WOWDECOMP_PROFILE (on|off, default on; release defaults off — CPU zones in $PROFILE_SHM)
+     WOWDECOMP_PROFILE (on|off, default on, including release — CPU zones in $PROFILE_SHM)
+     WOWDECOMP_PLAYERBOTS (1 with release-bots; uses acore-docker/docker-compose.override.yml)
 EOF
 }
 
@@ -148,6 +151,7 @@ link_scope() {
     cp -f "$ROOT/Addons/Lua/WowdecompDesk/WowdecompDesk.toc" \
         "$ROOT/Addons/Lua/WowdecompDesk/WowdecompDesk.lua" \
         "$PLAY_DIR/Interface/AddOns/WowdecompDesk/"
+    stage_profile_addon
     stage_wasm_game_addons "$wasm_root"
     echo "Dev scope: $PLAY_DIR"
     echo "WasmAddOns -> $wasm_root ($(find "$wasm_root" -mindepth 1 -maxdepth 1 -type l -o -mindepth 1 -maxdepth 1 -type d | wc -l) entries)"
@@ -285,12 +289,40 @@ exec_client() {
 }
 
 launch_client() {
+    ensure_local_realm
+    stage_profile_addon
     ensure_wow_disk
     WOWDECOMP_SERVER_BACKEND=docker "$ROOT/Tools/local-server/start.sh"
     apply_profiler_env
     profiler_launch_note
     echo "RelWithDebInfo (-O2 -g -DNDEBUG)"
     exec_client "$(client_binary WowClient64)"
+}
+
+stage_profile_addon() {
+    mkdir -p "$PLAY_DIR/Interface/AddOns/WowdecompProfile"
+    cp -f "$ROOT/Addons/WowdecompProfile/WowdecompProfile.toc" \
+        "$ROOT/Addons/WowdecompProfile/WowdecompProfile.lua" \
+        "$PLAY_DIR/Interface/AddOns/WowdecompProfile/"
+}
+
+# ʕ •ᴥ•ʔ✿ realmList is not written back on exit. A new Config.wtf otherwise keeps the Blizzard login host. ✿ ʕ •ᴥ•ʔ
+ensure_local_realm() {
+    local cfg="$PLAY_DIR/WTF/Config.wtf"
+    mkdir -p "$PLAY_DIR/WTF"
+    if [[ -L "$cfg" ]]; then
+        return
+    fi
+    touch "$cfg"
+    if ! grep -q '^SET realmList ' "$cfg"; then
+        printf 'SET realmList "%s"\n' "$REALM_HOST" >> "$cfg"
+    fi
+    if ! grep -q '^SET locale ' "$cfg"; then
+        printf 'SET locale "enUS"\n' >> "$cfg"
+    fi
+    if ! grep -q '^SET gxResolution ' "$cfg"; then
+        printf 'SET gxResolution "1920x1080"\n' >> "$cfg"
+    fi
 }
 
 enable_release_msdf() {
@@ -300,6 +332,7 @@ enable_release_msdf() {
         echo "WTF/Config.wtf is a symlink; not rewriting it for MSDF" >&2
         return
     fi
+    ensure_local_realm
     touch "$cfg"
     if grep -q '^SET gxMsdfFonts ' "$cfg"; then
         sed -i 's/^SET gxMsdfFonts .*/SET gxMsdfFonts "1"/' "$cfg"
@@ -319,14 +352,21 @@ launch_release() {
         exit 1
     fi
     ensure_wow_disk
+    stage_profile_addon
     enable_release_msdf
     WOWDECOMP_SERVER_BACKEND=docker "$ROOT/Tools/local-server/start.sh"
-    # ʕ •ᴥ•ʔ✿ Release play is the fps path. Leave the zone sampler off unless asked ✿ ʕ •ᴥ•ʔ
-    : "${WOWDECOMP_PROFILE:=off}"
+    # ʕ •ᴥ•ʔ✿ Same sampler as dev. WOWDECOMP_PROFILE=off still disables it ✿ ʕ •ᴥ•ʔ
+    : "${WOWDECOMP_PROFILE:=on}"
     apply_profiler_env
     profiler_launch_note
     echo "Release (-O3 -DNDEBUG, gxMsdfFonts=1)"
     exec_client "$RELEASE_BIN"
+}
+
+launch_release_bots() {
+    export WOWDECOMP_PROFILE=on
+    export WOWDECOMP_PLAYERBOTS=1
+    launch_release
 }
 
 smoke_launch() {
@@ -381,6 +421,7 @@ case "$cmd" in
     test) run_tests ;;
     launch) launch_client ;;
     release) launch_release ;;
+    release-bots) launch_release_bots ;;
     smoke) smoke_launch ;;
     all)
         ensure_packages

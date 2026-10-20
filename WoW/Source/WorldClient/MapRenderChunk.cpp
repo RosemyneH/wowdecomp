@@ -24,6 +24,7 @@
 #include "WoW/Source/WorldClient/MapLight.h"
 #include "WoW/Source/WorldClient/Types.h"
 #include "WoW/Source/WorldClient/World.h"
+#include "WoW/Source/WorldClient/WorldParam_CVarSlider.h"
 #include "Engine/Source/Base/Job/JobSystem.h"
 #include <algorithm>
 #include <cstdint>
@@ -423,11 +424,11 @@ static TerrainFit FitTerrain() {
         radius = 1023;
     }
 
-    // ʕ •ᴥ•ʔ✿ Extended view is 50km. That disk is a million ADT slots. The WDL draws past retail farclip ✿ ʕ •ᴥ•ʔ
-    constexpr int32_t kDetailRadius = 39;
+    // ʕ •ᴥ•ʔ✿ Full view stays inside the 64 sort buckets, about 2km. A 6km ring was the 3s scene pass ✿ ʕ •ᴥ•ʔ
+    const int32_t detailCap = CWorldParamSlider::ExtendedViewEnabled() ? 64 : 39;
 
-    if (radius > kDetailRadius) {
-        radius = kDetailRadius;
+    if (radius > detailCap) {
+        radius = detailCap;
     }
 
     uint64_t heap = g_theGxDevicePtr ? g_theGxDevicePtr->ResidentHeapBytes() : 0;
@@ -2681,6 +2682,8 @@ TerrainGroupKey MakeTerrainGroupKey(const TerrainCapture& cap, uint32_t layer, i
 }
 
 std::vector<GxTerrainDraw> s_terrainDraws;
+std::vector<GxTerrainDraw> s_shadowDraws;
+std::vector<size_t> s_shadowQueued;
 std::vector<uint8_t> s_meshTaken;
 std::vector<size_t> s_terrainQueued;
 std::vector<size_t> s_terrainOrder;
@@ -2823,13 +2826,33 @@ static void ApplyChunkFog(const TerrainCapture& cap) {
     GxRsSet(GxRs_Fog, cap.fog);
 }
 
+// ʕ •ᴥ•ʔ✿ Chunk tex matrices are a swapped scale plus a translation. The general 4x4 product spends most of its multiplies on zeros ✿ ʕ •ᴥ•ʔ
+static void MulEyeTex(C44Matrix& out, const C44Matrix& eye, const C44Matrix& tex) {
+    out.a0 = eye.a1 * tex.b0 + eye.a3 * tex.d0;
+    out.a1 = eye.a0 * tex.a1 + eye.a3 * tex.d1;
+    out.a2 = eye.a2 * tex.c2 + eye.a3 * tex.d2;
+    out.a3 = eye.a3;
+    out.b0 = eye.b1 * tex.b0 + eye.b3 * tex.d0;
+    out.b1 = eye.b0 * tex.a1 + eye.b3 * tex.d1;
+    out.b2 = eye.b2 * tex.c2 + eye.b3 * tex.d2;
+    out.b3 = eye.b3;
+    out.c0 = eye.c1 * tex.b0 + eye.c3 * tex.d0;
+    out.c1 = eye.c0 * tex.a1 + eye.c3 * tex.d1;
+    out.c2 = eye.c2 * tex.c2 + eye.c3 * tex.d2;
+    out.c3 = eye.c3;
+    out.d0 = eye.d1 * tex.b0 + eye.d3 * tex.d0;
+    out.d1 = eye.d0 * tex.a1 + eye.d3 * tex.d1;
+    out.d2 = eye.d2 * tex.c2 + eye.d3 * tex.d2;
+    out.d3 = eye.d3;
+}
+
 static void FillTerrainDraw(GxTerrainDraw& draw, const TerrainCapture& cap, const C44Matrix* eye0, const C44Matrix* eye1) {
     draw.world = cap.world;
 
     // -- ʕ •ᴥ•ʔ✿ Eye-linear texgen is one view inverse for the whole flush. Per chunk it is that matrix times the layer matrix. ✿ ʕ •ᴥ•ʔ
     if (eye0 && eye1) {
-        draw.tex0 = (*eye0) * cap.tex0;
-        draw.tex1 = (*eye1) * cap.tex1;
+        MulEyeTex(draw.tex0, *eye0, cap.tex0);
+        MulEyeTex(draw.tex1, *eye1, cap.tex1);
     } else {
         GxXformSet(GxXform_Tex0, cap.tex0);
         GxXformSet(GxXform_Tex1, cap.tex1);
@@ -2904,7 +2927,8 @@ static int32_t FillChunkLayers(GxTerrainDraw& draw, const TerrainCapture& cap, c
         draw.layerTex[i] = slot;
 
         if (layer->m_layerTexture) {
-            CGxTex* alpha = TextureGetGxTex(layer->m_layerTexture, 1, nullptr);
+            CTexture* alphaTex = layer->m_layerTexture;
+            CGxTex* alpha = alphaTex && !(alphaTex->m_flags & 4) && alphaTex->m_gxTex ? alphaTex->m_gxTex : TextureGetGxTex(alphaTex, 0, nullptr);
             uint32_t alphaSlot = g_theGxDevicePtr->TerrainTextureSlot(alpha);
 
             if (alphaSlot == ~0u) {
@@ -2920,47 +2944,119 @@ static int32_t FillChunkLayers(GxTerrainDraw& draw, const TerrainCapture& cap, c
     return 1;
 }
 
+struct TerrainSortKey {
+    uintptr_t vertex;
+    uintptr_t index;
+    uint32_t fogColor;
+    int32_t fog;
+    float fogStart;
+    float fogEnd;
+    uint32_t order;
+};
+
+static std::vector<TerrainSortKey> s_sortKeys;
+
+static void DrawShadowGroup(const GxTerrainDraw* draws, uint32_t offset, uint32_t count) {
+    if (!(CWorld::enables & Enable_Shadow) || !g_theGxDevicePtr->TerrainBindless() || !count) {
+        return;
+    }
+
+    CGxTex* mod = CWorld::shadowModTexture ? TextureGetGxTex(CWorld::shadowModTexture, 0, nullptr) : nullptr;
+    uint32_t modSlot = g_theGxDevicePtr->TerrainTextureSlot(mod);
+
+    if (modSlot == ~0u) {
+        return;
+    }
+
+    s_shadowDraws.clear();
+    s_shadowQueued.clear();
+
+    for (uint32_t i = 0; i < count; ++i) {
+        size_t index = s_terrainQueued[offset + i];
+        CTexture* texture = s_terrainBatch[index].chunk->m_shadowTexture;
+
+        if (!texture) {
+            continue;
+        }
+
+        CGxTex* shadow = !(texture->m_flags & 4) && texture->m_gxTex ? texture->m_gxTex : TextureGetGxTex(texture, 0, nullptr);
+        uint32_t slot = g_theGxDevicePtr->TerrainTextureSlot(shadow);
+
+        if (slot == ~0u) {
+            continue;
+        }
+
+        GxTerrainDraw draw = draws[i];
+        draw.layerCount = 0;
+        draw.texIndex0 = modSlot;
+        draw.texIndex1 = slot;
+        s_shadowDraws.push_back(draw);
+        s_shadowQueued.push_back(index);
+    }
+
+    if (s_shadowDraws.empty()) {
+        return;
+    }
+
+    // ʕ •ᴥ•ʔ✿ The old path was one Vulkan draw per chunk. The shadow maps already live in the bindless table ✿ ʕ •ᴥ•ʔ
+    GxRsSet(GxRs_BlendingMode, GxBlend_Alpha);
+    GxUpdateAlphaRef(GxRs_AlphaRef);
+
+    if (!g_theGxDevicePtr->DrawTerrainBatch(s_shadowDraws.data(), static_cast<uint32_t>(s_shadowDraws.size()), 3)) {
+        return;
+    }
+
+    for (size_t index : s_shadowQueued) {
+        s_terrainOwnShadow[index] = 1;
+    }
+}
+
 static void FlushTerrainComposite(const C44Matrix* eye0, const C44Matrix* eye1) {
     // -- ʕ •ᴥ•ʔ✿ One indirect command per chunk. The fragment shader lerps every layer, so the per-layer setup is gone ✿ ʕ •ᴥ•ʔ
     size_t count = s_terrainBatch.size();
     s_terrainOwnShadow.assign(count, 0);
     s_terrainOrder.resize(count);
+    s_sortKeys.resize(count);
 
     for (size_t i = 0; i < count; ++i) {
-        s_terrainOrder[i] = i;
+        const TerrainCapture& cap = s_terrainBatch[i];
+        TerrainSortKey& key = s_sortKeys[i];
+        key.vertex = reinterpret_cast<uintptr_t>(cap.chunk->m_chunkBuf->m_vertexBuf->m_pool);
+        key.index = reinterpret_cast<uintptr_t>(cap.chunk->m_chunkBuf->m_indexBuf->m_pool);
+        key.fogColor = cap.fogColor;
+        key.fog = cap.fog;
+        key.fogStart = cap.fogStart;
+        key.fogEnd = cap.fogEnd;
+        key.order = static_cast<uint32_t>(i);
     }
 
-    std::sort(s_terrainOrder.begin(), s_terrainOrder.end(), [](size_t a, size_t b) {
-        const TerrainCapture& ca = s_terrainBatch[a];
-        const TerrainCapture& cb = s_terrainBatch[b];
-        CGxPool* vertexA = ca.chunk->m_chunkBuf->m_vertexBuf->m_pool;
-        CGxPool* vertexB = cb.chunk->m_chunkBuf->m_vertexBuf->m_pool;
-
-        if (vertexA != vertexB) {
-            return vertexA < vertexB;
+    std::sort(s_sortKeys.begin(), s_sortKeys.end(), [](const TerrainSortKey& a, const TerrainSortKey& b) {
+        if (a.vertex != b.vertex) {
+            return a.vertex < b.vertex;
         }
 
-        CGxPool* indexA = ca.chunk->m_chunkBuf->m_indexBuf->m_pool;
-        CGxPool* indexB = cb.chunk->m_chunkBuf->m_indexBuf->m_pool;
-
-        if (indexA != indexB) {
-            return indexA < indexB;
+        if (a.index != b.index) {
+            return a.index < b.index;
         }
 
-        if (ca.fog != cb.fog) {
-            return ca.fog < cb.fog;
+        if (a.fog != b.fog) {
+            return a.fog < b.fog;
         }
 
-        if (ca.fogColor != cb.fogColor) {
-            return ca.fogColor < cb.fogColor;
+        if (a.fogColor != b.fogColor) {
+            return a.fogColor < b.fogColor;
         }
 
-        if (ca.fogStart != cb.fogStart) {
-            return ca.fogStart < cb.fogStart;
+        if (a.fogStart != b.fogStart) {
+            return a.fogStart < b.fogStart;
         }
 
-        return ca.fogEnd < cb.fogEnd;
+        return a.fogEnd < b.fogEnd;
     });
+
+    for (size_t i = 0; i < count; ++i) {
+        s_terrainOrder[i] = s_sortKeys[i].order;
+    }
 
     constexpr uint32_t kSlice = 16384;
 
@@ -3019,6 +3115,8 @@ static void FlushTerrainComposite(const C44Matrix* eye0, const C44Matrix* eye1) 
                         DrawCapturedLayers(s_terrainBatch[index]);
                         s_terrainOwnShadow[index] = 1;
                     }
+                } else {
+                    DrawShadowGroup(s_terrainDraws.data() + offset, offset, n);
                 }
 
                 offset += n;

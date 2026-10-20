@@ -2694,8 +2694,7 @@ int32_t CGCamera::UpdateCallback(const void* data, void* param) {
 
     uint32_t time = OsGetAsyncTimeMs();
     camera->m_nearZ = World::s_nearClip;
-    // ʕ •ᴥ•ʔ✿ Full view stretches the WDL, not the high-detail camera ✿ ʕ •ᴥ•ʔ
-    camera->m_farZ = World::s_farClip;
+    camera->m_farZ = World::ViewFarClip();
 
     if (camera->m_model) {
         camera->CalcModelCamera(time);

@@ -83,7 +83,8 @@ class CGTalentInfo {
     static int32_t m_petTalentTab;
     static TSFixedArray<TalentTabInfo*> m_tabs;
     static TSFixedArray<TalentTabInfo*> m_petTabs;
-    static CGTalentGroup_C m_talentGroups[2];
+    static constexpr uint32_t kTalentGroupLimit = 8;
+    static CGTalentGroup_C m_talentGroups[kTalentGroupLimit];
     static CGTalentGroup_C m_petTalentGroup;
     static void EnterWorld();
     static void LeaveWorld();
@@ -121,7 +122,7 @@ class CGTalentInfo_Inspect {
     static uint32_t m_numTalentGroups;
     static int32_t m_unspentTalentPoints;
     static TSFixedArray<TalentTabInfo*> m_tabs;
-    static CGTalentGroup_C m_talentGroups[2];
+    static CGTalentGroup_C m_talentGroups[CGTalentInfo::kTalentGroupLimit];
     static void EnterWorld();
     static void ShutdownGame();
     static void Reset();

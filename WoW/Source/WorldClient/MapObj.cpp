@@ -3266,14 +3266,6 @@ void CMapObj::RenderMapObjGroupsColor(CMapObjGroup** groups, uint32_t count, C44
         g_theGxDevicePtr->PrimIndexPtr(indexBuf);
 
         if (group->m_unkLoadedFlag & 0x4) {
-            GxRsSet(GxRs_Texture0, static_cast<void*>(nullptr));
-            CGxBatch batch;
-            batch.m_primType = GxPrim_Triangles;
-            batch.m_start = group->m_indexMin;
-            batch.m_count = group->m_indexMax - group->m_indexMin + 1;
-            batch.m_minIndex = group->m_vertexMin;
-            batch.m_maxIndex = group->m_vertexMax;
-            g_theGxDevicePtr->Draw(&batch, 1);
             continue;
         }
 

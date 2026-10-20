@@ -3190,6 +3190,10 @@ void CM2Model::AnimateST() {
     float deltaTime = elapsed * 0.001f;
     this->m_lastEmitterTime = time;
 
+    // ʕ •ᴥ•ʔ✿ Past 15 yards, skip ribbons and particles. Riders stay attached: a mount's child is the player ✿ ʕ •ᴥ•ʔ
+    int32_t crowdLod = !this->m_attachParent && this->m_scaleSq > 225.0f;
+
+    if (!crowdLod) {
     for (uint32_t i = 0; i < data->m_ribbons.m_count; i++) {
         M2Ribbon* ribbonData = &data->m_ribbons[i];
         CRibbonEmitter* emitter = this->m_ribbonEmitters[i];
@@ -3228,6 +3232,7 @@ void CM2Model::AnimateST() {
     for (uint32_t i = 0; i < data->m_particles.m_count; i++) {
         this->AnimateParticleST(deltaTime, i);
     }
+    }
 
     if (this->m_fFlags & 8) {
         CM2Model** head = &this->m_scene->m_drawList;
@@ -3260,9 +3265,11 @@ void CM2Model::AnimateST() {
             hidden = this->m_attachments[child->m_attachmentIndex].m_currentValue == 0;
         }
 
-        if (!hidden) {
-            child->AnimateST();
+        if (hidden) {
+            continue;
         }
+
+        child->AnimateST();
     }
 
     if (this->m_effectiveAlpha == 1.0f) {
