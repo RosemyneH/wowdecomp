@@ -58,6 +58,8 @@ struct LnxJoystick {
 
 static LnxJoystickMouseMode s_defaultMouseMode = { 1, 0, 1.5f, 0, 1, 0 };
 
+static void ReleaseOwnedInput(LnxJoystick* joystick);
+
 static int32_t s_initialized;
 static uint32_t s_listId;
 
@@ -164,6 +166,9 @@ uint32_t OsJoystickCount() {
     DropJoystickListIfIdle();
 
     if (!s_initialized) {
+        SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI, "1");
+        SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_GAMECUBE, "1");
+
         if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
             return 0;
         }
@@ -250,6 +255,10 @@ void OsJoystickClose(uint32_t index) {
     if (joystick->m_device) {
         SDL_CloseJoystick(joystick->m_device);
         joystick->m_device = nullptr;
+    }
+
+    if (index == 0) {
+        ReleaseOwnedInput(joystick);
     }
 }
 
@@ -439,7 +448,7 @@ static float g_lookX;
 static float g_lookY;
 static int32_t g_cursor;
 static char g_padName[128];
-static OsGamepadOptions g_options = { 0, 0.18f, 1.0f, 16.0f, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
+static OsGamepadOptions g_options = { 0, 0.18f, 1.0f, 16.0f, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0 };
 
 void OsGamepadSetOptions(const OsGamepadOptions* options) {
     if (!options) {
@@ -466,6 +475,14 @@ const char* OsGamepadConnectedName() {
     SDL_JoystickID* pads = SDL_GetGamepads(&count);
     const char* name = pads && count > 0 ? SDL_GetGamepadNameForID(pads[0]) : nullptr;
     SDL_free(pads);
+
+    if (!name || !name[0]) {
+        int32_t joyCount = 0;
+        SDL_JoystickID* joys = SDL_GetJoysticks(&joyCount);
+        name = joys && joyCount > 0 ? SDL_GetJoystickNameForID(joys[0]) : nullptr;
+        SDL_free(joys);
+    }
+
     SStrCopy(g_padName, name ? name : "", sizeof(g_padName));
     return g_padName;
 }
@@ -511,6 +528,373 @@ static void ReleaseMove(LnxJoystick* joystick) {
     }
 }
 
+static void ReleasePresetButtons(LnxJoystick* joystick) {
+    HoldKey(joystick, 5, KEY_SPACE, 0);
+    HoldKey(joystick, 6, KEY_ESCAPE, 0);
+    HoldKey(joystick, 19, KEY_Z, 0);
+    HoldKey(joystick, 20, KEY_2, 0);
+    HoldKey(joystick, 21, KEY_1, 0);
+    if (joystick->m_held[9]) {
+        int32_t x = 0;
+        int32_t y = 0;
+        OsInputGetMousePosition(&x, &y);
+        OsQueuePut(OS_INPUT_MOUSE_UP, MOUSE_BUTTON_LEFT, x, y, 0);
+        joystick->m_held[9] = 0;
+    }
+}
+
+// ʕ •ᴥ•ʔ✿ SDL maps a GameCube Z to the right shoulder and L/R to the analog triggers ✿ ʕ •ᴥ•ʔ
+static const char* kButtonKeys[16] = {
+    "JOYBUTTON1", "JOYBUTTON2", "JOYBUTTON3", "JOYBUTTON4",
+    "JOYBUTTON5", "JOYBUTTON6", "JOYBUTTON7", "JOYBUTTON8",
+    "JOYBUTTON9", "JOYBUTTON10", "JOYBUTTON11", "JOYBUTTON12",
+    "JOYBUTTON13", "JOYBUTTON14", "JOYBUTTON15", "JOYBUTTON16",
+};
+
+static const char* kAxisKeys[8] = {
+    "JOYAXIS1NEG", "JOYAXIS1POS", "JOYAXIS2NEG", "JOYAXIS2POS",
+    "JOYAXIS3NEG", "JOYAXIS3POS", "JOYAXIS4NEG", "JOYAXIS4POS",
+};
+
+static const char* kStandardLabels[16] = {
+    "A", "B", "X", "Y", "LB", "RB", "Back", "Start",
+    "LS", "RS", "D-Up", "D-Down", "D-Left", "D-Right", "LT", "RT",
+};
+
+static const char* kCubeLabels[16] = {
+    "A", "B", "X", "Y", "LB", "Z", "Back", "Start",
+    "LS", "RS", "D-Up", "D-Down", "D-Left", "D-Right", "L", "R",
+};
+
+static uint8_t g_slotHeld[16];
+static uint8_t g_axisHeld[8];
+static uint8_t g_buttonDown[16];
+static int32_t g_capture;
+static OsGamepadEdge g_edges[32];
+static int32_t g_edgeRead;
+static int32_t g_edgeWrite;
+static char g_captureKeys[8][24];
+static int32_t g_captureRead;
+static int32_t g_captureWrite;
+
+static int NameIsCube(const char* name) {
+    return name && (SStrStrI(name, "gamecube") || SStrStrI(name, "game cube") || SStrStrI(name, "wup-028"));
+}
+
+static void PushCapture(const char* key) {
+    int32_t next = (g_captureWrite + 1) % 8;
+    if (next == g_captureRead) {
+        g_captureRead = (g_captureRead + 1) % 8;
+    }
+    SStrCopy(g_captureKeys[g_captureWrite], key, sizeof(g_captureKeys[g_captureWrite]));
+    g_captureWrite = next;
+}
+
+static void PushEdge(const char* key, int down) {
+    int32_t next = (g_edgeWrite + 1) % 32;
+    if (next == g_edgeRead) {
+        g_edgeRead = (g_edgeRead + 1) % 32;
+    }
+    SStrCopy(g_edges[g_edgeWrite].key, key, sizeof(g_edges[g_edgeWrite].key));
+    g_edges[g_edgeWrite].down = down;
+    g_edgeWrite = next;
+    if (down) {
+        PushCapture(key);
+    }
+}
+
+static void EdgeHeld(uint8_t* held, int slot, int down, const char* key) {
+    down = down ? 1 : 0;
+    if (held[slot] == down) {
+        return;
+    }
+    held[slot] = static_cast<uint8_t>(down);
+    PushEdge(key, down);
+}
+
+static void ReleaseEdges() {
+    for (int32_t i = 0; i < 16; i++) {
+        g_buttonDown[i] = 0;
+        if (g_slotHeld[i]) {
+            g_slotHeld[i] = 0;
+            PushEdge(kButtonKeys[i], 0);
+        }
+    }
+    for (int32_t i = 0; i < 8; i++) {
+        if (g_axisHeld[i]) {
+            g_axisHeld[i] = 0;
+            PushEdge(kAxisKeys[i], 0);
+        }
+    }
+}
+
+static void ReleaseOwnedInput(LnxJoystick* joystick) {
+    ReleaseMove(joystick);
+    ReleaseEdges();
+    g_lookX = 0.0f;
+    g_lookY = 0.0f;
+    g_cursor = 0;
+    if (joystick) {
+        joystick->m_cursor = 0;
+    }
+}
+
+static int SlotDown(SDL_Gamepad* pad, int slot) {
+    static const SDL_GamepadButton kButtons[] = {
+        SDL_GAMEPAD_BUTTON_SOUTH, SDL_GAMEPAD_BUTTON_EAST, SDL_GAMEPAD_BUTTON_WEST, SDL_GAMEPAD_BUTTON_NORTH,
+        SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, SDL_GAMEPAD_BUTTON_BACK, SDL_GAMEPAD_BUTTON_START,
+        SDL_GAMEPAD_BUTTON_LEFT_STICK, SDL_GAMEPAD_BUTTON_RIGHT_STICK, SDL_GAMEPAD_BUTTON_DPAD_UP, SDL_GAMEPAD_BUTTON_DPAD_DOWN,
+        SDL_GAMEPAD_BUTTON_DPAD_LEFT, SDL_GAMEPAD_BUTTON_DPAD_RIGHT,
+    };
+
+    if (!pad) {
+        return 0;
+    }
+    if (slot < 14) {
+        return SDL_GetGamepadButton(pad, kButtons[slot]);
+    }
+    if (slot == 14) {
+        return SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > 16000;
+    }
+    if (slot == 15) {
+        return SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > 16000;
+    }
+    return 0;
+}
+
+static void EmitAxis(int slot, float value) {
+    float dead = g_options.deadzone;
+    EdgeHeld(g_axisHeld, slot * 2, value < -dead, kAxisKeys[slot * 2]);
+    EdgeHeld(g_axisHeld, slot * 2 + 1, value > dead, kAxisKeys[slot * 2 + 1]);
+}
+
+static void EmitAxes(float lx, float ly, float rx, float ry, int enabled) {
+    if (!enabled) {
+        for (int32_t i = 0; i < 8; i++) {
+            EdgeHeld(g_axisHeld, i, 0, kAxisKeys[i]);
+        }
+        return;
+    }
+    EmitAxis(0, lx);
+    EmitAxis(1, ly);
+    EmitAxis(2, rx);
+    EmitAxis(3, ry);
+}
+
+static int PovDown(uint32_t pov, int slot) {
+    int up = pov == 0 || pov == 4500 || pov == 31500;
+    int right = pov == 9000 || pov == 4500 || pov == 13500;
+    int down = pov == 18000 || pov == 13500 || pov == 22500;
+    int left = pov == 27000 || pov == 22500 || pov == 31500;
+    if (slot == 10) return up;
+    if (slot == 11) return down;
+    if (slot == 12) return left;
+    if (slot == 13) return right;
+    return 0;
+}
+
+static void EmitPad(LnxJoystick* joystick, int active) {
+    int axisBind = g_options.layout == 2 && g_options.axisBindings;
+    float lx = 0.0f;
+    float ly = 0.0f;
+    float rx = 0.0f;
+    float ry = 0.0f;
+
+    if (active && joystick->m_pad) {
+        lx = Stick(joystick->m_pad, SDL_GAMEPAD_AXIS_LEFTX);
+        ly = Stick(joystick->m_pad, SDL_GAMEPAD_AXIS_LEFTY);
+        rx = Stick(joystick->m_pad, SDL_GAMEPAD_AXIS_RIGHTX);
+        ry = Stick(joystick->m_pad, SDL_GAMEPAD_AXIS_RIGHTY);
+    }
+
+    for (int32_t i = 0; i < 16; i++) {
+        int down = active ? SlotDown(joystick->m_pad, i) : 0;
+        g_buttonDown[i] = static_cast<uint8_t>(down);
+        EdgeHeld(g_slotHeld, i, down, kButtonKeys[i]);
+    }
+    EmitAxes(lx, ly, rx, ry, axisBind);
+}
+
+static void EmitRaw(LnxJoystick* joystick, const LnxJoystickState* state) {
+    int axisBind = g_options.layout == 2 && g_options.axisBindings;
+    float lx = (joystick->m_axisMask & 1) ? state->m_axes[0] / 32767.0f : 0.0f;
+    float ly = (joystick->m_axisMask & 2) ? state->m_axes[1] / 32767.0f : 0.0f;
+    float rx = (joystick->m_axisMask & 4) ? state->m_axes[2] / 32767.0f : 0.0f;
+    float ry = (joystick->m_axisMask & 8) ? state->m_axes[3] / 32767.0f : 0.0f;
+    float dead = g_options.deadzone;
+    if (lx < dead && lx > -dead) lx = 0.0f;
+    if (ly < dead && ly > -dead) ly = 0.0f;
+    if (rx < dead && rx > -dead) rx = 0.0f;
+    if (ry < dead && ry > -dead) ry = 0.0f;
+
+    for (int32_t i = 0; i < 16; i++) {
+        int down = state->m_buttons[i];
+        if (i >= 10 && i <= 13) {
+            down = down || PovDown(state->m_pov[0], i);
+        }
+        g_buttonDown[i] = static_cast<uint8_t>(down ? 1 : 0);
+        EdgeHeld(g_slotHeld, i, down, kButtonKeys[i]);
+    }
+    EmitAxes(lx, ly, rx, ry, axisBind);
+}
+
+static int DeviceMapped() {
+    if (!s_joysticks.Count()) {
+        return 0;
+    }
+    const LnxJoystick* joystick = &s_joysticks[0];
+    if (joystick->m_pad) {
+        return 1;
+    }
+    return SDL_IsGamepad(static_cast<SDL_JoystickID>(joystick->m_deviceIndex));
+}
+
+static int PositionalLabels() {
+    if (DeviceMapped()) {
+        return 1;
+    }
+    return s_joysticks.Count() == 0;
+}
+
+int32_t OsGamepadKind() {
+    if (g_options.style == 2) {
+        return OS_GAMEPAD_GAMECUBE;
+    }
+    if (g_options.style == 1) {
+        return OS_GAMEPAD_STANDARD;
+    }
+    if (!s_joysticks.Count()) {
+        const char* name = OsGamepadConnectedName();
+        if (NameIsCube(name)) {
+            return OS_GAMEPAD_GAMECUBE;
+        }
+        return name && name[0] ? OS_GAMEPAD_STANDARD : OS_GAMEPAD_NONE;
+    }
+
+    const LnxJoystick* joystick = &s_joysticks[0];
+    const char* name = nullptr;
+    if (joystick->m_pad) {
+        if (SDL_GetGamepadType(joystick->m_pad) == SDL_GAMEPAD_TYPE_GAMECUBE) {
+            return OS_GAMEPAD_GAMECUBE;
+        }
+        name = SDL_GetGamepadName(joystick->m_pad);
+    } else if (joystick->m_device) {
+        name = SDL_GetJoystickName(joystick->m_device);
+    }
+    if (NameIsCube(name)) {
+        return OS_GAMEPAD_GAMECUBE;
+    }
+    return OS_GAMEPAD_STANDARD;
+}
+
+int32_t OsGamepadMapped() {
+    return DeviceMapped();
+}
+
+int32_t OsGamepadControlCount() {
+    return 16;
+}
+
+int32_t OsGamepadControl(int32_t index, char* key, uint32_t keySize, char* label, uint32_t labelSize, int32_t* down) {
+    if (index < 0 || index >= 16 || !key || !label) {
+        return 0;
+    }
+
+    SStrCopy(key, kButtonKeys[index], keySize);
+    const char* text = kStandardLabels[index];
+    if (!PositionalLabels()) {
+        static char raw[16];
+        SStrPrintf(raw, sizeof(raw), "Button %d", index + 1);
+        text = raw;
+    } else if (OsGamepadKind() == OS_GAMEPAD_GAMECUBE) {
+        text = kCubeLabels[index];
+    }
+    SStrCopy(label, text, labelSize);
+    if (down) {
+        *down = g_buttonDown[index];
+    }
+    return 1;
+}
+
+int32_t OsGamepadDrainEdges(OsGamepadEdge* out, int32_t max) {
+    int32_t count = 0;
+    while (out && count < max && g_edgeRead != g_edgeWrite) {
+        out[count] = g_edges[g_edgeRead];
+        g_edgeRead = (g_edgeRead + 1) % 32;
+        count++;
+    }
+    return count;
+}
+
+const char* OsGamepadPopCapture() {
+    if (g_captureRead == g_captureWrite) {
+        return "";
+    }
+    const char* key = g_captureKeys[g_captureRead];
+    g_captureRead = (g_captureRead + 1) % 8;
+    return key;
+}
+
+void OsGamepadSetCapture(int32_t on) {
+    on = on ? 1 : 0;
+    if (g_capture == on) {
+        return;
+    }
+    g_capture = on;
+    if (on && s_joysticks.Count()) {
+        ReleaseOwnedInput(&s_joysticks[0]);
+    }
+}
+
+int32_t OsGamepadCapture() {
+    return g_capture;
+}
+
+static void ApplyAxes(LnxJoystick* joystick, float lx, float ly, float rx, float ry) {
+    int axisBind = g_options.layout == 2 && g_options.axisBindings;
+    if (axisBind || g_capture) {
+        HoldKey(joystick, 0, KEY_W, 0);
+        HoldKey(joystick, 1, KEY_S, 0);
+        HoldKey(joystick, 2, KEY_Q, 0);
+        HoldKey(joystick, 22, KEY_A, 0);
+        HoldKey(joystick, 3, KEY_E, 0);
+        HoldKey(joystick, 23, KEY_D, 0);
+        g_lookX = 0.0f;
+        g_lookY = 0.0f;
+        return;
+    }
+
+    HoldKey(joystick, 0, KEY_W, ly < 0);
+    HoldKey(joystick, 1, KEY_S, ly > 0);
+    int32_t strafe = g_options.strafe;
+    HoldKey(joystick, 2, KEY_Q, strafe && lx < 0);
+    HoldKey(joystick, 22, KEY_A, !strafe && lx < 0);
+    HoldKey(joystick, 3, KEY_E, strafe && lx > 0);
+    HoldKey(joystick, 23, KEY_D, !strafe && lx > 0);
+
+    int stick = g_options.cursorToggle && joystick->m_pad && g_buttonDown[9];
+    if (stick && !joystick->m_held[4]) {
+        joystick->m_cursor = !joystick->m_cursor;
+    }
+    joystick->m_held[4] = static_cast<uint8_t>(stick);
+    g_cursor = joystick->m_cursor;
+
+    if (joystick->m_cursor) {
+        g_lookX = 0.0f;
+        g_lookY = 0.0f;
+        if (rx || ry) {
+            int32_t x = 0;
+            int32_t y = 0;
+            OsInputGetMousePosition(&x, &y);
+            OsInputSetMousePosition(x + static_cast<int32_t>(rx * g_options.cursorSpeed), y + static_cast<int32_t>(ry * g_options.cursorSpeed));
+        }
+    } else {
+        float lookY = g_options.invertY ? -ry : ry;
+        g_lookX = rx * g_options.lookSens;
+        g_lookY = lookY * g_options.lookSens;
+    }
+}
+
 // ʕ •ᴥ•ʔ✿ Retail layout, or nothing when Steam Input is already sending keys ✿ ʕ •ᴥ•ʔ
 static void ApplyRetail(LnxJoystick* joystick) {
     SDL_Gamepad* pad = joystick->m_pad;
@@ -527,31 +911,16 @@ static void ApplyRetail(LnxJoystick* joystick) {
     float ly = Stick(pad, SDL_GAMEPAD_AXIS_LEFTY);
     float rx = Stick(pad, SDL_GAMEPAD_AXIS_RIGHTX);
     float ry = Stick(pad, SDL_GAMEPAD_AXIS_RIGHTY);
-    HoldKey(joystick, 0, KEY_W, ly < 0);
-    HoldKey(joystick, 1, KEY_S, ly > 0);
-    int32_t strafe = g_options.strafe;
-    HoldKey(joystick, 2, KEY_Q, strafe && lx < 0);
-    HoldKey(joystick, 22, KEY_A, !strafe && lx < 0);
-    HoldKey(joystick, 3, KEY_E, strafe && lx > 0);
-    HoldKey(joystick, 23, KEY_D, !strafe && lx > 0);
+    ApplyAxes(joystick, lx, ly, rx, ry);
 
-    int stick = g_options.cursorToggle && SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_RIGHT_STICK);
-    if (stick && !joystick->m_held[4]) {
-        joystick->m_cursor = !joystick->m_cursor;
+    int preset = g_options.layout == 0 && !g_capture;
+    if (!preset) {
+        ReleasePresetButtons(joystick);
+        return;
     }
-    joystick->m_held[4] = static_cast<uint8_t>(stick);
-    g_cursor = joystick->m_cursor;
 
     int south = g_options.south && SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_SOUTH);
     if (joystick->m_cursor) {
-        g_lookX = 0.0f;
-        g_lookY = 0.0f;
-        if (rx || ry) {
-            int32_t x = 0;
-            int32_t y = 0;
-            OsInputGetMousePosition(&x, &y);
-            OsInputSetMousePosition(x + static_cast<int32_t>(rx * g_options.cursorSpeed), y + static_cast<int32_t>(ry * g_options.cursorSpeed));
-        }
         HoldKey(joystick, 5, KEY_SPACE, 0);
         if (south != joystick->m_held[9]) {
             int32_t x = 0;
@@ -561,9 +930,6 @@ static void ApplyRetail(LnxJoystick* joystick) {
         }
         joystick->m_held[9] = static_cast<uint8_t>(south);
     } else {
-        float lookY = g_options.invertY ? -ry : ry;
-        g_lookX = rx * g_options.lookSens;
-        g_lookY = lookY * g_options.lookSens;
         if (joystick->m_held[9]) {
             int32_t x = 0;
             int32_t y = 0;
@@ -608,6 +974,17 @@ static void ApplyRetail(LnxJoystick* joystick) {
     EdgeKey(joystick, 17, g_options.dpad && SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT), KEY_L);
 }
 
+static int DriveAsPad(const LnxJoystick* joystick) {
+    if (joystick->m_pad) {
+        return 1;
+    }
+    if (g_options.style != 0) {
+        return 1;
+    }
+    const char* name = joystick->m_device ? SDL_GetJoystickName(joystick->m_device) : nullptr;
+    return NameIsCube(name);
+}
+
 // OFFSET: 0x00870B80
 static void PollJoystick(uint32_t index, int32_t active) {
     LnxJoystick* joystick = &s_joysticks[index];
@@ -638,6 +1015,9 @@ static void PollJoystick(uint32_t index, int32_t active) {
 
     // ʕ •ᴥ•ʔ✿ Steam Input already emits the keys. Don't also turn the pad into buttons. ✿ ʕ •ᴥ•ʔ
     if (joystick->m_pad && g_options.layout == 1) {
+        if (index == 0) {
+            ReleaseEdges();
+        }
         if (active) {
             ApplyRetail(joystick);
         }
@@ -705,6 +1085,10 @@ static void PollJoystick(uint32_t index, int32_t active) {
     }
 
     LnxJoystickMouseMode* mouseMode = &joystick->m_mouseMode;
+
+    if (!joystick->m_pad && DriveAsPad(joystick)) {
+        mouseMode->m_enabled = 0;
+    }
 
     if (!joystick->m_pad && mouseMode->m_enabled && joystick->m_sticks[0].m_xAxis >= 0) {
         uint32_t now = OsGetAsyncTimeMs();
@@ -791,7 +1175,33 @@ static void PollJoystick(uint32_t index, int32_t active) {
         }
     }
 
-    if (joystick->m_pad && active) ApplyRetail(joystick);
+    if (index == 0 && g_options.layout != 1) {
+        if (joystick->m_pad) {
+            EmitPad(joystick, active);
+        } else {
+            EmitRaw(joystick, state);
+        }
+    }
+
+    if (joystick->m_pad && active) {
+        ApplyRetail(joystick);
+    } else if (index == 0 && !joystick->m_pad && DriveAsPad(joystick) && g_options.layout != 1) {
+        float dead = g_options.deadzone;
+        float lx = active && (joystick->m_axisMask & 1) ? state->m_axes[0] / 32767.0f : 0.0f;
+        float ly = active && (joystick->m_axisMask & 2) ? state->m_axes[1] / 32767.0f : 0.0f;
+        float rx = active && (joystick->m_axisMask & 4) ? state->m_axes[2] / 32767.0f : 0.0f;
+        float ry = active && (joystick->m_axisMask & 8) ? state->m_axes[3] / 32767.0f : 0.0f;
+        if (lx < dead && lx > -dead) lx = 0.0f;
+        if (ly < dead && ly > -dead) ly = 0.0f;
+        if (rx < dead && rx > -dead) rx = 0.0f;
+        if (ry < dead && ry > -dead) ry = 0.0f;
+        ApplyAxes(joystick, lx, ly, rx, ry);
+        ReleasePresetButtons(joystick);
+    } else if (index == 0 && joystick->m_pad) {
+        ReleasePresetButtons(joystick);
+        g_lookX = 0.0f;
+        g_lookY = 0.0f;
+    }
 
     for (int32_t i = 0; i < 4; i++) {
         uint32_t pov = state->m_pov[i];
