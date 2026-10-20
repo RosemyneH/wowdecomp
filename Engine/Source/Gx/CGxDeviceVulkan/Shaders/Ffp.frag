@@ -62,9 +62,11 @@ void main() {
         // ʕ •ᴥ•ʔ✿ Sharpness can tighten the edge, but a subpixel step turns Friz into stair pixels ✿ ʕ •ᴥ•ʔ
         float px = clamp(spread * sharp, 1.15, 2.4);
         float dist = sd * px;
+        // ʕ •ᴥ•ʔ✿ The stored field ends at half a pixel-range. Past that the quad must stay clear, or each word sits on a box ✿ ʕ •ᴥ•ʔ
+        float budget = max(0.5 * px - 0.55, 0.0);
         float outlinePx = colorOp == 8 ? 1.25 : (colorOp == 7 ? 0.75 : 0.0);
-        outlinePx = min(outlinePx, px * 0.32);
-        float weight = 0.4;
+        outlinePx = min(outlinePx, budget);
+        float weight = min(0.35, max(budget - outlinePx, 0.0));
         float body = clamp(dist + 0.5 + weight, 0.0, 1.0);
         float alpha = clamp(dist + 0.5 + weight + outlinePx, 0.0, 1.0);
         vec4 color = vec4(inColor.rgb * body / max(alpha, 1e-4), inColor.a * alpha);
