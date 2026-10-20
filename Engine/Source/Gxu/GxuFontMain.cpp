@@ -910,7 +910,7 @@ void GxuFontSetMsdfEnabled(int32_t enabled) {
         uint32_t flags = font->m_fontFlags;
         uint32_t next = flags;
 
-        if (g_fontMsdf && !(flags & GxFontFlag_Monochrome)) {
+        if (g_fontMsdf) {
             next |= GxFontFlag_Msdf;
         } else if (!(flags & GxFontFlag_MsdfExplicit)) {
             next &= ~GxFontFlag_Msdf;

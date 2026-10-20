@@ -565,20 +565,24 @@ void CGxStringBatch::RenderBatch() {
             continue;
         }
 
-        if (fixedFunction) {
-            int32_t colorOp = 0;
+        if (desc->m_face->UsesMsdf()) {
+            int32_t colorOp = 6;
 
-            if (desc->m_face->UsesMsdf()) {
-                if (desc->m_face->m_fontFlags & GxFontFlag_ThickOutline) {
-                    colorOp = 8;
-                } else if (desc->m_face->m_fontFlags & GxFontFlag_Outline) {
-                    colorOp = 7;
-                } else {
-                    colorOp = 6;
-                }
+            if (desc->m_face->m_fontFlags & GxFontFlag_ThickOutline) {
+                colorOp = 8;
+            } else if (desc->m_face->m_fontFlags & GxFontFlag_Outline) {
+                colorOp = 7;
             }
 
+            // ʕ •ᴥ•ʔ✿ The UI pixel shader does not sample a distance field. These faces stay on the fixed-function path ✿ ʕ •ᴥ•ʔ
+            GxRsSet(GxRs_PixelShader, nullptr);
+            GxRsSet(GxRs_Lighting, 0);
+            GxRsSet(GxRs_AlphaOp0, 0);
             GxRsSet(GxRs_ColorOp0, colorOp);
+        } else if (fixedFunction) {
+            GxRsSet(GxRs_ColorOp0, 0);
+        } else if (g_fontPixelShader) {
+            GxRsSet(GxRs_PixelShader, g_fontPixelShader);
         }
 
         desc->RenderBatch();
