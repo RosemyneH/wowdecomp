@@ -508,7 +508,9 @@ bool System_File::ProcessDirFast(Blizzard::File::Filesystem* fs, System_File::St
     DIR* dir = opendir(nativePath);
 
     if (!dir) {
-        Blizzard::Debug::Printf(Blizzard::Debug::StderrOutput, "failed to open %s\n", path);
+        if (errno != ENOENT) {
+            Blizzard::Debug::Printf(Blizzard::Debug::StderrOutput, "failed to open %s\n", path);
+        }
         Blizzard::File::SetLastError(8);
         return false;
     }

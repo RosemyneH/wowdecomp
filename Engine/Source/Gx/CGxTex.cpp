@@ -1,5 +1,39 @@
 #include <cstdint>
+#if defined(__linux__)
+#include <sys/mman.h>
+#endif
 #include "Engine/Source/Gx/CGxTex.h"
+
+int32_t GxPageMapped(uintptr_t bits) {
+#if defined(__linux__)
+    uintptr_t page = bits & ~uintptr_t{0xfff};
+    static thread_local uintptr_t seen[128];
+    static thread_local uint32_t count = 0;
+
+    for (uint32_t i = 0; i < count; ++i) {
+        if (seen[i] == page) {
+            return 1;
+        }
+    }
+
+    unsigned char resident = 0;
+
+    if (mincore(reinterpret_cast<void*>(page), 4096, &resident) != 0) {
+        return 0;
+    }
+
+    if (count < 128) {
+        seen[count++] = page;
+    } else {
+        seen[(page >> 12) & 127] = page;
+    }
+
+    return 1;
+#else
+    (void)bits;
+    return 1;
+#endif
+}
 
 // VERIFY: 39ee55f7 manual
 // OFFSET: 0x006852C0

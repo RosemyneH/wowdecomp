@@ -11,7 +11,9 @@
 
 class CGxTex;
 
-// -- ʕ •ᴥ•ʔ✿ 47-bit userspace, and aligned. A stripped NVIDIA mapping is not a CGxTex. ✿ ʕ •ᴥ•ʔ
+int32_t GxPageMapped(uintptr_t bits);
+
+// -- ʕ •ᴥ•ʔ✿ 47-bit userspace, aligned, and a page the process can read. A driver mapping is not a CGxTex. ✿ ʕ •ᴥ•ʔ
 inline int32_t GxCpuPtrOk(const void* value) {
     uintptr_t bits = reinterpret_cast<uintptr_t>(value);
 
@@ -20,7 +22,12 @@ inline int32_t GxCpuPtrOk(const void* value) {
     }
 
     uintptr_t top = bits >> 47;
-    return top == 0 || top == 0x1ffff;
+
+    if (top != 0 && top != 0x1ffff) {
+        return 0;
+    }
+
+    return GxPageMapped(bits);
 }
 
 typedef void (*GxTexUserFunc)(EGxTexCommand command, uint32_t width, uint32_t height, uint32_t depth, uint32_t mipLevel, void* userArg, uint32_t& texelStrideInBytes, const void*& texels);
