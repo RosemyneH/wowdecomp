@@ -16,6 +16,13 @@ local function WowDecomp_ApplyPlaytestCVar(checkButton)
     SetCVar(checkButton.cvar, setting);
     checkButton.value = setting;
     checkButton.newValue = nil;
+
+    if checkButton.cvar == "gxMsdfFonts" and setting == "0" then
+        SetCVar("gxMsdfView", "0");
+        if WowDecomp_RefreshMsdfStatus then
+            WowDecomp_RefreshMsdfStatus();
+        end
+    end
 end
 
 local function WowDecomp_SetupRegisteredControl(control, panel, entry)

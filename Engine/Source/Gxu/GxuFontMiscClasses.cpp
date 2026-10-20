@@ -445,7 +445,7 @@ CHARCODEDESC* TEXTURECACHEROW::CreateNewDesc(GLYPHBITMAPDATA* data, uint32_t row
 
     this->m_widestFreeSlot = head->GapToPrevious();
 
-    if (this->m_widestFreeSlot >= width) {
+    if (this->m_widestFreeSlot >= width && head->m_glyphStartPixel >= width) {
         CHARCODEDESC* desc = new (__FILE__, __LINE__) CHARCODEDESC;
         this->m_glyphlist.LinkNode(desc, 2, head);
         desc->m_glyphEndPixel = head->m_glyphStartPixel - 1;

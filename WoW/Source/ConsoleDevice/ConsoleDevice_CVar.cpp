@@ -587,7 +587,18 @@ static bool CVVideoOptionsVersionCallback(CVar* var, const char* oldValue, const
 }
 
 static bool CVGxMsdfFontsCallback(CVar* var, const char* oldValue, const char* value, void* arg) {
-    GxuFontSetMsdfEnabled(SStrToInt(value) != 0);
+    int32_t enabled = SStrToInt(value) != 0;
+
+    GxuFontSetMsdfEnabled(enabled);
+
+    if (!enabled) {
+        WowDecompVk_SetMsdfView(0);
+
+        if (CVar* view = CVar::Lookup("gxMsdfView")) {
+            view->Set("0", true, false, false, true);
+        }
+    }
+
     return true;
 }
 

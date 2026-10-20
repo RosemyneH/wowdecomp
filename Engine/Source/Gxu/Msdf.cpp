@@ -517,7 +517,7 @@ void ColorContour(std::vector<Edge>& edges, int& color, uint64_t& seed) {
         return;
     }
 
-    double crossThreshold = std::sin(3.0);
+    double crossThreshold = std::sin(3.0 * 3.141592653589793 / 180.0);
     std::vector<int> corners;
     Vec2 prev = edges.back().Direction(1.0);
 
@@ -981,6 +981,16 @@ void FlattenArtifacts(float* field, int width, int height) {
 
 }
 
+static uint32_t MsdfOutlineLoadFlags(FT_Face face) {
+    uint32_t flags = FT_LOAD_NO_BITMAP | FT_LOAD_NO_HINTING | FT_LOAD_PEDANTIC;
+
+    if (face && FT_IS_FIXED_WIDTH(face)) {
+        flags |= FT_LOAD_IGNORE_GLOBAL_ADVANCE_WIDTH;
+    }
+
+    return flags;
+}
+
 bool MsdfRasterizeGlyph(FT_Face face, uint32_t pixelSize, uint32_t code, uint32_t baseline, uint32_t cellHeight, MsdfGlyph* glyph) {
     if (!face || !glyph || !pixelSize || !cellHeight) {
         return false;
@@ -988,11 +998,10 @@ bool MsdfRasterizeGlyph(FT_Face face, uint32_t pixelSize, uint32_t code, uint32_
 
     FT_UInt index = FT_Get_Char_Index(face, code);
 
-    if (!index || FT_Load_Glyph(face, index, FT_LOAD_NO_BITMAP | FT_LOAD_NO_HINTING | FT_LOAD_PEDANTIC | FT_LOAD_IGNORE_GLOBAL_ADVANCE_WIDTH)) {
+    if (!index || FT_Load_Glyph(face, index, MsdfOutlineLoadFlags(face))) {
         return false;
     }
 
-    glyph->m_advance = static_cast<float>(GxuFontGlyphAdvancePixels(face, code, pixelSize));
     glyph->m_rgba = nullptr;
     glyph->m_size = 0;
     glyph->m_width = 0;
@@ -1142,7 +1151,9 @@ bool MsdfRasterizeGlyph(FT_Face face, uint32_t pixelSize, uint32_t code, uint32_
     glyph->m_width = static_cast<uint32_t>(width);
     glyph->m_height = height;
     glyph->m_pitch = pitch;
-    glyph->m_bearing = static_cast<float>(left);
+    glyph->m_advance = static_cast<float>(GxuFontGlyphAdvancePixels(face, code, pixelSize));
+    glyph->m_bearing = static_cast<float>(face->glyph->metrics.horiBearingX) / 64.0f;
+
     return true;
 }
 

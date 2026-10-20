@@ -39,6 +39,14 @@ uint32_t CGxFont::GetPixelSize() {
     return this->m_pixelSize;
 }
 
+uint32_t CGxFont::GetLayoutPixelSize() {
+    if (this->UsesMsdf() && this->m_nominalSize > 0) {
+        return this->m_nominalSize;
+    }
+
+    return this->m_pixelSize;
+}
+
 bool CGxFont::UsesMsdf() const {
     return (this->m_fontFlags & GxFontFlag_Msdf) && g_theGxDevicePtr && g_theGxDevicePtr->m_api == GxApi_Vulkan;
 }
@@ -144,10 +152,20 @@ bool CGxFont::GetGlyphData(GLYPHBITMAPDATA* data, uint32_t code) {
         data->m_glyphHeight = glyph.m_height;
         data->m_glyphCellWidth = glyph.m_width;
         data->m_glyphPitch = glyph.m_pitch;
-        data->m_glyphAdvance = glyph.m_advance;
         data->m_glyphBearing = glyph.m_bearing;
         data->m_yOffset = 0;
         data->m_yStart = 0;
+
+        double layoutAdvance = 0.0;
+
+        if (this->m_nominalSize && GxuFontGlyphQueryAdvance(face, this->m_nominalSize, code, (this->m_fontFlags & 2) != 0, &layoutAdvance)) {
+            layoutAdvance *= static_cast<double>(this->m_pixelSize) / static_cast<double>(this->m_nominalSize);
+            data->m_glyphAdvance = static_cast<float>(layoutAdvance);
+        } else {
+            data->m_glyphAdvance = glyph.m_advance;
+        }
+
+        FT_Set_Pixel_Sizes(face, this->m_pixelSize, 0);
         return true;
     }
 
@@ -171,7 +189,7 @@ float CGxFont::GetGlyphBearing(const CHARCODEDESC* desc, bool scaled, float heig
     }
 
     float pixelHeight = ScreenToPixelHeight(1, height);
-    float scale = pixelHeight / this->m_pixelSize;
+    float scale = pixelHeight / static_cast<float>(this->GetPixelSize());
 
     return scale * desc->m_bitmapData.m_glyphBearing;
 }
@@ -321,7 +339,13 @@ float CGxFont::ComputeStep(uint32_t code, uint32_t nextCode) {
     }
 
     float step = this->GetGlyphAdvance(code);
-    step = this->m_pixelsPerUnit * kerning.x + step;
+    float kern = this->m_pixelsPerUnit * static_cast<float>(kerning.x);
+
+    if (this->UsesMsdf() && this->m_pixelSize > 0 && this->m_nominalSize > 0) {
+        kern *= static_cast<float>(this->m_nominalSize) / static_cast<float>(this->m_pixelSize);
+    }
+
+    step = kern + step;
 
     if (!node) {
         node = this->m_kernInfo.New(code, key, 0, 0);
@@ -356,7 +380,7 @@ float CGxFont::ComputeStepFixedWidth(uint32_t code, uint32_t nextCode) {
         return 0.0f;
     }
 
-    uint32_t em = this->UsesMsdf() ? this->m_pixelSize : this->m_cellHeight;
+    uint32_t em = this->UsesMsdf() ? this->GetLayoutPixelSize() : this->m_cellHeight;
     uint32_t advance = static_cast<uint32_t>(this->GetGlyphAdvance(code));
 
     if (advance >= em) {

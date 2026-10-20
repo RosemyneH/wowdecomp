@@ -915,6 +915,7 @@ void GxuFontSetMsdfEnabled(int32_t enabled) {
 
     g_fontMsdf = enabled;
     s_msdfFlush = 1;
+    GxuFontFlushMsdf();
 }
 
 void GxuFontSetMsdfRange(float range) {
@@ -930,10 +931,11 @@ void GxuFontSetMsdfRange(float range) {
 
     g_fontMsdfRange = range;
     s_msdfFlush = 1;
+    GxuFontFlushMsdf();
 }
 
 void GxuFontFlushMsdf() {
-    if (!s_msdfFlush) {
+    if (!s_msdfFlush || !g_theGxDevicePtr) {
         return;
     }
 
@@ -949,12 +951,8 @@ void GxuFontFlushMsdf() {
             next &= ~GxFontFlag_Msdf;
         }
 
-        int32_t changed = next != flags;
         font->m_fontFlags = next;
-
-        if (changed || (next & GxFontFlag_Msdf)) {
-            font->HandleScreenSizeChange();
-        }
+        font->HandleScreenSizeChange();
     }
 }
 

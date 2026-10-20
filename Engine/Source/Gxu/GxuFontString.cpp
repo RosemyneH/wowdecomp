@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 #include "Engine/Source/Gxu/GxuFontString.h"
+#include "Engine/Source/Gxu/IGxuFontGlyph.h"
 #include "Engine/Source/Gxu/GxuFontFont.h"
 #include "Engine/Source/Gxu/GxuFont.h"
 #include "Engine/Source/Gxu/GxuFontUtil.h"
@@ -256,8 +257,8 @@ void CGxString::InitializeTextLine(const char* text, uint32_t numBytes, CImVecto
 
     float fontPixelHeight = ScreenToPixelHeight((this->m_flags >> 7) & 1, this->m_currentFontHeight);
     double pixelHeight = fontPixelHeight;
-    float scale = pixelHeight / this->m_currentFace->GetPixelSize();
     bool msdf = this->m_currentFace->UsesMsdf();
+    float scale = pixelHeight / static_cast<float>(this->m_currentFace->GetPixelSize());
     float msdfPad = msdf ? GxuFontMsdfRange() * scale : 0.0f;
     float cellHeight = ScreenToPixelHeight((this->m_flags >> 7) & 1, this->m_currentFontHeight);
 
@@ -451,6 +452,19 @@ void CGxString::InitializeTextLine(const char* text, uint32_t numBytes, CImVecto
                         if (!desc) {
                             break;
                         }
+                    }
+
+                    if (msdf && GxuFontGlyphIsLayoutWhitespace(wide)) {
+                        uint32_t flags = this->m_flags;
+
+                        if (!(flags & 0x80)) {
+                            x = x + 0.5f;
+                            x = floor(x);
+                        }
+
+                        pos.x = x + pos.x;
+                        lastCode = wide;
+                        break;
                     }
 
                     uint32_t texturePage = desc->m_textureNumber;

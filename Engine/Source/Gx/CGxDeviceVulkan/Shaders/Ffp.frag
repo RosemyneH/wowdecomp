@@ -36,9 +36,10 @@ vec4 Stage(int stage, vec4 tex, vec4 cur) {
 
 void main() {
     vec2 uv = inTexCoord0.xy / inTexCoord0.z;
+    int colorOp = u.stageColorOp.x;
 
     // ʕ •ᴥ•ʔ✿ Desaturate.bls writes luma into rgb and keeps only vertex alpha. The 0.65 icon tint never reaches the shader ✿ ʕ •ᴥ•ʔ
-    if (u.stageColorOp.z > 0) {
+    if (u.stageColorOp.z > 0 && (colorOp < 6 || colorOp > 8)) {
         vec4 tex = texture(tex0, uv);
         float luma = dot(tex.rgb, vec3(0.299, 0.587, 0.114));
         vec4 color = vec4(luma, luma, luma, tex.a * inColor.a);
@@ -53,7 +54,6 @@ void main() {
     }
 
     vec2 uvWidth = max(fwidth(uv), vec2(1e-6));
-    int colorOp = u.stageColorOp.x;
 
     // ʕ •ᴥ•ʔ✿ Color ops 6/7/8 are MSDF, 1px outline, and 2px outline. fogParams.zw and stageColorOp.z are the live range, sharpness, and view ✿ ʕ •ᴥ•ʔ
     if (colorOp >= 6 && colorOp <= 8) {
@@ -74,17 +74,13 @@ void main() {
 
         float range = u.fogParams.z > 0.0 ? u.fogParams.z : 4.0;
         float sharp = u.fogParams.w > 0.0 ? u.fogParams.w : 1.0;
-        float spread = max(0.5 * dot(vec2(range / 256.0), vec2(1.0) / uvWidth), 1.0);
-        // ʕ •ᴥ•ʔ✿ Sharpness can tighten the edge, but a subpixel step turns Friz into stair pixels ✿ ʕ •ᴥ•ʔ
-        float px = clamp(spread * sharp, 1.15, 2.4);
-        float dist = sd * px;
-        // ʕ •ᴥ•ʔ✿ The stored field ends at half a pixel-range. Past that the quad must stay clear, or each word sits on a box ✿ ʕ •ᴥ•ʔ
-        float budget = max(0.5 * px - 0.55, 0.0);
-        float outlinePx = colorOp == 8 ? 1.25 : (colorOp == 7 ? 0.75 : 0.0);
-        outlinePx = min(outlinePx, budget);
-        float weight = min(0.35, max(budget - outlinePx, 0.0));
-        float body = clamp(dist + 0.5 + weight, 0.0, 1.0);
-        float alpha = clamp(dist + 0.5 + weight + outlinePx, 0.0, 1.0);
+        // ʕ •ᴥ•ʔ✿ Atlas UVs are 256-wide. screenPxRange must follow the quad or large type stairs and small type blobs ✿ ʕ •ᴥ•ʔ
+        float spread = max(0.5 * dot(vec2(range) / vec2(256.0), 1.0 / uvWidth), 1.0) * sharp;
+        float dist = sd * spread;
+        float outlinePx = colorOp == 8 ? 2.0 : (colorOp == 7 ? 1.0 : 0.0);
+        outlinePx = min(outlinePx, max(0.5 * spread - 0.5, 0.0));
+        float body = clamp(dist + 0.5, 0.0, 1.0);
+        float alpha = clamp(dist + 0.5 + outlinePx, 0.0, 1.0);
         vec4 color = vec4(inColor.rgb * body / max(alpha, 1e-4), inColor.a * alpha);
 
         if (u.flags.w > 0 && color.a * 255.0 < float(u.flags.w)) {

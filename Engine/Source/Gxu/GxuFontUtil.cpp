@@ -10,6 +10,7 @@
 #include "Engine/Source/Gxu/Gxu.h"
 #include "Engine/Source/Gxu/GxuFont.h"
 #include "Engine/Source/Gxu/GxuFontFont.h"
+#include "Engine/Source/Gxu/IGxuFontGlyph.h"
 #include "Engine/Source/Gxu/GxuFontMiscClasses.h"
 #include "Engine/Source/Storm/H/storm.h"
 #include "Engine/Source/Tempest/C44Matrix.h"
@@ -170,6 +171,14 @@ static float GetCharacterWidth(const char* text, uint32_t flags, uint32_t code, 
 
     if (desc) {
         width = face->GetGlyphBearing(desc, (flags >> 7) & 1, fontHeight) + desc->m_bitmapData.m_glyphCellWidth;
+
+        if (!*text && GxuFontGlyphIsLayoutWhitespace(code)) {
+            float advance = face->GetGlyphAdvance(code);
+
+            if (width < advance) {
+                width = advance;
+            }
+        }
     }
 
     return width;
@@ -597,7 +606,7 @@ void InternalGetTextExtent(CGxFont* face, const char* text, uint32_t numBytes, f
 
     float fontPixelHeight = ScreenToPixelHeight(flags & 0x80, fontHeight);
     double pixelHeight = fontPixelHeight;
-    float ratio = pixelHeight / face->GetPixelSize();
+    float ratio = pixelHeight / static_cast<float>(face->GetPixelSize());
     float total = totalWidth;
     float result = ratio * total;
 
@@ -654,7 +663,7 @@ uint32_t InternalGetMaxCharsWithinWidth(CGxFont* face, const char* text, float f
     uint32_t maxPixels = CMath::fuint_pi(maxPixelsF);
 
     double pixelHeight = fontPixelHeight;
-    float ratio = pixelHeight / face->GetPixelSize();
+    float ratio = pixelHeight / static_cast<float>(face->GetPixelSize());
 
     float* widthOut = widthArray;
     const char* start = text;
@@ -826,7 +835,7 @@ static void CalcWrapPointBillboarded(const char* text, uint32_t flags, CGxFont* 
     }
 
     double pixelHeight = fontHeight;
-    float ratio = pixelHeight / face->GetPixelSize();
+    float ratio = pixelHeight / static_cast<float>(face->GetPixelSize());
     *numBytes = text - start;
     float total = lineWidth + characterWidth;
     *width = ratio * total;
@@ -866,7 +875,7 @@ static void CalcWrapPointNonBillboarded(const char* text, CGxFont* face, float f
 
     float pixels = g_heightPixels * fontHeight;
     float fontPixelHeight = CMath::fint_n(pixels);
-    float ratio = face->GetPixelSize() / fontPixelHeight;
+    float ratio = static_cast<float>(face->GetPixelSize()) / fontPixelHeight;
     float maxWidth = ratio * blockWidth;
     maxWidth = maxWidth * g_widthPixels;
     maxWidth = ceil(maxWidth);
@@ -956,7 +965,7 @@ static void CalcWrapPointNonBillboarded(const char* text, CGxFont* face, float f
 
     float heightPixels = g_heightPixels * fontHeight;
     float roundedHeight = CMath::fint_n(heightPixels);
-    float scaleRatio = roundedHeight / face->GetPixelSize();
+    float scaleRatio = roundedHeight / static_cast<float>(face->GetPixelSize());
     totalWidth = scaleRatio * totalWidth;
 
     if (code == CODE_NEWLINE || !*text) {
