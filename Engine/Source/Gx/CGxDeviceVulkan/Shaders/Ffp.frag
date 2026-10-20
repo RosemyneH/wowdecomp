@@ -58,13 +58,15 @@ void main() {
 
         float range = u.fogParams.z > 0.0 ? u.fogParams.z : 4.0;
         float sharp = u.fogParams.w > 0.0 ? u.fogParams.w : 1.0;
-        float screenPxRange = max(0.5 * dot(vec2(range / 256.0), vec2(1.0) / uvWidth), 1.0) * sharp;
-        float dist = sd * screenPxRange;
-        float outlinePx = colorOp == 8 ? 2.0 : (colorOp == 7 ? 1.0 : 0.0);
-        // ʕ •ᴥ•ʔ✿ The field only covers the chosen range. An outline that reaches the rim stays a box ✿ ʕ •ᴥ•ʔ
-        outlinePx = min(outlinePx, max(screenPxRange * 0.45, 0.0));
-        float body = clamp(dist + 0.5, 0.0, 1.0);
-        float alpha = clamp(dist + 0.5 + outlinePx, 0.0, 1.0);
+        float spread = max(0.5 * dot(vec2(range / 256.0), vec2(1.0) / uvWidth), 1.0);
+        // ʕ •ᴥ•ʔ✿ Sharpness can tighten the edge, but a subpixel step turns Friz into stair pixels ✿ ʕ •ᴥ•ʔ
+        float px = clamp(spread * sharp, 1.15, 2.4);
+        float dist = sd * px;
+        float outlinePx = colorOp == 8 ? 1.25 : (colorOp == 7 ? 0.75 : 0.0);
+        outlinePx = min(outlinePx, px * 0.32);
+        float weight = 0.4;
+        float body = clamp(dist + 0.5 + weight, 0.0, 1.0);
+        float alpha = clamp(dist + 0.5 + weight + outlinePx, 0.0, 1.0);
         vec4 color = vec4(inColor.rgb * body / max(alpha, 1e-4), inColor.a * alpha);
 
         if (u.flags.w > 0 && color.a * 255.0 < float(u.flags.w)) {
