@@ -629,34 +629,51 @@ local function WowDecomp_InstallController()
         sub:SetPoint("RIGHT", panel, "RIGHT", -32, 0);
         sub:SetJustifyH("LEFT");
         sub:SetHeight(28);
-        sub:SetText("Retail uses the pad as a controller. Steam Input leaves it alone so a Steam config can send keys and mouse.");
+        sub:SetText("Built-in plays the pad directly. A GameCube controller uses A, B, X, Y, Z, L, and R. Key bindings assigns those buttons, and Steam Input leaves the pad alone.");
     end
 
     local status = smallFont and panel:CreateFontString("WowDecompControllerStatus", "ARTWORK", smallFont);
     if status and title then
-        status:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -36);
+        status:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -28);
+        status:SetPoint("RIGHT", panel, "RIGHT", -24, 0);
         status:SetJustifyH("LEFT");
+        status:SetHeight(32);
     end
 
     local general = CreateFrame("Frame", "WowDecompControllerGeneral", panel, "OptionsBoxTemplate");
     general:SetWidth(188);
-    general:SetHeight(118);
-    general:SetPoint("TOPLEFT", 8, -84);
+    general:SetHeight(176);
+    general:SetPoint("TOPLEFT", 8, -92);
     _G[general:GetName() .. "Title"]:SetText("General");
 
     WowDecomp_ControllerCheckbox(panel, general, "WowDecompControllerEnable", "Enable controller", "Joystick", "Turns the connected gamepad on.", general, 12, -8);
     WowDecomp_ControllerCheckbox(panel, general, "WowDecompControllerCinema", "Use during cinematics", "CinematicJoystick", "Leave the pad active while a cinematic is playing.", general, 12, -36);
+    local showUi = WowDecomp_ControllerCheckbox(panel, general, "WowDecompControllerUI", "Show controller UI", "padUI", "Shows the controller buttons on screen. They light up while held.", general, 12, -64);
+    showUi.setFunc = function(value)
+        SetCVar("padUI", value);
+    end
 
     local layoutLabel = smallFont and general:CreateFontString(nil, "ARTWORK", smallFont);
     if layoutLabel then
-        layoutLabel:SetPoint("TOPLEFT", general, "TOPLEFT", 16, -68);
+        layoutLabel:SetPoint("TOPLEFT", general, "TOPLEFT", 16, -96);
         layoutLabel:SetText("Layout");
     end
     local layout = CreateFrame("Frame", "WowDecompControllerLayout", general, "UIDropDownMenuTemplate");
-    layout:SetPoint("TOPLEFT", general, "TOPLEFT", 48, -58);
-    UIDropDownMenu_SetWidth(110, layout);
-    UIDropDownMenu_JustifyText("LEFT", layout);
+    layout:SetPoint("TOPLEFT", general, "TOPLEFT", 48, -86);
+    UIDropDownMenu_SetWidth(layout, 110);
+    UIDropDownMenu_JustifyText(layout, "LEFT");
     panel.layoutDrop = layout;
+
+    local styleLabel = smallFont and general:CreateFontString(nil, "ARTWORK", smallFont);
+    if styleLabel then
+        styleLabel:SetPoint("TOPLEFT", general, "TOPLEFT", 16, -128);
+        styleLabel:SetText("Pad");
+    end
+    local style = CreateFrame("Frame", "WowDecompControllerStyle", general, "UIDropDownMenuTemplate");
+    style:SetPoint("TOPLEFT", general, "TOPLEFT", 48, -118);
+    UIDropDownMenu_SetWidth(style, 110);
+    UIDropDownMenu_JustifyText(style, "LEFT");
+    panel.styleDrop = style;
 
     local sticks = CreateFrame("Frame", "WowDecompControllerSticks", panel, "OptionsBoxTemplate");
     sticks:SetWidth(188);
@@ -696,23 +713,97 @@ local function WowDecomp_InstallController()
     end
 
     local function layoutText(value)
-        return value == "1" and "Steam Input" or "Retail layout";
+        if value == "1" then
+            return "Steam Input";
+        end
+        if value == "2" then
+            return "Key bindings";
+        end
+        return "Built-in";
+    end
+
+    local function styleText(value)
+        if value == "1" then
+            return "Standard";
+        end
+        if value == "2" then
+            return "GameCube";
+        end
+        return "Auto";
+    end
+
+    local function shownKind()
+        if panel.styleValue == "2" then
+            return "gamecube";
+        end
+        if panel.styleValue == "1" then
+            return "standard";
+        end
+        local kind = GetControllerKind and GetControllerKind() or "none";
+        if kind == "none" then
+            return "standard";
+        end
+        return kind;
+    end
+
+    local function setCheckText(name, text, tooltip)
+        local button = _G[name];
+        local label = _G[name .. "Text"];
+        if label then
+            label:SetText(text);
+        end
+        if button then
+            button.tooltipText = tooltip;
+        end
+    end
+
+    local function applyFaceLabels()
+        local gc = shownKind() == "gamecube";
+        setCheckText("WowDecompControllerSouth", "A jumps", gc and "A jumps. With the cursor out, A clicks." or "A jumps. With the cursor out, A clicks.");
+        setCheckText("WowDecompControllerEast", "B cancels", "B closes what is open, or clears the target.");
+        setCheckText("WowDecompControllerWest", "X interacts", "X right-clicks, which talks, loots, and uses objects.");
+        setCheckText("WowDecompControllerNorth", "Y sheathes", "Y sheathes and unsheathes your weapons.");
+        setCheckText("WowDecompControllerShoulders", gc and "Z targets" or "Shoulders", gc and "Z targets the next enemy." or "Right shoulder targets the next enemy. Left shoulder targets the previous one.");
+        setCheckText("WowDecompControllerTriggers", gc and "L and R" or "Triggers", gc and "R presses 1. L presses 2." or "Right trigger presses 1. Left trigger presses 2.");
+        setCheckText("WowDecompControllerCursorToggle", gc and "C-stick cursor" or "Stick cursor", "Clicking the right stick switches between looking and the cursor.");
+    end
+
+    local function controlEnabled(control)
+        local steam = panel.layoutValue == "1";
+        local builtin = panel.layoutValue == "0";
+        if steam then
+            return false;
+        end
+        if control.type == CONTROLTYPE_SLIDER or control.cvar == "padStrafe" or control.cvar == "padInvertY" then
+            local axis = panel.axisBind and panel.axisBind:GetChecked() and panel.layoutValue == "2";
+            if axis and (control.cvar == "padLookSens" or control.cvar == "padCursorSpeed" or control.cvar == "padInvertY") then
+                return false;
+            end
+            return true;
+        end
+        return builtin;
+    end
+
+    local function setControlEnabled(control, enabled)
+        if control.type == CONTROLTYPE_SLIDER and BlizzardOptionsPanel_Slider_Disable then
+            if enabled then
+                BlizzardOptionsPanel_Slider_Enable(control);
+            else
+                BlizzardOptionsPanel_Slider_Disable(control);
+            end
+        elseif enabled then
+            control:Enable();
+        else
+            control:Disable();
+        end
     end
 
     local function applyLayoutEnabled()
-        local retail = panel.layoutValue ~= "1";
         for _, control in ipairs(panel.retail) do
-            if control.type == CONTROLTYPE_SLIDER and BlizzardOptionsPanel_Slider_Disable then
-                if retail then
-                    BlizzardOptionsPanel_Slider_Enable(control);
-                else
-                    BlizzardOptionsPanel_Slider_Disable(control);
-                end
-            elseif retail then
-                control:Enable();
-            else
-                control:Disable();
-            end
+            setControlEnabled(control, controlEnabled(control));
+        end
+        if panel.axisBind then
+            setControlEnabled(panel.axisBind, panel.layoutValue == "2");
         end
     end
 
@@ -724,13 +815,120 @@ local function WowDecomp_InstallController()
             info.checked = panel.layoutValue == value;
             info.func = function(button)
                 panel.layoutValue = button.value;
-                UIDropDownMenu_SetText(layoutText(button.value), layout);
+                UIDropDownMenu_SetText(layout, layoutText(button.value));
                 applyLayoutEnabled();
             end
             UIDropDownMenu_AddButton(info);
         end
-        choice("Retail layout", "0");
+        choice("Built-in", "0");
+        choice("Key bindings", "2");
         choice("Steam Input", "1");
+    end);
+
+    UIDropDownMenu_Initialize(style, function()
+        local function choice(text, value)
+            local info = UIDropDownMenu_CreateInfo();
+            info.text = text;
+            info.value = value;
+            info.checked = panel.styleValue == value;
+            info.func = function(button)
+                panel.styleValue = button.value;
+                UIDropDownMenu_SetText(style, styleText(button.value));
+                applyFaceLabels();
+            end
+            UIDropDownMenu_AddButton(info);
+        end
+        choice("Auto", "0");
+        choice("Standard", "1");
+        choice("GameCube", "2");
+    end);
+
+    local binds = CreateFrame("Frame", "WowDecompControllerBinds", panel, "OptionsBoxTemplate");
+    binds:SetWidth(210);
+    binds:SetHeight(148);
+    binds:SetPoint("TOPLEFT", buttons, "BOTTOMLEFT", 0, -16);
+    _G[binds:GetName() .. "Title"]:SetText("Key bindings");
+    if smallFont then
+        local hint = binds:CreateFontString(nil, "ARTWORK", smallFont);
+        hint:SetPoint("TOPLEFT", binds, "TOPLEFT", 12, -8);
+        hint:SetPoint("RIGHT", binds, "RIGHT", -12, 0);
+        hint:SetHeight(36);
+        hint:SetJustifyH("LEFT");
+        hint:SetText("Choose a command in Key Bindings, then press a button. Load defaults fills A, B, X, Y, Z, L, and R.");
+    end
+    panel.axisBind = WowDecomp_ControllerCheckbox(panel, binds, "WowDecompControllerAxisBind", "Bind stick directions", "padAxisBindings", "The stick sends key bindings instead of moving and looking. Load defaults assigns move, strafe, turn, and pitch.", binds, 8, -44, 150);
+    panel.axisBind:SetScript("OnClick", function(self)
+        if self:GetChecked() then
+            PlaySound("igMainMenuOptionCheckBoxOn");
+        else
+            PlaySound("igMainMenuOptionCheckBoxOff");
+        end
+        BlizzardOptionsPanel_CheckButton_OnClick(self);
+        applyLayoutEnabled();
+    end);
+
+    local openBindings = CreateFrame("Button", "WowDecompControllerOpenBindings", binds, "UIPanelButtonTemplate");
+    openBindings:SetWidth(90);
+    openBindings:SetHeight(22);
+    openBindings:SetPoint("BOTTOMLEFT", binds, "BOTTOMLEFT", 10, 10);
+    openBindings:SetText("Bindings");
+    openBindings:SetScript("OnClick", function()
+        PlaySound("igMainMenuOption");
+        if InterfaceOptionsFrame and HideUIPanel then
+            HideUIPanel(InterfaceOptionsFrame);
+        end
+        KeyBindingFrame_LoadUI();
+        KeyBindingFrame.mode = 1;
+        ShowUIPanel(KeyBindingFrame);
+    end);
+
+    local loadDefaults = CreateFrame("Button", "WowDecompControllerLoadDefaults", binds, "UIPanelButtonTemplate");
+    loadDefaults:SetWidth(90);
+    loadDefaults:SetHeight(22);
+    loadDefaults:SetPoint("LEFT", openBindings, "RIGHT", 6, 0);
+    loadDefaults:SetText("Defaults");
+    loadDefaults:SetScript("OnClick", function()
+        PlaySound("igMainMenuOptionCheckBoxOn");
+        local gc = shownKind() == "gamecube";
+        local rows = {
+            { "JOYBUTTON1", "JUMP" },
+            { "JOYBUTTON2", "TOGGLEGAMEMENU" },
+            { "JOYBUTTON3", "INTERACTMOUSEOVER" },
+            { "JOYBUTTON4", "TOGGLESHEATH" },
+            { "JOYBUTTON5", not gc and "TARGETPREVIOUSENEMY" or nil },
+            { "JOYBUTTON6", "TARGETNEARESTENEMY" },
+            { "JOYBUTTON7", not gc and "TOGGLEWORLDMAP" or nil },
+            { "JOYBUTTON8", "TOGGLEGAMEMENU" },
+            { "JOYBUTTON9", "TOGGLEAUTORUN" },
+            { "JOYBUTTON11", "TOGGLECHARACTER0" },
+            { "JOYBUTTON12", "OPENALLBAGS" },
+            { "JOYBUTTON13", "TOGGLESPELLBOOK" },
+            { "JOYBUTTON14", "TOGGLEQUESTLOG" },
+            { "JOYBUTTON15", "ACTIONBUTTON2" },
+            { "JOYBUTTON16", "ACTIONBUTTON1" },
+            { "JOYAXIS1NEG", "STRAFELEFT" },
+            { "JOYAXIS1POS", "STRAFERIGHT" },
+            { "JOYAXIS2NEG", "MOVEFORWARD" },
+            { "JOYAXIS2POS", "MOVEBACKWARD" },
+            { "JOYAXIS3NEG", "TURNLEFT" },
+            { "JOYAXIS3POS", "TURNRIGHT" },
+            { "JOYAXIS4NEG", "PITCHUP" },
+            { "JOYAXIS4POS", "PITCHDOWN" },
+        };
+        for _, row in ipairs(rows) do
+            if row[2] then
+                SetBinding(row[1], row[2]);
+            end
+        end
+        if SaveBindings and GetCurrentBindingSet then
+            SaveBindings(GetCurrentBindingSet());
+        end
+        if panel.layoutValue ~= "2" then
+            panel.layoutValue = "2";
+            UIDropDownMenu_SetText(layout, layoutText("2"));
+            SetCVar("padLayout", "2");
+            applyLayoutEnabled();
+        end
     end);
 
     local function sync()
@@ -738,10 +936,24 @@ local function WowDecomp_InstallController()
             BlizzardOptionsPanel_Refresh(panel);
         end
         panel.layoutValue = GetCVar("padLayout") or "0";
-        UIDropDownMenu_SetText(layoutText(panel.layoutValue), layout);
+        panel.styleValue = GetCVar("padStyle") or "0";
+        UIDropDownMenu_SetText(layout, layoutText(panel.layoutValue));
+        UIDropDownMenu_SetText(style, styleText(panel.styleValue));
+        applyFaceLabels();
         if status and GetConnectedController then
             local name = GetConnectedController();
-            status:SetText(name ~= "" and ("Connected: " .. name) or "Connected: none");
+            local kind = GetControllerKind and GetControllerKind() or "none";
+            local mapped = GetControllerMapped and GetControllerMapped();
+            local kindText = kind == "gamecube" and "GameCube" or (kind == "standard" and "Standard" or "");
+            if name == "" then
+                status:SetText("Connected: none");
+            elseif mapped then
+                status:SetText("Connected: " .. name .. (kindText ~= "" and (" (" .. kindText .. ")") or ""));
+            elseif kind == "gamecube" then
+                status:SetText("Connected: " .. name .. " (GameCube, waiting for an SDL map. Buttons are Button 1 and up.)");
+            else
+                status:SetText("Connected: " .. name .. " (unmapped. Buttons are Button 1 and up.)");
+            end
         end
         applyLayoutEnabled();
     end
@@ -751,6 +963,7 @@ local function WowDecomp_InstallController()
             BlizzardOptionsPanel_Okay(self);
         end
         SetCVar("padLayout", self.layoutValue or "0");
+        SetCVar("padStyle", self.styleValue or "0");
     end
     panel.cancel = function(self)
         if BlizzardOptionsPanel_Cancel then
@@ -763,7 +976,9 @@ local function WowDecomp_InstallController()
             BlizzardOptionsPanel_Default(self);
         end
         self.layoutValue = "0";
+        self.styleValue = "0";
         SetCVar("padLayout", "0");
+        SetCVar("padStyle", "0");
         sync();
     end
     panel.refresh = sync;
@@ -773,3 +988,190 @@ local function WowDecomp_InstallController()
 end
 
 WowDecomp_InstallController();
+
+local function WowDecomp_ControllerAction(key)
+    local preset = {
+        JOYBUTTON1 = "Jump",
+        JOYBUTTON2 = "Cancel",
+        JOYBUTTON3 = "Interact",
+        JOYBUTTON4 = "Sheathe",
+        JOYBUTTON5 = "Prev",
+        JOYBUTTON6 = "Target",
+        JOYBUTTON7 = "Map",
+        JOYBUTTON8 = "Menu",
+        JOYBUTTON9 = "Autorun",
+        JOYBUTTON10 = "Cursor",
+        JOYBUTTON11 = "Char",
+        JOYBUTTON12 = "Bags",
+        JOYBUTTON13 = "Spells",
+        JOYBUTTON14 = "Quests",
+        JOYBUTTON15 = "Slot 2",
+        JOYBUTTON16 = "Slot 1",
+    };
+    local commands = {
+        JUMP = "Jump",
+        TOGGLEGAMEMENU = "Menu",
+        INTERACTMOUSEOVER = "Interact",
+        TOGGLESHEATH = "Sheathe",
+        TARGETPREVIOUSENEMY = "Prev",
+        TARGETNEARESTENEMY = "Target",
+        TOGGLEWORLDMAP = "Map",
+        TOGGLEAUTORUN = "Autorun",
+        TOGGLECHARACTER0 = "Char",
+        OPENALLBAGS = "Bags",
+        TOGGLESPELLBOOK = "Spells",
+        TOGGLEQUESTLOG = "Quests",
+        ACTIONBUTTON2 = "Slot 2",
+        ACTIONBUTTON1 = "Slot 1",
+        STRAFELEFT = "Strafe L",
+        STRAFERIGHT = "Strafe R",
+        MOVEFORWARD = "Forward",
+        MOVEBACKWARD = "Back",
+        TURNLEFT = "Turn L",
+        TURNRIGHT = "Turn R",
+        PITCHUP = "Look up",
+        PITCHDOWN = "Look down",
+    };
+    if GetCVar("padLayout") == "2" and GetBindingAction then
+        local action = GetBindingAction(key);
+        if not action or action == "" then
+            return "Free";
+        end
+        return commands[action] or (GetBindingText and GetBindingText(action, "BINDING_NAME_")) or action;
+    end
+    return preset[key] or "";
+end
+
+local function WowDecomp_InstallControllerUI()
+    if WowDecompControllerWatch or not UIParent or not CreateFrame then
+        return;
+    end
+
+    local watch = CreateFrame("Frame", "WowDecompControllerWatch", UIParent);
+    local bar = CreateFrame("Frame", "WowDecompControllerUI", UIParent);
+    bar:SetSize(528, 78);
+    bar:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 168);
+    bar:SetFrameStrata("HIGH");
+    bar:EnableMouse(true);
+    bar:SetMovable(true);
+    bar:RegisterForDrag("LeftButton");
+    bar:SetScript("OnDragStart", function(self)
+        self:StartMoving();
+    end);
+    bar:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing();
+    end);
+    local bg = bar:CreateTexture(nil, "BACKGROUND");
+    bg:SetAllPoints();
+    bg:SetTexture("Interface\\Tooltips\\UI-Tooltip-Background");
+    bg:SetVertexColor(0, 0, 0, 0.72);
+    local font = WowDecomp_Font(false) or "GameFontHighlightSmall";
+    local slots = {};
+    for i = 1, 16 do
+        local col = (i - 1) % 8;
+        local row = math.floor((i - 1) / 8);
+        local text = bar:CreateFontString(nil, "OVERLAY", font);
+        text:SetPoint("TOPLEFT", 10 + col * 64, -8 - row * 22);
+        text:SetWidth(62);
+        text:SetJustifyH("LEFT");
+        slots[i] = text;
+    end
+    local hint = bar:CreateFontString(nil, "OVERLAY", font);
+    hint:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 10, 6);
+    hint:SetPoint("RIGHT", bar, "RIGHT", -10, 0);
+    hint:SetJustifyH("LEFT");
+
+    local function publishNames()
+        if not GetControllerControlCount or not GetControllerControl then
+            return;
+        end
+        local count = GetControllerControlCount();
+        for i = 1, count do
+            local key, label = GetControllerControl(i);
+            if key and label then
+                _G["KEY_" .. key] = label;
+            end
+        end
+        local gc = GetControllerKind and GetControllerKind() == "gamecube";
+        _G.KEY_JOYAXIS1NEG = gc and "Stick left" or "Stick left";
+        _G.KEY_JOYAXIS1POS = gc and "Stick right" or "Stick right";
+        _G.KEY_JOYAXIS2NEG = gc and "Stick up" or "Stick up";
+        _G.KEY_JOYAXIS2POS = gc and "Stick down" or "Stick down";
+        _G.KEY_JOYAXIS3NEG = gc and "C-stick left" or "Look left";
+        _G.KEY_JOYAXIS3POS = gc and "C-stick right" or "Look right";
+        _G.KEY_JOYAXIS4NEG = gc and "C-stick up" or "Look up";
+        _G.KEY_JOYAXIS4POS = gc and "C-stick down" or "Look down";
+    end
+
+    local function hookBindings()
+        if not KeyBindingFrame or KeyBindingFrame.wowDecompHooked or not KeyBindingFrame.HookScript then
+            return;
+        end
+        KeyBindingFrame.wowDecompHooked = true;
+        KeyBindingFrame:HookScript("OnShow", function()
+            if SetControllerCapture then
+                SetControllerCapture(true);
+            end
+        end);
+        KeyBindingFrame:HookScript("OnHide", function()
+            if SetControllerCapture then
+                SetControllerCapture(false);
+            end
+        end);
+    end
+
+    watch:SetScript("OnUpdate", function()
+        hookBindings();
+        local capturing = KeyBindingFrame and KeyBindingFrame:IsShown();
+        if SetControllerCapture then
+            SetControllerCapture(capturing and true or false);
+        end
+        if GetControllerCapture then
+            local key = GetControllerCapture();
+            while key and key ~= "" do
+                if capturing and KeyBindingFrame.selected and KeyBindingFrame_OnKeyDown then
+                    KeyBindingFrame_OnKeyDown(KeyBindingFrame, key);
+                end
+                key = GetControllerCapture();
+            end
+        end
+        publishNames();
+        local show = GetCVar("padUI") == "1";
+        if show then
+            bar:Show();
+        else
+            bar:Hide();
+        end
+        if not show or not GetControllerControlCount then
+            return;
+        end
+        local count = GetControllerControlCount();
+        for i = 1, 16 do
+            local text = slots[i];
+            if i <= count then
+                local key, label, down = GetControllerControl(i);
+                local action = WowDecomp_ControllerAction(key);
+                text:SetText((label or "") .. " " .. action);
+                if down then
+                    text:SetTextColor(0.45, 1, 0.55);
+                else
+                    text:SetTextColor(1, 0.86, 0.55);
+                end
+                text:Show();
+            else
+                text:Hide();
+            end
+        end
+        local gc = GetControllerKind and GetControllerKind() == "gamecube";
+        if GetCVar("padLayout") == "2" and GetCVar("padAxisBindings") == "1" then
+            hint:SetText(gc and "Stick and C-stick use key bindings." or "Sticks use key bindings.");
+        elseif gc then
+            hint:SetText("Stick moves. C-stick looks. Z is the shoulder button.");
+        else
+            hint:SetText("Left stick moves. Right stick looks.");
+        end
+    end);
+    bar:Hide();
+end
+
+WowDecomp_InstallControllerUI();
