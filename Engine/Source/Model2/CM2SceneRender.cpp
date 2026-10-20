@@ -29,6 +29,16 @@ const uint32_t s_fogModes[7] = { 1, 1, 1, 2, 2, 3, 4 };
 // STATIC: 0x00AF58A8
 static C44Matrix s_identity;
 
+static const M2Material* s_doodadMaterial;
+static const CM2Shared* s_doodadShared;
+static const CM2Lighting* s_doodadLighting;
+
+static void ForgetDoodadSetup() {
+    s_doodadMaterial = nullptr;
+    s_doodadShared = nullptr;
+    s_doodadLighting = nullptr;
+}
+
 // VERIFY: 6a3520ef manual
 // OFFSET: 0x0081F330
 CM2SceneRender::CM2SceneRender(CM2Scene* scene) {
@@ -879,19 +889,16 @@ void CM2SceneRender::DrawBatchDoodad(M2Element* elements, uint32_t* indices) {
     this->m_curMaterial = &this->m_data->m_materials[this->m_curBatch->m_materialIndex];
     element->m_effect->SetCurrent();
 
-    // ʕ •ᴥ•ʔ✿ Neighboring copies share a material. Lighting and texture setup stays on the first one ✿ ʕ •ᴥ•ʔ
-    static const M2Material* lastMaterial = nullptr;
-    static const CM2Shared* lastShared = nullptr;
-    static const CM2Lighting* lastLighting = nullptr;
-    int32_t repeat = lastMaterial == this->m_curMaterial && lastShared == this->m_curShared && lastLighting == this->m_curLighting;
+    // ʕ •ᴥ•ʔ✿ Neighboring copies in this pass share a material. The cache is cleared in Draw() ✿ ʕ •ᴥ•ʔ
+    int32_t repeat = s_doodadMaterial == this->m_curMaterial && s_doodadShared == this->m_curShared && s_doodadLighting == this->m_curLighting;
 
     if (!repeat) {
         this->SetupLighting();
         this->SetupMaterial();
         this->SetupTextures();
-        lastMaterial = this->m_curMaterial;
-        lastShared = this->m_curShared;
-        lastLighting = this->m_curLighting;
+        s_doodadMaterial = this->m_curMaterial;
+        s_doodadShared = this->m_curShared;
+        s_doodadLighting = this->m_curLighting;
     }
 
     uint32_t total = this->m_curElement->m_count;
@@ -1553,6 +1560,9 @@ void CM2SceneRender::Draw(M2PASS pass, M2Element* elements, uint32_t* indices, u
     GxRsSet(GxRs_Fog, 0);
     GxRsSet(GxRs_MatSpecularExp, 0.0f);
 
+    // ʕ •ᴥ•ʔ✿ The previous pass popped its texture binds, and this pass just turned lighting off. Reusing that material would draw the batch white ✿ ʕ •ᴥ•ʔ
+    ForgetDoodadSetup();
+
     if (CShaderEffect::s_enableShaders) {
         C44Matrix projection = g_theGxDevicePtr->m_projNative;
 
@@ -1593,6 +1603,7 @@ void CM2SceneRender::Draw(M2PASS pass, M2Element* elements, uint32_t* indices, u
 
         switch (this->m_curElement->m_type) {
             case 0: {
+                ForgetDoodadSetup();
                 uint32_t run = CharacterRun(elements, indices, count, i);
 
                 if (run > 1 && DrawCharacterRun(this, elements, indices, i, run)) {
@@ -1604,6 +1615,7 @@ void CM2SceneRender::Draw(M2PASS pass, M2Element* elements, uint32_t* indices, u
                 break;
             }
             case 1:
+                ForgetDoodadSetup();
                 this->DrawBatchProj();
                 break;
             case 2:
@@ -1611,15 +1623,19 @@ void CM2SceneRender::Draw(M2PASS pass, M2Element* elements, uint32_t* indices, u
                 i += this->m_curElement->m_count - 1;
                 break;
             case 3:
+                ForgetDoodadSetup();
                 this->DrawRibbon();
                 break;
             case 4:
+                ForgetDoodadSetup();
                 i += this->DrawParticle(i, elements, indices, count);
                 break;
             case 5:
+                ForgetDoodadSetup();
                 this->DrawCallback();
                 break;
             default:
+                ForgetDoodadSetup();
                 continue;
         }
 

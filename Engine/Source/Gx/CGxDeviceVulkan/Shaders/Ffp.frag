@@ -36,6 +36,22 @@ vec4 Stage(int stage, vec4 tex, vec4 cur) {
 
 void main() {
     vec2 uv = inTexCoord0.xy / inTexCoord0.z;
+
+    // ʕ •ᴥ•ʔ✿ Desaturate.bls writes luma into rgb and keeps only vertex alpha. The 0.65 icon tint never reaches the shader ✿ ʕ •ᴥ•ʔ
+    if (u.stageColorOp.z > 0) {
+        vec4 tex = texture(tex0, uv);
+        float luma = dot(tex.rgb, vec3(0.299, 0.587, 0.114));
+        vec4 color = vec4(luma, luma, luma, tex.a * inColor.a);
+
+        if (u.flags.w > 0 && color.a * 255.0 < float(u.flags.w)) {
+            discard;
+        }
+
+        color.rgb = mix(u.fogColor.rgb, color.rgb, inFog);
+        outColor = color;
+        return;
+    }
+
     vec2 uvWidth = max(fwidth(uv), vec2(1e-6));
     int colorOp = u.stageColorOp.x;
 
