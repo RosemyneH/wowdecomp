@@ -17,7 +17,8 @@ while(_pos LESS _len)
         string(SUBSTRING "${_lua}" ${_pos} ${_remain} _chunk)
         set(_pos ${_len})
     endif()
-    file(APPEND "${OUTPUT}" "R\"WOWDECOMP(\n${_chunk}\n)WOWDECOMP\"\n")
+    # ʕ •ᴥ•ʔ✿ Chunks concatenate with no added newline. A break inside a quote is an unfinished string in Lua 5.1 ✿ ʕ •ᴥ•ʔ
+    file(APPEND "${OUTPUT}" "R\"WOWDECOMP(${_chunk})WOWDECOMP\"\n")
 endwhile()
 
 file(APPEND "${OUTPUT}" ";\n")
