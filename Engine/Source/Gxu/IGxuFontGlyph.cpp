@@ -6,6 +6,24 @@
 #include "Engine/Source/Storm/H/storm.h"
 
 // ʕ ● ᴥ ●ʔ CJK MPQ fonts set isFixedPitch with a bogus hhea.advanceWidthMax; use per-glyph advance (SatyPardus/wowdecomp d4e9b1a, Kissinger Zhou)
+double GxuFontGlyphAdvancePixels(FT_Face face, uint32_t code, uint32_t pixelSize) {
+    FT_Pos adv = face->glyph->metrics.horiAdvance;
+
+    if (adv <= 0 && face->glyph->linearHoriAdvance != 0) {
+        adv = FT_MulFix(face->glyph->linearHoriAdvance, face->size->metrics.x_scale);
+    }
+
+    double advance = static_cast<double>(adv) / 64.0 + 1.0;
+
+    if (code == 0x20 && advance < static_cast<double>((pixelSize + 1) / 2)) {
+        advance = static_cast<double>((pixelSize + 1) / 2);
+    } else if (code == 0x3000 && advance < static_cast<double>(pixelSize)) {
+        advance = static_cast<double>(pixelSize);
+    }
+
+    return advance;
+}
+
 // VERIFY: fff26b99 manual
 // OFFSET: 0x006C8C10
 static int32_t FREETYPE_RenderGlyph(FT_Face face, uint32_t code, bool monochrome) {
@@ -108,7 +126,7 @@ bool IGxuFontGlyphRenderGlyph(FT_Face face, uint32_t pixelSize, uint32_t code, u
     dataPtr->m_data = data;
     dataPtr->m_glyphWidth = width;
     dataPtr->m_glyphHeight = height;
-    dataPtr->m_glyphAdvance = (face->glyph->metrics.horiAdvance / 64) + 1.0;
+    dataPtr->m_glyphAdvance = GxuFontGlyphAdvancePixels(face, code, pixelSize);
     dataPtr->m_yOffset = 0;
     dataPtr->m_yStart = 0;
     dataPtr->m_glyphBearing = face->glyph->metrics.horiBearingX * (1.0 / 64.0);
