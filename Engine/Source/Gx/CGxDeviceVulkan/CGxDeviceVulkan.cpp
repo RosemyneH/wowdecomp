@@ -875,6 +875,7 @@ void CGxDeviceVulkan::ISceneBegin() {
     this->m_atmosApplied = 0;
     this->m_atmosWorldDraw = 0;
     this->m_atmosSamples = 0;
+    this->m_atmosEyeError = 1.0e30f;
     Atmosphere_BeginFrame();
     this->IInvalidateCmdState();
     this->ShaderConstantsClear();
@@ -2619,7 +2620,7 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
         this->m_xforms[GxXform_Projection].m_dirty = 0;
     }
 
-    if (fabsf(this->m_projNative.d3) < 1.0e-4f && fabsf(this->m_projNative.c3) > 0.5f && !this->m_passTarget && this->m_atmosSamples < 64) {
+    if (fabsf(this->m_projNative.d3) < 1.0e-4f && fabsf(this->m_projNative.c3) > 0.5f && !this->m_passTarget) {
         CGxMatrixStack& viewStack = this->m_xforms[GxXform_View];
         const C44Matrix& view = viewStack.m_mtx[viewStack.m_level];
         float cameraX, cameraY, cameraZ;
@@ -2628,12 +2629,12 @@ void CGxDeviceVulkan::Draw(CGxBatch* batch, int32_t count) {
         float dx = invView.d0 - cameraX;
         float dy = invView.d1 - cameraY;
         float dz = invView.d2 - cameraZ;
-        float cameraKnown = cameraX * cameraX + cameraY * cameraY + cameraZ * cameraZ;
-        int32_t matches = cameraKnown < 1.0f || dx * dx + dy * dy + dz * dz < 80.0f * 80.0f;
-        if (matches) {
+        float err = dx * dx + dy * dy + dz * dz;
+        this->m_atmosWorldDraw = 1;
+        if (this->m_atmosSamples == 0 || err < this->m_atmosEyeError) {
             this->m_atmosView = view;
             this->m_atmosProj = this->m_projNative;
-            this->m_atmosWorldDraw = 1;
+            this->m_atmosEyeError = err;
             this->m_atmosSamples++;
         }
     }

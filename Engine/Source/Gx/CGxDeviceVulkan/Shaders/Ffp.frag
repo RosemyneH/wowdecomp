@@ -111,23 +111,26 @@ void main() {
 
     if (u.stageColorOp.w == 2) {
         float t = u.fogParams.w;
-        float wx = cos(inWorld.x * 0.11 + t * 1.3) * 0.11 * sin(inWorld.y * 0.09 - t * 0.8);
-        float wy = sin(inWorld.x * 0.11 + t * 1.3) * cos(inWorld.y * 0.09 - t * 0.8) * 0.09;
-        vec3 normal = normalize(vec3(-wx * u.fogParams.z, -wy * u.fogParams.z, 1.0));
         vec3 viewDir = normalize(-inView);
-        float fresnel = pow(1.0 - clamp(abs(dot(normal, viewDir)), 0.0, 1.0), 3.0);
-        vec3 deep = mix(vec3(0.03, 0.16, 0.14), vec3(0.45, 0.22, 0.1), u.lightAtten[3].z);
-        color.rgb = mix(deep, color.rgb, mix(0.45, 0.92, clamp(u.lightAtten[3].x, 0.0, 1.0)));
-        vec3 sunDir = u.lightPos[0].w == 0.0 ? normalize(-u.lightPos[0].xyz) : vec3(0.3, 0.2, 0.9);
-        vec3 halfDir = normalize(sunDir + viewDir);
-        float spec = pow(max(dot(normal, halfDir), 0.0), 28.0);
-        color.rgb += vec3(1.0, 0.96, 0.86) * (spec * 1.6 + fresnel * 0.45) * u.matEmissive.w;
-        float crest = sin(inWorld.x * 0.11 + t * 1.3) * sin(inWorld.y * 0.09 - t * 0.8);
-        color.rgb = mix(color.rgb, vec3(0.86, 0.91, 0.93), clamp(crest, 0.0, 1.0) * u.ambient.w);
-        if (u.lightAtten[3].y > 0.05) {
-            float ring = sin(length(inWorld.xy) * 1.7 - t * 6.0);
-            color.rgb += vec3(0.75, 0.84, 0.88) * smoothstep(0.82, 1.0, ring) * u.lightAtten[3].y * 0.35;
+        float fresnel = pow(1.0 - clamp(abs(viewDir.z), 0.0, 1.0), 2.0);
+        vec3 deep = mix(vec3(0.04, 0.2, 0.22), vec3(0.35, 0.18, 0.08), clamp(u.lightAtten[3].z, 0.0, 1.0));
+        color.rgb = mix(deep, color.rgb, mix(0.55, 0.9, clamp(u.lightAtten[3].x, 0.0, 1.0)));
+        float wave = 0.5 + 0.5 * sin(inWorld.x * 0.08 + t * 0.7) * sin(inWorld.y * 0.07 - t * 0.5);
+        color.rgb = mix(color.rgb, vec3(0.75, 0.84, 0.86), wave * u.ambient.w * 0.35);
+        color.rgb += vec3(0.85, 0.9, 0.95) * fresnel * u.matEmissive.w * 0.35;
+    }
+
+    // ʕ •ᴥ•ʔ✿ Alpha-key foliage keeps its mask in the texture. Combiners that select vertex alpha would otherwise draw solid cards ✿ ʕ •ᴥ•ʔ
+    if (u.flags.w > 1 && u.stageColorOp.x >= 0) {
+        float texA = texture(tex0, inTexCoord0.xy / inTexCoord0.z).a;
+        if (u.stageAlphaOp.x == 3) {
+            color.a *= texA;
         }
+        if (texA * 255.0 < float(u.flags.w)) {
+            discard;
+        }
+    } else if (u.stageColorOp.x >= 0 && u.stageAlphaOp.x == 3 && u.flags.w > 0) {
+        color.a *= texture(tex0, inTexCoord0.xy / inTexCoord0.z).a;
     }
 
     if (u.flags.w > 0 && color.a * 255.0 < float(u.flags.w)) {

@@ -157,11 +157,6 @@ void main() {
         if (radius > 0.0 && dist < radius && dist > 0.001) {
             worldPos.xy += away / dist * u.lightAtten[3].y * (1.0 - dist / radius) * height;
         }
-    } else if (u.stageColorOp.w == 2 && u.fogParams.z > 0.0) {
-        float t = u.fogParams.w;
-        float chop = sin(worldPos.x * 0.11 + t * 1.3) * sin(worldPos.y * 0.09 - t * 0.8);
-        chop += 0.35 * sin(worldPos.x * 0.37 + worldPos.y * 0.23 + t * 2.1);
-        worldPos.z += chop * u.fogParams.z;
     }
 
     vec4 viewPos = worldPos * u.view;

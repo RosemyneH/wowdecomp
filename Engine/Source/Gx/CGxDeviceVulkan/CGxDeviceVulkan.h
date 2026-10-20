@@ -135,6 +135,7 @@ class CGxDeviceVulkan : public CGxDevice {
     int32_t m_atmosApplied = 0;
     int32_t m_atmosWorldDraw = 0;
     int32_t m_atmosSamples = 0;
+    float m_atmosEyeError = 1.0e30f;
     C44Matrix m_atmosView;
     C44Matrix m_atmosProj;
     float m_atmosNear = 0.2f;
