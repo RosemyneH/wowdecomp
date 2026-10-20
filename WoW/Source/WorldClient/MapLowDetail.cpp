@@ -1,4 +1,5 @@
 #include "MapLowDetail.h"
+#include "MapHorizonTrees.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -940,6 +941,8 @@ void CMap::BuildLowDetailGridIndices(uint16_t* holes, int32_t pass, CGxBuf* buf)
 // VERIFY: f803b515 manual
 // OFFSET: 0x007CC770
 void CMapLowDetail::Unload() {
+    CMapHorizonTrees::Clear();
+
     for (uint32_t i = 0; i < 4096; i++) {
         if (this->m_areas[i]) {
             CMap::FreeAreaLow(this->m_areas[i]);

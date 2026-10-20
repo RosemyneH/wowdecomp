@@ -88,6 +88,7 @@
 #include "WoW/Source/WorldClient/MapEntity.h"
 #include "WoW/Source/WorldClient/MapLight.h"
 #include "WoW/Source/WorldClient/MapLoad.h"
+#include "WoW/Source/WorldClient/MapHorizonTrees.h"
 #include "WoW/Source/WorldClient/MapLowDetail.h"
 #include "WoW/Source/WorldClient/MapObj.h"
 #include "WoW/Source/WorldClient/MapObjDef.h"
@@ -5327,6 +5328,7 @@ void CWorldScene::RenderHorizon() {
     g_theGxDevicePtr->XformPushAndSet(GxXform_World, world);
 
     CMap::DrawHorizonList();
+    CMapHorizonTrees::Draw();
 
     static std::vector<CMapObjGroup*> groups;
     static std::vector<C44Matrix*> matrices;
