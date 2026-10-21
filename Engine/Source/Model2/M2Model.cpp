@@ -1796,6 +1796,7 @@ uint16_t CM2Model::FindSequenceIndex(const M2Data* data, uint32_t id, int32_t va
     }
 
     uint32_t count = data->m_sequences.m_count;
+    int32_t requestedVariation = variation;
 
     while (index < count && variation) {
         index = data->m_sequences[index].m_variationNext;
@@ -1810,7 +1811,7 @@ uint16_t CM2Model::FindSequenceIndex(const M2Data* data, uint32_t id, int32_t va
 
     cachedData = data;
     cachedId = id;
-    cachedVar = variation;
+    cachedVar = requestedVariation;
     cachedIndex = result;
     cachedOk = 1;
     return result;
@@ -3014,35 +3015,60 @@ void CM2Model::FindKey(M2ModelBoneSeq* sequence, const M2TrackBase& track, uint3
             while (key < count - 1 && keys[key + 1] <= time) {
                 key++;
             }
+        } else if (time < keys[0]) {
+            key = 0;
         } else {
-            uint32_t high = count;
+            // ʕ •ᴥ•ʔ✿ mid == 0 used to wrap high. The next probe then read past the track ✿ ʕ •ᴥ•ʔ
+            uint32_t low = 0;
+            uint32_t high = count - 1;
 
-            while (key < high) {
-                uint32_t mid = (high + key) >> 1;
+            while (low < high) {
+                uint32_t mid = (low + high + 1) >> 1;
 
-                if (time < keys[mid]) {
-                    high = mid - 1;
+                if (keys[mid] <= time) {
+                    low = mid;
                 } else {
-                    key = mid + 1;
-
-                    if (key >= count || time < keys[key]) {
-                        key = mid;
-                        break;
-                    }
+                    high = mid - 1;
                 }
             }
+
+            key = low;
         }
     }
 
-    if (key + 1 >= times.m_count) {
+    if (key >= count) {
+        key = count - 1;
+    }
+
+    uint32_t span = key + 1 < count ? keys[key + 1] - keys[key] : 0;
+
+    if (!span || time <= keys[key]) {
         key1 = key;
         key0 = key;
         ratio = 0.0f;
     } else {
         key0 = key;
         key1 = key + 1;
-        ratio = static_cast<float>(time - keys[key]) / static_cast<float>(keys[key + 1] - keys[key]);
+        ratio = static_cast<float>(time - keys[key]) / static_cast<float>(span);
     }
+}
+
+static C4Quaternion M2UnpackCompQuat(const M2CompQuat& key) {
+    C4Quaternion q;
+    q.x = key.m_values[0] * 0.000030518044f - 1.0f;
+    q.y = key.m_values[1] * 0.000030518044f - 1.0f;
+    q.z = key.m_values[2] * 0.000030518044f - 1.0f;
+    q.w = key.m_values[3] * 0.000030518044f - 1.0f;
+    return q;
+}
+
+static C4Quaternion M2LerpCompQuatKeys(const M2Track<M2CompQuat>& track, const M2Array<M2CompQuat>& keys, uint32_t i0, uint32_t i1, float ratio) {
+    if (track.m_trackType >= 2) {
+        const M2SplineKey<M2CompQuat>* spline = reinterpret_cast<const M2SplineKey<M2CompQuat>*>(keys.Data());
+        return C4Quaternion::Nlerp(ratio, M2UnpackCompQuat(spline[i0].m_value), M2UnpackCompQuat(spline[i1].m_value));
+    }
+
+    return C4Quaternion::Nlerp(ratio, M2UnpackCompQuat(keys[i0]), M2UnpackCompQuat(keys[i1]));
 }
 
 // VERIFY: 3e6ce0d8 auto
@@ -3058,27 +3084,11 @@ void M2AnimateTrack<M2CompQuat, C4Quaternion>(CM2Model* model, M2ModelBone* bone
         model->FindKey(&bone->m_sequence, track, modelTrack.m_currentKey, key1, ratio);
 
         if (!track.m_trackType) {
-            M2CompQuat& key = keys[modelTrack.m_currentKey];
-            modelTrack.m_currentValue.x = key.m_values[0] * 0.000030518044f - 1.0f;
-            modelTrack.m_currentValue.y = key.m_values[1] * 0.000030518044f - 1.0f;
-            modelTrack.m_currentValue.z = key.m_values[2] * 0.000030518044f - 1.0f;
-            modelTrack.m_currentValue.w = key.m_values[3] * 0.000030518044f - 1.0f;
+            modelTrack.m_currentValue = M2UnpackCompQuat(keys[modelTrack.m_currentKey]);
             return;
         }
 
-        M2CompQuat& k0 = keys[modelTrack.m_currentKey];
-        M2CompQuat& k1 = keys[key1];
-        C4Quaternion q0;
-        q0.x = k0.m_values[0] * 0.000030518044f - 1.0f;
-        q0.y = k0.m_values[1] * 0.000030518044f - 1.0f;
-        q0.z = k0.m_values[2] * 0.000030518044f - 1.0f;
-        q0.w = k0.m_values[3] * 0.000030518044f - 1.0f;
-        C4Quaternion q1;
-        q1.x = k1.m_values[0] * 0.000030518044f - 1.0f;
-        q1.y = k1.m_values[1] * 0.000030518044f - 1.0f;
-        q1.z = k1.m_values[2] * 0.000030518044f - 1.0f;
-        q1.w = k1.m_values[3] * 0.000030518044f - 1.0f;
-        modelTrack.m_currentValue = C4Quaternion::Nlerp(ratio, q0, q1);
+        modelTrack.m_currentValue = M2LerpCompQuatKeys(track, keys, modelTrack.m_currentKey, key1, ratio);
     } else {
         modelTrack.m_currentValue = defaultValue;
 
@@ -3096,19 +3106,7 @@ void M2AnimateTrack<M2CompQuat, C4Quaternion>(CM2Model* model, M2ModelBone* bone
             uint32_t key1;
             float ratio;
             model->FindKey(&bone->m_secondarySequence, track, modelTrack.m_secondaryKey, key1, ratio);
-            M2CompQuat& k0 = blendKeys[modelTrack.m_secondaryKey];
-            M2CompQuat& k1 = blendKeys[key1];
-            C4Quaternion q0;
-            q0.x = k0.m_values[0] * 0.000030518044f - 1.0f;
-            q0.y = k0.m_values[1] * 0.000030518044f - 1.0f;
-            q0.z = k0.m_values[2] * 0.000030518044f - 1.0f;
-            q0.w = k0.m_values[3] * 0.000030518044f - 1.0f;
-            C4Quaternion q1;
-            q1.x = k1.m_values[0] * 0.000030518044f - 1.0f;
-            q1.y = k1.m_values[1] * 0.000030518044f - 1.0f;
-            q1.z = k1.m_values[2] * 0.000030518044f - 1.0f;
-            q1.w = k1.m_values[3] * 0.000030518044f - 1.0f;
-            blend = C4Quaternion::Nlerp(ratio, q0, q1);
+            blend = M2LerpCompQuatKeys(track, blendKeys, modelTrack.m_secondaryKey, key1, ratio);
         } else {
             blend = defaultValue;
         }
@@ -3190,7 +3188,7 @@ void CM2Model::AnimateST() {
     float deltaTime = elapsed * 0.001f;
     this->m_lastEmitterTime = time;
 
-    // ʕ •ᴥ•ʔ✿ Past 15 yards, skip ribbon edges. Particles stay live: a stale camera in the emitter pins the quads to the view ✿ ʕ •ᴥ•ʔ
+    // ʕ •ᴥ•ʔ✿ Past 15 yards, skip ribbon and particle simulation. Riders stay attached: a mount's child is the player ✿ ʕ •ᴥ•ʔ
     int32_t crowdLod = !this->m_attachParent && this->m_scaleSq > 225.0f;
 
     if (!crowdLod) {
@@ -3228,10 +3226,34 @@ void CM2Model::AnimateST() {
             emitter->Update(deltaTime, ribbon->m_visibilityTrack.m_currentValue == 0);
         }
     }
-    }
 
     for (uint32_t i = 0; i < data->m_particles.m_count; i++) {
         this->AnimateParticleST(deltaTime, i);
+    }
+    } else if ((this->m_fFlags & 0x401) == 0x401 && (this->m_fFlags & 0x10000)) {
+        // ʕ •ᴥ•ʔ✿ Live quads still draw. Refresh the camera they subtract, and skip emission and integration ✿ ʕ •ᴥ•ʔ
+        static C44Matrix s_emitterRotation(0.0f, 1.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f);
+        const C3Vector& viewPos = *reinterpret_cast<const C3Vector*>(&this->m_scene->m_viewInv.d0);
+        const C44Matrix* frame = static_cast<const C44Matrix*>(this->m_frameOfReference);
+
+        for (uint32_t i = 0; i < data->m_particles.m_count; i++) {
+            CParticleEmitter2* emitter = this->m_particleEmitters[i];
+
+            if (!this->m_particles[i].m_active || !emitter->HasLiveParticles()) {
+                continue;
+            }
+
+            M2Particle* particleData = &data->m_particles[i];
+            C44Matrix transform = this->m_boneMatrices[particleData->m_boneIndex];
+            transform.Translate(particleData->m_position);
+            transform *= this->m_scene->m_viewInv;
+            transform = s_emitterRotation * transform;
+            emitter->UpdateXform(transform, viewPos, frame);
+
+            for (uint32_t child = 0; child < emitter->m_childEmitterCount; child++) {
+                emitter->m_childEmitters[child]->UpdateXform(transform, viewPos, frame);
+            }
+        }
     }
 
     if (this->m_fFlags & 8) {
@@ -3922,6 +3944,15 @@ void CM2Model::TransformVerticesOneBone_sse(CM2Model* model, M2SkinSection* sect
     }
 }
 
+static C4Quaternion M2LerpQuatKeys(const M2Track<C4Quaternion>& track, const M2Array<C4Quaternion>& keys, uint32_t i0, uint32_t i1, float ratio) {
+    if (track.m_trackType < 2) {
+        return C4Quaternion::Nlerp(ratio, keys[i0], keys[i1]);
+    }
+
+    const M2SplineKey<C4Quaternion>* spline = reinterpret_cast<const M2SplineKey<C4Quaternion>*>(keys.Data());
+    return C4Quaternion::Nlerp(ratio, spline[i0].m_value, spline[i1].m_value);
+}
+
 // VERIFY: c111136b auto
 // OFFSET: 0x0082AD50
 template <>
@@ -3939,7 +3970,7 @@ void M2AnimateTrack<C4Quaternion, C4Quaternion>(CM2Model* model, M2ModelBone* bo
             return;
         }
 
-        modelTrack.m_currentValue = C4Quaternion::Nlerp(ratio, keys[modelTrack.m_currentKey], keys[key1]);
+        modelTrack.m_currentValue = M2LerpQuatKeys(track, keys, modelTrack.m_currentKey, key1, ratio);
     } else {
         modelTrack.m_currentValue = defaultValue;
 
@@ -3957,7 +3988,7 @@ void M2AnimateTrack<C4Quaternion, C4Quaternion>(CM2Model* model, M2ModelBone* bo
             uint32_t key1;
             float ratio;
             model->FindKey(&bone->m_secondarySequence, track, modelTrack.m_secondaryKey, key1, ratio);
-            blend = C4Quaternion::Nlerp(ratio, blendKeys[modelTrack.m_secondaryKey], blendKeys[key1]);
+            blend = M2LerpQuatKeys(track, blendKeys, modelTrack.m_secondaryKey, key1, ratio);
         } else {
             blend = defaultValue;
         }
@@ -4012,6 +4043,48 @@ void M2AnimateTrack<fixed16, float>(CM2Model* model, M2ModelBone* bone, const M2
     }
 }
 
+// ʕ •ᴥ•ʔ✿ Types 2 and 3 store M2SplineKey values. A C3Vector stride reads the tangent as the next pose ✿ ʕ •ᴥ•ʔ
+static C3Vector M2LerpVectorKeys(const M2Track<C3Vector>& track, const M2Array<C3Vector>& keys, uint32_t i0, uint32_t i1, float ratio) {
+    if (track.m_trackType < 2) {
+        const C3Vector& value0 = keys[i0];
+        const C3Vector& value1 = keys[i1];
+        C3Vector value;
+        value.x = (value1.x - value0.x) * ratio + value0.x;
+        value.y = (value1.y - value0.y) * ratio + value0.y;
+        value.z = ratio * (value1.z - value0.z) + value0.z;
+        return value;
+    }
+
+    const M2SplineKey<C3Vector>* spline = reinterpret_cast<const M2SplineKey<C3Vector>*>(keys.Data());
+    const M2SplineKey<C3Vector>& k0 = spline[i0];
+    const M2SplineKey<C3Vector>& k1 = spline[i1];
+    C3Vector value;
+
+    if (track.m_trackType == 2) {
+        float r2 = ratio * ratio;
+        float r3 = r2 * ratio;
+        float b0 = r2 * 3.0f - r3 - ratio * 3.0f + 1.0f;
+        float b1 = ratio * 3.0f + r3 * 3.0f - r2 * 6.0f;
+        float b2 = r2 * 3.0f - r3 * 3.0f;
+        value.x = k0.m_outTan.x * b1 + k1.m_value.x * r3 + k1.m_inTan.x * b2 + k0.m_value.x * b0;
+        value.y = k1.m_inTan.y * b2 + k0.m_outTan.y * b1 + k0.m_value.y * b0 + k1.m_value.y * r3;
+        value.z = b0 * k0.m_value.z + (b1 * k0.m_outTan.z + b2 * k1.m_inTan.z) + r3 * k1.m_value.z;
+        return value;
+    }
+
+    float r2 = ratio * ratio;
+    float r2x3 = r2 * 3.0f;
+    float r3 = r2 * ratio;
+    float h3 = ratio + r3 - 2.0f * r2;
+    float h4 = r3 - r2;
+    float h1 = r3 * 2.0f - r2x3 + 1.0f;
+    float h2 = r2x3 - r3 * 2.0f;
+    value.x = k0.m_outTan.x * h3 + k1.m_inTan.x * h4 + k1.m_value.x * h2 + k0.m_value.x * h1;
+    value.y = k1.m_inTan.y * h4 + k0.m_outTan.y * h3 + k1.m_value.y * h2 + k0.m_value.y * h1;
+    value.z = h1 * k0.m_value.z + (h2 * k1.m_value.z + (h3 * k0.m_outTan.z + h4 * k1.m_inTan.z));
+    return value;
+}
+
 // VERIFY: 45a65fad auto
 // OFFSET: 0x0082B0A0
 template <>
@@ -4029,11 +4102,7 @@ void M2AnimateTrack<C3Vector, C3Vector>(CM2Model* model, M2ModelBone* bone, cons
             return;
         }
 
-        C3Vector& value0 = keys[modelTrack.m_currentKey];
-        C3Vector& value1 = keys[key1];
-        modelTrack.m_currentValue.x = (value1.x - value0.x) * ratio + value0.x;
-        modelTrack.m_currentValue.y = (value1.y - value0.y) * ratio + value0.y;
-        modelTrack.m_currentValue.z = ratio * (value1.z - value0.z) + value0.z;
+        modelTrack.m_currentValue = M2LerpVectorKeys(track, keys, modelTrack.m_currentKey, key1, ratio);
     } else {
         modelTrack.m_currentValue = defaultValue;
 
@@ -4051,11 +4120,7 @@ void M2AnimateTrack<C3Vector, C3Vector>(CM2Model* model, M2ModelBone* bone, cons
             uint32_t key1;
             float ratio;
             model->FindKey(&bone->m_secondarySequence, track, modelTrack.m_secondaryKey, key1, ratio);
-            C3Vector& value0 = blendKeys[modelTrack.m_secondaryKey];
-            C3Vector& value1 = blendKeys[key1];
-            blend.x = (value1.x - value0.x) * ratio + value0.x;
-            blend.y = (value1.y - value0.y) * ratio + value0.y;
-            blend.z = ratio * (value1.z - value0.z) + value0.z;
+            blend = M2LerpVectorKeys(track, blendKeys, modelTrack.m_secondaryKey, key1, ratio);
         } else {
             blend = defaultValue;
         }
