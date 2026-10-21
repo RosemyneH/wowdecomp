@@ -3190,7 +3190,7 @@ void CM2Model::AnimateST() {
     float deltaTime = elapsed * 0.001f;
     this->m_lastEmitterTime = time;
 
-    // ʕ •ᴥ•ʔ✿ Past 15 yards, skip ribbons and particles. Riders stay attached: a mount's child is the player ✿ ʕ •ᴥ•ʔ
+    // ʕ •ᴥ•ʔ✿ Past 15 yards, skip ribbon edges. Particles stay live: a stale camera in the emitter pins the quads to the view ✿ ʕ •ᴥ•ʔ
     int32_t crowdLod = !this->m_attachParent && this->m_scaleSq > 225.0f;
 
     if (!crowdLod) {
@@ -3228,10 +3228,10 @@ void CM2Model::AnimateST() {
             emitter->Update(deltaTime, ribbon->m_visibilityTrack.m_currentValue == 0);
         }
     }
+    }
 
     for (uint32_t i = 0; i < data->m_particles.m_count; i++) {
         this->AnimateParticleST(deltaTime, i);
-    }
     }
 
     if (this->m_fFlags & 8) {
