@@ -12,7 +12,7 @@ PIDFILE="$LOG_DIR/bench-workspace.pid"
 SHM="/dev/shm/wowdecomp-profile"
 TITLE="${WOWDECOMP_WINDOW_TITLE:-wowdecomp-bench}"
 WORKSPACE="${WOWDECOMP_BENCH_WORKSPACE:-7}"
-AUTOLOGIN="${WOWDECOMP_AUTOLOGIN:-a:a:Adwa}"
+AUTOLOGIN="${WOWDECOMP_AUTOLOGIN:-a:a:Even}"
 SAMPLE_FRAMES="${WOWDECOMP_BENCH_FRAMES:-40}"
 INTERVAL="${WOWDECOMP_BENCH_INTERVAL:-20}"
 
@@ -135,6 +135,8 @@ start_client() {
         echo "missing $BIN" >&2
         exit 1
     fi
+    stop_client
+    "$ROOT/Tools/stage-profile-addon.sh" "$PLAY"
     # -- ʕ •ᴥ•ʔ✿ A hardlink is the build output. The linker truncates it and the live client jumps to null. ✿ ʕ •ᴥ•ʔ
     cp -f "$BIN" "$PLAY/WowClient64.release"
     ensure_awesome_cvars
@@ -144,7 +146,7 @@ start_client() {
         unset WOW_PROFILE
         export WOWDECOMP_AUTOLOGIN="$AUTOLOGIN"
         export WOWDECOMP_WINDOW_TITLE="$TITLE"
-        exec ./WowClient64.release -windowed
+        exec ./WowClient64.release -windowed "-autologin=$AUTOLOGIN"
     ) >>"$LOG" 2>&1 &
     echo $! >"$PIDFILE"
     local pid

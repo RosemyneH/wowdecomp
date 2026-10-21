@@ -5,7 +5,10 @@ param(
     [string]$RealmHost = $(if ($env:WOWDECOMP_REALM_HOST) { $env:WOWDECOMP_REALM_HOST } else { 'localhost' }),
     [switch]$FullInstall,
     [switch]$RetailWtf,
-    [switch]$RetailRealm
+    [switch]$RetailRealm,
+    [switch]$KeepWtf,
+    [switch]$ResetWtf,
+    [switch]$SyncBinariesOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -68,7 +71,40 @@ if (-not (Test-Path -LiteralPath $dataSrc)) {
 New-Item -ItemType Directory -Path $PlayDir -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $Root 'bin\Win') -Force | Out-Null
 
+& (Join-Path $Root 'Tools\stop-wowdecomp-client.ps1') -PlayDir $PlayDir
+
 $binWin = Join-Path $Root 'bin\Win'
+$syncOnly = $SyncBinariesOnly
+if ($syncOnly) {
+    $clientExe = Join-Path $binWin 'WowClient64.exe'
+    Copy-WowClientBinary -Source $clientExe -Dest (Join-Path $PlayDir 'WowClient64.exe')
+    $wow64 = Join-Path $binWin 'Wow64.exe'
+    if (Test-Path -LiteralPath $wow64) {
+        Copy-WowClientBinary -Source $wow64 -Dest (Join-Path $PlayDir 'Wow64.exe')
+    }
+    Get-ChildItem -LiteralPath $binWin -Filter '*.dll' -ErrorAction SilentlyContinue | ForEach-Object {
+        Copy-WowClientBinary -Source $_.FullName -Dest (Join-Path $PlayDir $_.Name)
+    }
+    $profileAddon = Join-Path $PlayDir 'Interface\AddOns\WowdecompProfile'
+    New-Item -ItemType Directory -Path $profileAddon -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $Root 'Addons\WowdecompProfile\WowdecompProfile.toc') -Destination $profileAddon -Force
+    Copy-Item -LiteralPath (Join-Path $Root 'Addons\WowdecompProfile\WowdecompProfile.lua') -Destination $profileAddon -Force
+    $autoLogin = if ($env:WOWDECOMP_AUTOLOGIN) { $env:WOWDECOMP_AUTOLOGIN } else { 'a:a:Even' }
+    Set-Content -LiteralPath (Join-Path $PlayDir 'wowdecomp-autologin.txt') -Value $autoLogin -NoNewline -Encoding ASCII
+    $launchCmd = Join-Path $PlayDir 'Launch-Wowdecomp.cmd'
+    @(
+        '@echo off'
+        'cd /d "%~dp0"'
+        'taskkill /IM WowClient64.exe /F >nul 2>&1'
+        'taskkill /IM WowClient64.release.exe /F >nul 2>&1'
+        'timeout /t 1 /nobreak >nul'
+        "set WOWDECOMP_AUTOLOGIN=$autoLogin"
+        "start "" .\WowClient64.exe -datadir \"%~dp0\" -autologin=$autoLogin %*"
+    ) | Set-Content -LiteralPath $launchCmd -Encoding ASCII
+    Write-Host "Synced binaries + addon into $PlayDir (WTF/Data untouched)."
+    return
+}
+
 $clientExe = Join-Path $binWin 'WowClient64.exe'
 Copy-WowClientBinary -Source $clientExe -Dest (Join-Path $PlayDir 'WowClient64.exe')
 $wow64 = Join-Path $binWin 'Wow64.exe'
@@ -125,10 +161,14 @@ if ($FullInstall) {
 }
 
 $wtf = Join-Path $PlayDir 'WTF'
-if (Test-Path -LiteralPath $wtf) {
-    Remove-Item -LiteralPath $wtf -Force -Recurse
+$resetWtf = $ResetWtf -or ($env:WOWDECOMP_RESET_WTF -eq '1')
+$keepWtf = $KeepWtf -or (-not $resetWtf)
+if (-not $keepWtf) {
+    if (Test-Path -LiteralPath $wtf) {
+        Remove-Item -LiteralPath $wtf -Force -Recurse
+    }
 }
-if ($localRealm) {
+if ($localRealm -and (-not $keepWtf -or -not (Test-Path -LiteralPath (Join-Path $wtf 'Config.wtf')))) {
     New-Item -ItemType Directory -Path $wtf | Out-Null
     @(
         'SET locale "enUS"'
@@ -139,6 +179,16 @@ if ($localRealm) {
         'SET cameraFov "100"'
         'SET gxApi "D3D9"'
     ) | Set-Content -LiteralPath (Join-Path $wtf 'Config.wtf')
+} elseif ($keepWtf) {
+    if (-not (Test-Path -LiteralPath $wtf)) {
+        New-Item -ItemType Directory -Path $wtf | Out-Null
+    }
+    $cfg = Join-Path $wtf 'Config.wtf'
+    if (-not (Test-Path -LiteralPath $cfg)) {
+        @('SET locale "enUS"', "SET realmList `"$RealmHost`"", 'SET cameraFov "100"') | Set-Content -LiteralPath $cfg
+    } elseif (-not (Select-String -LiteralPath $cfg -Pattern '^SET realmList ' -Quiet)) {
+        Add-Content -LiteralPath $cfg -Value "SET realmList `"$RealmHost`""
+    }
 } elseif ($RetailWtf -and (Test-Path -LiteralPath (Join-Path $GameSrc 'WTF'))) {
     New-WowdecompLink -Source (Join-Path $GameSrc 'WTF') -Destination $wtf
 } elseif (Test-Path -LiteralPath (Join-Path $GameSrc 'WTF')) {
@@ -152,6 +202,24 @@ $frameXml = Join-Path $PlayDir 'Interface\FrameXML'
 New-Item -ItemType Directory -Path $frameXml -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $Root 'WoW\Interface\FrameXML\WowDecompVideoOptions.lua') -Destination $frameXml -Force
 
+$profileAddon = Join-Path $PlayDir 'Interface\AddOns\WowdecompProfile'
+New-Item -ItemType Directory -Path $profileAddon -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $Root 'Addons\WowdecompProfile\WowdecompProfile.toc') -Destination $profileAddon -Force
+Copy-Item -LiteralPath (Join-Path $Root 'Addons\WowdecompProfile\WowdecompProfile.lua') -Destination $profileAddon -Force
+
+$autoLogin = if ($env:WOWDECOMP_AUTOLOGIN) { $env:WOWDECOMP_AUTOLOGIN } else { 'a:a:Even' }
+Set-Content -LiteralPath (Join-Path $PlayDir 'wowdecomp-autologin.txt') -Value $autoLogin -NoNewline -Encoding ASCII
+$launchCmd = Join-Path $PlayDir 'Launch-Wowdecomp.cmd'
+@(
+    '@echo off'
+    'cd /d "%~dp0"'
+    'taskkill /IM WowClient64.exe /F >nul 2>&1'
+    'taskkill /IM WowClient64.release.exe /F >nul 2>&1'
+    'timeout /t 1 /nobreak >nul'
+    "set WOWDECOMP_AUTOLOGIN=$autoLogin"
+    "start "" .\WowClient64.exe -datadir \"%~dp0\" -autologin=$autoLogin %*"
+) | Set-Content -LiteralPath $launchCmd -Encoding ASCII
+
 $layout = if ($FullInstall) { 'full-install (symlinked Interface/Cache/Logs)' } else { 'vanilla (MPQs + wowdecomp FrameXML patch only)' }
 Write-Host @"
 
@@ -160,9 +228,11 @@ Game data:     $GameSrc
 Layout:        $layout
 Realm:         ${RealmHost}:3724
 
-After rebuilds, re-run this script.
+After rebuilds, re-run this script (copies client + WowdecompProfile addon).
 
   cd $PlayDir
-  .\WowClient64.exe
+  .\Launch-Wowdecomp.cmd
   Server: $Root\Tools\local-server\start-docker.ps1
+
+Cursor MCP: reload window after pull; wowdecomp-profile reads Linux /dev/shm/wowdecomp-profile when the client runs there.
 "@

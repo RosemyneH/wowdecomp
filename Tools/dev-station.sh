@@ -33,7 +33,7 @@ DETAILS_SRC="${WOWDECOMP_DETAILS:-$HOME/Repos/Details-WotLK}"
 
 usage() {
     cat <<EOF
-Usage: $0 [all|deps|addons|scope|build|test|launch|release|release-bots|smoke]
+Usage: $0 [all|deps|addons|scope|build|test|launch|release|release-bench|release-bots|smoke]
 
   all      deps, WASM packages, symlinked scope, client/host build, tests, smoke launch
   deps     wasm32 rust std + clang wasm linker
@@ -43,6 +43,8 @@ Usage: $0 [all|deps|addons|scope|build|test|launch|release|release-bots|smoke]
   test     headless host tests against Addons/Wasm/dist
   launch   start AzerothCore in Docker, then RelWithDebInfo WowClient64 -datadir <play scope>
   release  build Release (-O3 -DNDEBUG) into a separate tree and launch that binary with MSDF fonts
+  release-bench
+           build Release, start Docker realm, loop bench-workspace (profiler + WOWDECOMP_AUTOLOGIN)
   release-bots
            release, with the CPU profiler on and the playerbots worldserver
   smoke    start the client, require it to stay up, then stop it
@@ -52,6 +54,8 @@ Usage: $0 [all|deps|addons|scope|build|test|launch|release|release-bots|smoke]
 Env: WOWDECOMP_GAME_SRC (this host defaults to ~/Games/client) WOWDECOMP_PLAY_DIR
      WOWDECOMP_BUILD_DIR WOWDECOMP_RELEASE_BUILD_DIR WOWDECOMP_REALM_HOST
      WOWDECOMP_PROFILE (on|off, default on, including release — CPU zones in $PROFILE_SHM)
+     WOWDECOMP_AUTOLOGIN (default a:a:Even — user:pass[:character], see CGlueMgr MaybeAutoLogin)
+     WOWDECOMP_RESET_WTF (1 with scope/build to wipe WTF/Account; default keeps existing accounts)
      WOWDECOMP_PLAYERBOTS (1 with release-bots; uses acore-docker/docker-compose.override.yml)
 EOF
 }
@@ -129,7 +133,7 @@ link_scope() {
         exit 1
     fi
     WOWDECOMP_PLAY_DIR="$PLAY_DIR" WOWDECOMP_REALM_HOST="$REALM_HOST" \
-        "$ROOT/Tools/setup-linux-test-client.sh" --vanilla "$GAME_SRC"
+        "$ROOT/Tools/setup-linux-test-client.sh" --vanilla --keep-wtf "$GAME_SRC"
 
     local wasm_root="$PLAY_DIR/Interface/WasmAddOns"
     rm -rf "$wasm_root"
@@ -231,13 +235,15 @@ configure_release() {
 build_release() {
     configure_release
     cmake --build "$RELEASE_BUILD_DIR" --target WowClient -j "$(nproc)"
+    stage_profile_addon
 }
 
 build_client() {
     configure_build
     cmake --build "$BUILD_DIR" --target WowClient wasm_addon_host wasm_addon_tests -j "$(nproc)"
     WOWDECOMP_PLAY_DIR="$PLAY_DIR" WOWDECOMP_REALM_HOST="$REALM_HOST" \
-        "$ROOT/Tools/setup-linux-test-client.sh" --vanilla "$GAME_SRC" >/dev/null
+        "$ROOT/Tools/setup-linux-test-client.sh" --vanilla --keep-wtf "$GAME_SRC" >/dev/null
+    stage_profile_addon
 }
 
 run_tests() {
@@ -273,6 +279,11 @@ client_binary() {
 }
 
 # ʕ •ᴥ•ʔ✿ -datadir is the install root. The play scope holds Data, WTF, and WasmAddOns ✿ ʕ •ᴥ•ʔ
+prepare_client_launch() {
+    export WOWDECOMP_AUTOLOGIN="${WOWDECOMP_AUTOLOGIN:-a:a:Even}"
+    apply_profiler_env
+}
+
 exec_client() {
     local bin="$1"
     if [[ ! -x "$bin" ]]; then
@@ -283,9 +294,19 @@ exec_client() {
         echo "Missing $PLAY_DIR/Data — run: $0 scope" >&2
         exit 1
     fi
+    prepare_client_launch
     echo "datadir: $PLAY_DIR"
     echo "MPQs:    $GAME_SRC"
-    exec "$bin" -datadir "$PLAY_DIR"
+    echo "autologin: $WOWDECOMP_AUTOLOGIN"
+    profiler_launch_note
+    local args=(-datadir "$PLAY_DIR")
+    if [[ "${WOWDECOMP_WINDOWED:-}" == "1" ]]; then
+        args+=(-windowed)
+    fi
+    if [[ -n "${WOWDECOMP_AUTOLOGIN:-}" ]]; then
+        args+=("-autologin=$WOWDECOMP_AUTOLOGIN")
+    fi
+    exec "$bin" "${args[@]}"
 }
 
 launch_client() {
@@ -293,17 +314,12 @@ launch_client() {
     stage_profile_addon
     ensure_wow_disk
     WOWDECOMP_SERVER_BACKEND=docker "$ROOT/Tools/local-server/start.sh"
-    apply_profiler_env
-    profiler_launch_note
     echo "RelWithDebInfo (-O2 -g -DNDEBUG)"
     exec_client "$(client_binary WowClient64)"
 }
 
 stage_profile_addon() {
-    mkdir -p "$PLAY_DIR/Interface/AddOns/WowdecompProfile"
-    cp -f "$ROOT/Addons/WowdecompProfile/WowdecompProfile.toc" \
-        "$ROOT/Addons/WowdecompProfile/WowdecompProfile.lua" \
-        "$PLAY_DIR/Interface/AddOns/WowdecompProfile/"
+    "$ROOT/Tools/stage-profile-addon.sh" "$PLAY_DIR"
 }
 
 # ʕ •ᴥ•ʔ✿ realmList is not written back on exit. A new Config.wtf otherwise keeps the Blizzard login host. ✿ ʕ •ᴥ•ʔ
@@ -357,10 +373,32 @@ launch_release() {
     WOWDECOMP_SERVER_BACKEND=docker "$ROOT/Tools/local-server/start.sh"
     # ʕ •ᴥ•ʔ✿ Same sampler as dev. WOWDECOMP_PROFILE=off still disables it ✿ ʕ •ᴥ•ʔ
     : "${WOWDECOMP_PROFILE:=on}"
-    apply_profiler_env
-    profiler_launch_note
     echo "Release (-O3 -DNDEBUG, gxMsdfFonts=1)"
     exec_client "$RELEASE_BIN"
+}
+
+release_bench() {
+    export WOWDECOMP_PROFILE=on
+    export WOWDECOMP_AUTOLOGIN="${WOWDECOMP_AUTOLOGIN:-a:a:Even}"
+    export WOWDECOMP_BENCH_BIN="$RELEASE_BIN"
+    export WOWDECOMP_WINDOWED=1
+    build_release
+    if [[ ! -x "$RELEASE_BIN" ]]; then
+        echo "Missing $RELEASE_BIN — release build did not produce it" >&2
+        exit 1
+    fi
+    if [[ ! -d "$PLAY_DIR/Data" ]]; then
+        echo "Missing $PLAY_DIR/Data — run: $0 scope" >&2
+        exit 1
+    fi
+    ensure_wow_disk
+    stage_profile_addon
+    enable_release_msdf
+    WOWDECOMP_SERVER_BACKEND=docker "$ROOT/Tools/local-server/start.sh"
+    apply_profiler_env
+    profiler_launch_note
+    echo "Release bench: $WOWDECOMP_AUTOLOGIN  binary=$RELEASE_BIN"
+    exec "$ROOT/Tools/bench-workspace.sh" loop
 }
 
 launch_release_bots() {
@@ -421,6 +459,7 @@ case "$cmd" in
     test) run_tests ;;
     launch) launch_client ;;
     release) launch_release ;;
+    release-bench) release_bench ;;
     release-bots) launch_release_bots ;;
     smoke) smoke_launch ;;
     all)

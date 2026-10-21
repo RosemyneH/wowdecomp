@@ -7,14 +7,16 @@ GAME_SRC=""
 LOCAL_REALM=1
 RETAIL_WTF=0
 VANILLA=1
+KEEP_WTF=1
 REALM_HOST="${WOWDECOMP_REALM_HOST:-127.0.0.1}"
 
 usage() {
-    echo "Usage: $0 [--vanilla|--full-install] [--retail] [--use-game-wtf] [/path/to/3.3.5a/client]" >&2
+    echo "Usage: $0 [--vanilla|--full-install] [--retail] [--use-game-wtf] [--keep-wtf] [/path/to/3.3.5a/client]" >&2
     echo "  Default (--vanilla): MPQs only; local Cache/Interface/Logs (no wxl, no symlinked addons)" >&2
     echo "  --full-install: also symlink Interface/Cache/Logs from the game folder (Astral-style)" >&2
     echo "  Default realm: $REALM_HOST (AzerothCore auth :3724)" >&2
     echo "  --retail: symlink retail WTF / realmlist from install" >&2
+    echo "  --keep-wtf: do not replace WTF/ (keeps Account/* and last character). WOWDECOMP_RESET_WTF=1 forces a wipe" >&2
     exit 1
 }
 
@@ -64,6 +66,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --full-install)
             VANILLA=0
+            shift
+            ;;
+        --keep-wtf)
+            KEEP_WTF=1
             shift
             ;;
         -h|--help)
@@ -160,18 +166,62 @@ else
     done
 fi
 
-rm -rf "$PLAY_DIR/WTF"
-mkdir -p "$PLAY_DIR/WTF"
-if [[ "$LOCAL_REALM" -eq 1 ]]; then
-    printf 'SET locale "enUS"\nSET realmList "%s"\nSET hwDetect "0"\nSET readTOS "1"\nSET readEULA "1"\nSET cameraFov "100"\n' "$REALM_HOST" > "$PLAY_DIR/WTF/Config.wtf"
-elif [[ "$RETAIL_WTF" -eq 1 && -d "$GAME_SRC/WTF" ]]; then
-    rm -rf "$PLAY_DIR/WTF"
-    ln -sfn "$GAME_SRC/WTF" "$PLAY_DIR/WTF"
-elif [[ -d "$GAME_SRC/WTF" ]]; then
-    rm -rf "$PLAY_DIR/WTF"
-    ln -sfn "$GAME_SRC/WTF" "$PLAY_DIR/WTF"
+if [[ "${WOWDECOMP_RESET_WTF:-}" == "1" ]]; then
+    KEEP_WTF=0
+fi
+
+if [[ "$KEEP_WTF" -eq 1 && -d "$PLAY_DIR/WTF" ]]; then
+    mkdir -p "$PLAY_DIR/WTF"
 else
-    printf 'SET locale "enUS"\nSET realmList "%s"\nSET cameraFov "100"\n' "$REALM_HOST" > "$PLAY_DIR/WTF/Config.wtf"
+    rm -rf "$PLAY_DIR/WTF"
+    mkdir -p "$PLAY_DIR/WTF"
+    if [[ "$RETAIL_WTF" -eq 1 && -d "$GAME_SRC/WTF" ]]; then
+        rm -rf "$PLAY_DIR/WTF"
+        ln -sfn "$GAME_SRC/WTF" "$PLAY_DIR/WTF"
+    elif [[ -d "$GAME_SRC/WTF" && "$LOCAL_REALM" -ne 1 && "$VANILLA" -ne 1 ]]; then
+        rm -rf "$PLAY_DIR/WTF"
+        ln -sfn "$GAME_SRC/WTF" "$PLAY_DIR/WTF"
+    fi
+fi
+
+ensure_config_wtf() {
+    local cfg="$PLAY_DIR/WTF/Config.wtf"
+    if [[ -L "$PLAY_DIR/WTF" ]]; then
+        return
+    fi
+    mkdir -p "$PLAY_DIR/WTF"
+    touch "$cfg"
+    if ! grep -q '^SET realmList ' "$cfg"; then
+        printf 'SET realmList "%s"\n' "$REALM_HOST" >>"$cfg"
+    fi
+    if ! grep -q '^SET locale ' "$cfg"; then
+        printf 'SET locale "enUS"\n' >>"$cfg"
+    fi
+    if [[ "$LOCAL_REALM" -eq 1 ]]; then
+        for line in \
+            'SET hwDetect "0"' \
+            'SET readTOS "1"' \
+            'SET readEULA "1"' \
+            'SET cameraFov "100"'; do
+            local key
+            key="$(awk '{print $2}' <<<"$line")"
+            if ! grep -q "^SET ${key} " "$cfg"; then
+                printf '%s\n' "$line" >>"$cfg"
+            fi
+        done
+    elif ! grep -q '^SET cameraFov ' "$cfg"; then
+        printf 'SET cameraFov "100"\n' >>"$cfg"
+    fi
+}
+
+if [[ ! -f "$PLAY_DIR/WTF/Config.wtf" && ! -L "$PLAY_DIR/WTF" ]]; then
+    if [[ "$LOCAL_REALM" -eq 1 ]]; then
+        printf 'SET locale "enUS"\nSET realmList "%s"\nSET hwDetect "0"\nSET readTOS "1"\nSET readEULA "1"\nSET cameraFov "100"\n' "$REALM_HOST" > "$PLAY_DIR/WTF/Config.wtf"
+    else
+        printf 'SET locale "enUS"\nSET realmList "%s"\nSET cameraFov "100"\n' "$REALM_HOST" > "$PLAY_DIR/WTF/Config.wtf"
+    fi
+else
+    ensure_config_wtf
 fi
 
 cat <<EOF

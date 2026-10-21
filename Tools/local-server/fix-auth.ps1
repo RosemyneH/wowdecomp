@@ -15,10 +15,12 @@ $salt = $reg[0].Trim()
 $verifier = $reg[1].Trim()
 
 $sql = @"
-DELETE FROM acore_auth.account_access WHERE id IN (SELECT id FROM acore_auth.account WHERE username='A');
-DELETE FROM acore_auth.account WHERE username='A';
-INSERT INTO acore_auth.account (username, salt, verifier, expansion) VALUES ('A', UNHEX('$salt'), UNHEX('$verifier'), 2);
-INSERT INTO acore_auth.account_access (id, gmlevel, RealmID) SELECT id, 3, -1 FROM acore_auth.account WHERE username='A';
+INSERT INTO acore_auth.account (username, salt, verifier, expansion)
+VALUES ('A', UNHEX('$salt'), UNHEX('$verifier'), 2)
+ON DUPLICATE KEY UPDATE salt=VALUES(salt), verifier=VALUES(verifier), expansion=VALUES(expansion);
+INSERT INTO acore_auth.account_access (id, gmlevel, RealmID)
+SELECT id, 3, -1 FROM acore_auth.account WHERE username='A'
+ON DUPLICATE KEY UPDATE gmlevel=VALUES(gmlevel), RealmID=VALUES(RealmID);
 UPDATE acore_auth.realmlist SET address='$realmHost', localAddress='$realmHost', port=8085, flag=0 WHERE id=1;
 "@
 
@@ -38,10 +40,17 @@ if (Test-Path -LiteralPath $wtf) {
     } else {
         $text = [regex]::Replace($text, 'SET realmList\s+"[^"]*"', 'SET realmList "localhost"')
     }
-    if ($text -match 'SET gxApi\s+"[^"]*"') {
-        $text = [regex]::Replace($text, 'SET gxApi\s+"[^"]*"', 'SET gxApi "D3D9"')
-    } else {
-        $text += "`nSET gxApi `"D3D9`""
+    $realmName = ''
+    $prevEa = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    $realmName = (& $docker compose -f (Join-Path $serverDir 'docker-compose.yml') exec -T ac-database mysql -uroot -ppassword -N -e "SELECT name FROM acore_auth.realmlist WHERE id=1 LIMIT 1;" 2>$null | Select-Object -First 1).Trim()
+    $ErrorActionPreference = $prevEa
+    if ($realmName) {
+        if ($text -match 'SET realmName\s+"[^"]*"') {
+            $text = [regex]::Replace($text, 'SET realmName\s+"[^"]*"', "SET realmName `"$realmName`"")
+        } else {
+            $text += "`nSET realmName `"$realmName`""
+        }
     }
     Set-Content -LiteralPath $wtf -Value $text.TrimEnd() -NoNewline
 }

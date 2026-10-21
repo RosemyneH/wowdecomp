@@ -56,4 +56,6 @@ Seven zones are recorded for the world frame:
 
 The `WowdecompProfile` addon (`Addons/WowdecompProfile`) hooks the latency bar. Hover that bar and the tooltip lists the frame and each zone that ran, slowest self time first.
 
-The sampler is on for a dev-station launch and **off** for a release launch. `WOWDECOMP_PROFILE=on` turns it on for that process. The zone memory is a shared segment the external profile tools can read. Leave it off when you are timing a release build, because the sampler itself is on the frame.
+`dev-station.sh` turns the sampler on for both `launch` and `release` (`WOWDECOMP_PROFILE=off` disables it). The zone memory is a Linux shared segment at `/dev/shm/wowdecomp-profile`; the `wowdecomp-profile` MCP server in `Tools/profile-mcp` reads it. For a long-running release benchmark loop, use `./Tools/dev-station.sh release-bench` (profiler on, `WOWDECOMP_AUTOLOGIN` default `a:a:Even`, samples via `Tools/bench-workspace.sh`).
+
+`scope` and `build` no longer wipe `WTF/Account` unless you set `WOWDECOMP_RESET_WTF=1`. Server characters live in the AzerothCore database volume; `docker compose down -v` in `acore-docker` is what deletes them, not the client launch.

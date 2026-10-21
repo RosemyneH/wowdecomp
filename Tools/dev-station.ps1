@@ -49,7 +49,11 @@ function Invoke-BuildHint {
             -DWOWDECOMP_WASM_ADDONS=OFF
     }
     & $cmake --build $BuildDir --config Release --target WowClient --parallel
-    & (Join-Path $Root 'Tools\setup-windows-test-client.ps1') -GameSrc $GameSrc -PlayDir $PlayDir
+    & (Join-Path $Root 'Tools\setup-windows-test-client.ps1') -GameSrc $GameSrc -PlayDir $PlayDir -SyncBinariesOnly
+}
+
+function Sync-PlayBinaries {
+    & (Join-Path $Root 'Tools\setup-windows-test-client.ps1') -GameSrc $GameSrc -PlayDir $PlayDir -SyncBinariesOnly
 }
 
 function Invoke-Server {
@@ -70,6 +74,10 @@ function Set-GxApi {
     [IO.File]::WriteAllText($cfg, $text)
 }
 
+function Stop-WowdecompClient {
+    & (Join-Path $Root 'Tools\stop-wowdecomp-client.ps1') -PlayDir $PlayDir
+}
+
 function Invoke-Release {
     # ʕ •ᴥ•ʔ✿ Separate tree so the /O2 client does not replace the dev exe. MSVC has no -O3; /O2 is the top ✿ ʕ •ᴥ•ʔ
     $cmake = Get-WowdecompCMake
@@ -81,6 +89,8 @@ function Invoke-Release {
     & $cmake --build $ReleaseBuildDir --config Release --target WowClient --parallel
     if ($LASTEXITCODE -ne 0) { throw "cmake build failed: $LASTEXITCODE" }
 
+    Stop-WowdecompClient
+    Sync-PlayBinaries
     $built = Join-Path $Root 'bin\Win\WowClient64.release.exe'
     if (-not (Test-Path -LiteralPath $built)) { throw "Missing $built" }
     $dest = Join-Path $PlayDir 'WowClient64.release.exe'
@@ -90,21 +100,27 @@ function Invoke-Release {
     }
     Invoke-Server
     Set-GxApi 'Vulkan'
+    $autoLogin = if ($env:WOWDECOMP_AUTOLOGIN) { $env:WOWDECOMP_AUTOLOGIN } else { 'a:a:Even' }
     Write-Host "Release (/O2 /DNDEBUG, gxApi Vulkan): $dest"
     Write-Host "datadir: $PlayDir"
-    & $dest -datadir $PlayDir
+    Write-Host "autologin: $autoLogin"
+    & $dest -datadir $PlayDir "-autologin=$autoLogin"
 }
 
 function Invoke-Launch {
     Invoke-BuildHint
+    Sync-PlayBinaries
     $client = Join-Path $PlayDir 'WowClient64.exe'
     if (-not (Test-Path -LiteralPath $client)) {
         throw "Missing $client - run: .\Tools\dev-station.ps1 scope"
     }
     Invoke-Server
+    Stop-WowdecompClient
+    $autoLogin = if ($env:WOWDECOMP_AUTOLOGIN) { $env:WOWDECOMP_AUTOLOGIN } else { 'a:a:Even' }
     Write-Host "Launching: $client"
     Write-Host "datadir: $PlayDir"
-    & $client -datadir $PlayDir
+    Write-Host "autologin: $autoLogin"
+    & $client -datadir $PlayDir "-autologin=$autoLogin"
 }
 
 switch ($Command) {
