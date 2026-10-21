@@ -1845,6 +1845,20 @@ int32_t CommonMain() {
     CmdLineProcess();
     SetPaths();
 
+    {
+        const char* autoLogin = CmdLineGetString(CMD_AUTOLOGIN);
+
+        if (autoLogin && autoLogin[0]) {
+#if defined(_WIN32)
+            char env[192];
+            SStrPrintf(env, sizeof(env), "WOWDECOMP_AUTOLOGIN=%s", autoLogin);
+            _putenv(env);
+#else
+            setenv("WOWDECOMP_AUTOLOGIN", autoLogin, 1);
+#endif
+        }
+    }
+
     uint32_t sendErrorLogs = 1;
 
     if (!SRegLoadValue("World of Warcraft\\Client", "SendErrorLogs", 0, &sendErrorLogs)) {

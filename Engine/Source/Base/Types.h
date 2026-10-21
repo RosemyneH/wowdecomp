@@ -22,7 +22,8 @@ enum CMDOPT {
     CMD_VULKAN = 17,
     CMD_22050HZ = 14,
     CMD_NO_WARNINGS = 15,
-    CMDOPTS = 16,
+    CMD_AUTOLOGIN = 16,
+    CMDOPTS = 17,
 };
 
 enum PROPERTY {
