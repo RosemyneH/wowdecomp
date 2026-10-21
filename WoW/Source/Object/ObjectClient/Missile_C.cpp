@@ -1820,27 +1820,21 @@ void CMissile::CalcPosition(int32_t advance) {
             box = this->m_model->GetBoundingBox();
             sphere = this->m_model->GetBoundingSphere();
 
-            if ((this->m_flags & 0x90000) == 0x10000) {
-                for (uint32_t i = 0; ; i++) {
-                    CM2Model* emitterModel = this->m_model;
+            for (uint32_t i = 0; ; i++) {
+                CM2Model* emitterModel = this->m_model;
 
-                    if (!(emitterModel->m_fFlags & 1)) {
-                        emitterModel->WaitForLoad(nullptr);
-                    }
-
-                    if (i >= emitterModel->m_shared->m_data->m_particles.m_count) {
-                        break;
-                    }
-
-                    emitterModel = this->m_model;
-
-                    if (!(emitterModel->m_fFlags & 1)) {
-                        emitterModel->WaitForLoad(nullptr);
-                    }
-
-                    emitterModel->m_particleEmitters[i]->m_flags |= 0x400000;
+                if (!(emitterModel->m_fFlags & 1)) {
+                    emitterModel->WaitForLoad(nullptr);
                 }
 
+                if (i >= emitterModel->m_shared->m_data->m_particles.m_count) {
+                    break;
+                }
+
+                emitterModel->m_particleEmitters[i]->m_flags |= 0x400000;
+            }
+
+            if ((this->m_flags & 0x90000) == 0x10000) {
                 this->m_flags |= 0x80000;
             }
         }

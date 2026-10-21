@@ -3230,7 +3230,21 @@ void CM2Model::AnimateST() {
     for (uint32_t i = 0; i < data->m_particles.m_count; i++) {
         this->AnimateParticleST(deltaTime, i);
     }
-    } else if ((this->m_fFlags & 0x401) == 0x401 && (this->m_fFlags & 0x10000)) {
+    } else {
+        uint32_t forceParticles = 0;
+
+        for (uint32_t i = 0; i < data->m_particles.m_count; i++) {
+            if (this->m_particleEmitters[i]->m_flags & 0x400000) {
+                forceParticles = 1;
+                break;
+            }
+        }
+
+        if (forceParticles) {
+            for (uint32_t i = 0; i < data->m_particles.m_count; i++) {
+                this->AnimateParticleST(deltaTime, i);
+            }
+        } else if ((this->m_fFlags & 0x401) == 0x401 && (this->m_fFlags & 0x10000)) {
         // ʕ •ᴥ•ʔ✿ Live quads still draw. Refresh the camera they subtract, and skip emission and integration ✿ ʕ •ᴥ•ʔ
         static C44Matrix s_emitterRotation(0.0f, 1.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f);
         const C3Vector& viewPos = *reinterpret_cast<const C3Vector*>(&this->m_scene->m_viewInv.d0);
@@ -3253,6 +3267,7 @@ void CM2Model::AnimateST() {
             for (uint32_t child = 0; child < emitter->m_childEmitterCount; child++) {
                 emitter->m_childEmitters[child]->UpdateXform(transform, viewPos, frame);
             }
+        }
         }
     }
 

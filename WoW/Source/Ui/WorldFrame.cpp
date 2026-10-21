@@ -2529,6 +2529,24 @@ int32_t CGWorldFrame::OnLayerMouseWheel(const CMouseEvent& evt) {
 // OFFSET: 0x004F5910
 int32_t CGWorldFrame::MissileEnumProc(void* param, uint32_t flags, uint64_t guid, uintptr_t param32) {
     CMissile* missile = reinterpret_cast<CMissile*>(param32);
+
+    if (missile && missile->m_model && missile->m_model->IsLoaded(0, 0)) {
+        CM2Model* model = missile->m_model;
+        uint32_t visible = (flags & 3) != 0;
+
+        if (model->m_attachParent) {
+            model->m_fFlags = (model->m_fFlags & ~0x80u) | (visible << 7);
+        } else {
+            model->m_fFlags = (model->m_fFlags & ~0x8u) | (visible << 3);
+        }
+
+        if (model->m_attachParent) {
+            model->m_fFlags = (model->m_fFlags & ~0x20000u) | (visible << 17);
+        } else {
+            model->m_fFlags = (model->m_fFlags & ~0x10000u) | (visible << 16);
+        }
+    }
+
     return !missile || missile->m_mapEntity != nullptr;
 }
 
