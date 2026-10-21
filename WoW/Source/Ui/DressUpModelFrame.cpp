@@ -102,6 +102,8 @@ bool CGDressUpModelFrame::IsA(const char* typeName) {
     return !SStrCmpI(typeName, CGDressUpModelFrame::s_objectTypeName, STORM_MAX_STR) || CGCharacterModelBase::IsA(typeName);
 }
 
+static void ApplyWornMesh(CM2Model* dst, CM2Model* src);
+
 // VERIFY: 79d529ac manual
 // OFFSET: 0x00597F40
 void CGDressUpModelFrame::UpdateModel() {
@@ -113,6 +115,13 @@ void CGDressUpModelFrame::UpdateModel() {
 
     uint32_t ready = this->m_component->RenderPrep(0) & 1;
     CM2Model* model = this->m_component->m_data.m_model;
+
+    CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(this->m_unitGuid, TYPEMASK_UNIT, __FILE__, __LINE__));
+
+    if (unit && unit->m_unit && unit->m_unit->m_unitFieldNativedisplayid == unit->m_unit->m_unitFieldDisplayid) {
+        // ʕ •ᴥ•ʔ✿ Prep just hid every geoset except the bald defaults. Put back the hair, ears, and face the world model is drawing ✿ ʕ •ᴥ•ʔ
+        ApplyWornMesh(model, unit->m_worldModel);
+    }
 
     if (model->m_attachParent) {
         model->m_fFlags = (model->m_fFlags & ~0x80u) | (ready << 7);
@@ -193,6 +202,10 @@ CM2Model* CGDressUpModelFrame::GetDuplicateUnitCharacterModel(CGUnit_C* unit) {
 
     if (!modelData) {
         return nullptr;
+    }
+
+    if (unit->m_worldModel && (unit->m_worldModel->m_fFlags & 1) && unit->m_unit && unit->m_unit->m_unitFieldNativedisplayid == unit->m_unit->m_unitFieldDisplayid) {
+        return this->GetScene()->DuplicateModel(unit->m_worldModel, 0);
     }
 
     const char* modelName = modelData->m_modelName;
@@ -496,53 +509,9 @@ void CGDressUpModelFrame::TryOnItem(CGItem_C* item, int32_t hand) {
     }
 }
 
-static uint32_t VisibleHairGeoset(CM2Model* model, uint32_t first, uint32_t last, uint32_t current, uint32_t empty) {
-    if (!model || !(model->m_fFlags & 1) || !model->m_skinSections || !model->m_shared || !model->m_shared->m_skinData) {
-        return current;
-    }
-
-    M2SkinProfile* skin = model->m_shared->m_skinData;
-    uint32_t visibleCount = 0;
-    uint32_t sole = current;
-    uint32_t best = 0;
-    uint32_t bestIndices = 0;
-    int32_t currentVisible = 0;
-
-    for (uint32_t i = 0; i < skin->m_skinSections.m_count; i++) {
-        if (!model->m_skinSections[i]) {
-            continue;
-        }
-
-        uint32_t raw = skin->m_skinSections[i].m_skinSectionId;
-        uint32_t key = raw & 0xFFFF;
-
-        if (key < first || key > last) {
-            continue;
-        }
-
-        visibleCount++;
-        sole = raw;
-        currentVisible |= key == (current & 0xFFFF);
-
-        if (key != (empty & 0xFFFF) && skin->m_skinSections[i].m_indexCount >= bestIndices) {
-            bestIndices = skin->m_skinSections[i].m_indexCount;
-            best = raw;
-        }
-    }
-
-    if (!visibleCount) {
-        return empty;
-    }
-
-    if (visibleCount == 1) {
-        return sole;
-    }
-
-    if (currentVisible && (current & 0xFFFF) != (empty & 0xFFFF)) {
-        return current;
-    }
-
-    return best ? best : current;
+static int32_t WornSection(uint32_t id) {
+    uint32_t key = id & 0xFFFF;
+    return (key >= 1 && key <= 99) || (key >= 100 && key <= 399) || (key >= 700 && key <= 799) || (key >= 1600 && key <= 1799);
 }
 
 static void CopyHairTexture(CM2Model* dst, CM2Model* src) {
@@ -558,6 +527,29 @@ static void CopyHairTexture(CM2Model* dst, CM2Model* src) {
             return;
         }
     }
+}
+
+static void ApplyWornMesh(CM2Model* dst, CM2Model* src) {
+    if (!dst || !src || !(dst->m_fFlags & 1) || !(src->m_fFlags & 1) || !src->m_skinSections || !dst->m_skinSections) {
+        return;
+    }
+
+    if (!src->m_shared || !src->m_shared->m_skinData || dst->m_shared != src->m_shared) {
+        return;
+    }
+
+    M2SkinProfile* skin = src->m_shared->m_skinData;
+
+    for (uint32_t i = 0; i < skin->m_skinSections.m_count; i++) {
+        if (!WornSection(skin->m_skinSections[i].m_skinSectionId)) {
+            continue;
+        }
+
+        dst->m_skinSections[i] = src->m_skinSections[i] ? 1 : 0;
+    }
+
+    dst->UnoptimizeVisibleGeometry();
+    CopyHairTexture(dst, src);
 }
 
 // VERIFY: 8eaa7ea4 auto
@@ -647,24 +639,6 @@ void CGDressUpModelFrame::SetModel(CM2Model* model) {
                 int32_t itemId = std::abs(item->m_itemId);
                 this->TryOnWithVisual(itemId, const_cast<VisibleItem_C*>(item)->GetItemEnchantmentVisualID(), hand);
             }
-        }
-
-        // ʕ •ᴥ•ʔ✿ Hair cards are an alpha-tested mesh. Match the section the world model is drawing, and its type-6 texture ✿ ʕ •ᴥ•ʔ
-        CM2Model* worldModel = player->m_worldModel;
-
-        if (worldModel && (worldModel->m_fFlags & 1) && player->m_unit->m_unitFieldNativedisplayid == player->m_unit->m_unitFieldDisplayid) {
-            static const int32_t kSlot[] = {0, 1, 2, 3, 16, 17};
-            static const uint32_t kFirst[] = {1, 100, 200, 300, 1600, 1700};
-            static const uint32_t kLast[] = {99, 199, 299, 399, 1699, 1799};
-            static const uint32_t kEmpty[] = {1, 101, 201, 301, 1601, 1701};
-
-            for (int32_t i = 0; i < 6; i++) {
-                uint32_t* geoset = &this->m_component->m_data.m_geosets[kSlot[i]];
-                *geoset = VisibleHairGeoset(worldModel, kFirst[i], kLast[i], *geoset, kEmpty[i]);
-            }
-
-            CopyHairTexture(model, worldModel);
-            this->m_component->m_flags |= 0x4;
         }
 
         const CGUnitVirtualItem* mainHand = player->GetVirtualItem(0, true);
