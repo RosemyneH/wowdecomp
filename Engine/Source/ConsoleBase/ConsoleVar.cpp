@@ -720,6 +720,7 @@ void CVar::DeleteCharacterCVars() {
 
     while (var) {
         if ((var->m_flags & 0x1) && (var->m_flags & 0x30) == 0x20) {
+            ConsoleCommandUnregister(var->m_key.m_str);
             var = s_registeredCVars.DeleteNode(var);
         } else {
             var = s_registeredCVars.Next(var);
@@ -734,6 +735,7 @@ void CVar::DeleteAccountCVars() {
 
     while (var) {
         if ((var->m_flags & 0x1) && (var->m_flags & 0x30) == 0x10) {
+            ConsoleCommandUnregister(var->m_key.m_str);
             var = s_registeredCVars.DeleteNode(var);
         } else {
             var = s_registeredCVars.Next(var);
@@ -746,6 +748,11 @@ void CVar::DeleteAccountCVars() {
 void CVar::Destroy() {
     CVar::m_initialized = false;
     CVar::SaveAll();
+
+    for (CVar* var = s_registeredCVars.m_fulllist.Head(); var; var = s_registeredCVars.m_fulllist.Next(var)) {
+        ConsoleCommandUnregister(var->m_key.m_str);
+    }
+
     ConsoleCommandUnregister("set");
     ConsoleCommandUnregister("cvar_reset");
     ConsoleCommandUnregister("cvar_default");
