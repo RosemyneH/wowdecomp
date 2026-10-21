@@ -99,7 +99,7 @@ if ($syncOnly) {
         'taskkill /IM WowClient64.release.exe /F >nul 2>&1'
         'timeout /t 1 /nobreak >nul'
         "set WOWDECOMP_AUTOLOGIN=$autoLogin"
-        "start "" .\WowClient64.exe -datadir \"%~dp0\" -autologin=$autoLogin %*"
+        ('start "" .\WowClient64.exe -datadir "%~dp0" -autologin=' + $autoLogin + ' %*')
     ) | Set-Content -LiteralPath $launchCmd -Encoding ASCII
     Write-Host "Synced binaries + addon into $PlayDir (WTF/Data untouched)."
     return
@@ -217,7 +217,7 @@ $launchCmd = Join-Path $PlayDir 'Launch-Wowdecomp.cmd'
     'taskkill /IM WowClient64.release.exe /F >nul 2>&1'
     'timeout /t 1 /nobreak >nul'
     "set WOWDECOMP_AUTOLOGIN=$autoLogin"
-    "start "" .\WowClient64.exe -datadir \"%~dp0\" -autologin=$autoLogin %*"
+    ('start "" .\WowClient64.exe -datadir "%~dp0" -autologin=' + $autoLogin + ' %*')
 ) | Set-Content -LiteralPath $launchCmd -Encoding ASCII
 
 $layout = if ($FullInstall) { 'full-install (symlinked Interface/Cache/Logs)' } else { 'vanilla (MPQs + wowdecomp FrameXML patch only)' }
