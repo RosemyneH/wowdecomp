@@ -686,6 +686,23 @@ static void sLogDbgHelpStackTrace(uint32_t logOptions, void (*logLineProc)(void*
     logLineProc(logLineProcParam, "");
 }
 
+static bool FramePointerReadable(const void* address) {
+    uintptr_t value = reinterpret_cast<uintptr_t>(address);
+
+    if (value < 0x10000 || (value & (sizeof(void*) - 1))) {
+        return false;
+    }
+
+    MEMORY_BASIC_INFORMATION info;
+
+    if (!VirtualQuery(address, &info, sizeof(info)) || info.State != MEM_COMMIT || (info.Protect & PAGE_GUARD)) {
+        return false;
+    }
+
+    DWORD protect = info.Protect & 0xFF;
+    return protect == PAGE_READONLY || protect == PAGE_READWRITE || protect == PAGE_WRITECOPY || protect == PAGE_EXECUTE_READ || protect == PAGE_EXECUTE_READWRITE || protect == PAGE_EXECUTE_WRITECOPY;
+}
+
 // OFFSET: 0x0077DB10
 static void sLogX86ManualStackTrace(void (*logLineProc)(void*, const char*, ...), void* logLineProcParam, DWORD_PTR registerEip, DWORD_PTR registerEbp, uint32_t stackFramesToSkip) {
     sLogHeader(logLineProc, logLineProcParam, "Stack Trace (Manual)");
@@ -742,7 +759,7 @@ static void sLogX86ManualStackTrace(void (*logLineProc)(void*, const char*, ...)
                 logLineProc(logLineProcParam, LOG_PTR " " LOG_PTR " %04X:%08X %s", eip, reinterpret_cast<DWORD_PTR>(ebp), section, offset, modulePath);
             }
 
-            if (IsBadWritePtr(ebp, 2 * sizeof(DWORD_PTR))) {
+            if (!FramePointerReadable(ebp)) {
                 break;
             }
 
@@ -750,15 +767,7 @@ static void sLogX86ManualStackTrace(void (*logLineProc)(void*, const char*, ...)
             DWORD_PTR* previous = ebp;
             ebp = reinterpret_cast<DWORD_PTR*>(ebp[0]);
 
-            if (reinterpret_cast<DWORD_PTR>(ebp) & 3) {
-                break;
-            }
-
-            if (ebp <= previous) {
-                break;
-            }
-
-            if (IsBadWritePtr(ebp, 2 * sizeof(DWORD_PTR))) {
+            if (ebp <= previous || !FramePointerReadable(ebp)) {
                 break;
             }
         }
