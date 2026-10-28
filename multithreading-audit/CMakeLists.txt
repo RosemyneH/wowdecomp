@@ -1,5 +1,14 @@
 find_package(Threads REQUIRED)
 
+add_executable(job_exit_repro
+    job_exit_repro.cpp
+    ${CMAKE_SOURCE_DIR}/Engine/Source/Base/Job/JobSystem.cpp
+)
+target_include_directories(job_exit_repro PRIVATE ${CMAKE_SOURCE_DIR})
+target_link_libraries(job_exit_repro PRIVATE Threads::Threads)
+add_test(NAME job_exit_shutdown COMMAND job_exit_repro shutdown)
+set_tests_properties(job_exit_shutdown PROPERTIES TIMEOUT 60)
+
 add_executable(job_lifecycle_test
     job_lifecycle_test.cpp
     ${CMAKE_SOURCE_DIR}/Engine/Source/Base/Job/JobSystem.cpp

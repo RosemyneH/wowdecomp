@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <cstdlib>
 #include <float.h>
+#include "Engine/Source/Base/Job/JobSystem.h"
 #include "Engine/Source/Storm/H/storm.h"
 #include "WoW/Source/Client.h"
 
@@ -33,7 +34,9 @@ int main() {
     _control87(0x9001F, 0xFFFFFFFF);
     ReturnFalse();
 
-    return CommonMain();
+    int result = CommonMain();
+    Job::Shutdown();
+    return result;
 }
 
 // VERIFY: e860ff37 auto

@@ -4,6 +4,7 @@
 #include <timeapi.h>
 #include <cstdlib>
 #include <float.h>
+#include "Engine/Source/Base/Job/JobSystem.h"
 #include "Engine/Source/Storm/H/storm.h"
 #include "WoW/Source/Client.h"
 
@@ -33,7 +34,9 @@ int main() {
     _control87(0x9001F & ~(_MCW_PC | _MCW_IC), _MCW_DN | _MCW_EM | _MCW_RC);
     ReturnFalse();
 
-    return CommonMain();
+    int result = CommonMain();
+    Job::Shutdown();
+    return result;
 }
 
 // OFFSET: 0x0040B7D0

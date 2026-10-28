@@ -3,6 +3,7 @@
 #include <fenv.h>
 #include <cstdint>
 #include <cstdlib>
+#include "Engine/Source/Base/Job/JobSystem.h"
 #include "Engine/Source/Storm/H/storm.h"
 #include "WoW/Source/Client.h"
 
@@ -10,7 +11,9 @@ static int32_t ClientMain() {
     feclearexcept(FE_ALL_EXCEPT);
     fesetround(FE_TONEAREST);
 
-    return CommonMain();
+    int32_t result = CommonMain();
+    Job::Shutdown();
+    return result;
 }
 
 int main(int argc, char** argv) {
