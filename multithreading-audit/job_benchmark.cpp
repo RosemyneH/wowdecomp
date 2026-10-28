@@ -13,6 +13,18 @@ namespace Job {
 void Publish(uint32_t count, RangeFn fn, void* user, uint32_t chunks);
 }
 
+// -- ʕ •ᴥ•ʔ✿ Same clamp as JobSystem.cpp ChunkCount: four ranges per participant ✿ ʕ •ᴥ•ʔ
+uint32_t ReportedChunks(uint32_t size, uint32_t workers, unsigned multiplier) {
+    if (!size) {
+        return 0;
+    }
+    if (multiplier == 0) {
+        uint64_t chunks = static_cast<uint64_t>(workers + 1) * 4u;
+        return static_cast<uint32_t>(chunks > size ? size : chunks);
+    }
+    return std::min(size, workers * multiplier);
+}
+
 Profiler::Scope::Scope(uint32_t zone) : id(zone), start(0), child(0) {}
 Profiler::Scope::~Scope() {}
 
@@ -82,7 +94,7 @@ int main() {
                     std::printf("%u,%s,%s,%u,%u,%.6f\n", size,
                         distribution == 0 ? "uniform" : distribution == 1 ? "uneven" : "skewed",
                         multiplier == 0 ? "parallel_for" : "publish_wait",
-                        std::min(size, multiplier == 0 ? workers + 1 : workers * multiplier),
+                        ReportedChunks(size, workers, multiplier),
                         sample, elapsed / repeats);
                 }
             }

@@ -92,6 +92,19 @@ void WorkerMain() {
 
 }
 
+namespace {
+
+// -- ʕ •ᴥ•ʔ✿ Four claims per participant. One range per worker pins a heavy model to its neighbors ✿ ʕ •ᴥ•ʔ
+uint32_t ChunkCount(uint32_t count, uint32_t participants) {
+    uint64_t chunks = static_cast<uint64_t>(participants) * 4u;
+    if (chunks > count) {
+        chunks = count;
+    }
+    return static_cast<uint32_t>(chunks);
+}
+
+}
+
 namespace Job {
 
 uint32_t WorkerCount() {
@@ -214,8 +227,7 @@ void Start(uint32_t count, RangeFn fn, void* user) {
         return;
     }
 
-    uint32_t chunks = count < g_pool.workerCount ? count : g_pool.workerCount;
-    Publish(count, fn, user, chunks);
+    Publish(count, fn, user, ChunkCount(count, g_pool.workerCount));
 }
 
 void ParallelFor(uint32_t count, RangeFn fn, void* user) {
@@ -230,12 +242,7 @@ void ParallelFor(uint32_t count, RangeFn fn, void* user) {
         return;
     }
 
-    // -- ʕ •ᴥ•ʔ✿ One chunk per worker plus the caller, near WorkerCount, not one atomic per item. ✿ ʕ •ᴥ•ʔ
-    uint32_t chunks = g_pool.workerCount + 1;
-    if (chunks > count) {
-        chunks = count;
-    }
-
+    uint32_t chunks = ChunkCount(count, g_pool.workerCount + 1);
     Publish(count, fn, user, chunks);
     RunRanges(fn, user, count, chunks);
     Join();

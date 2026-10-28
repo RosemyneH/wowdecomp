@@ -7,11 +7,15 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-No further production scheduler change justified by current evidence. Overall
-engine/runtime audit remains incomplete; blocked validation is listed below.
+No further scheduler-policy change is justified beyond the four-range claim size.
+Engine/runtime validation that needs a client or other hardware remains blocked
+below.
 
 ## Completed iterations
 
+- [x] Publish four ranges per participant so one heavy item is not sealed into
+  the same claim as its neighbors. Coverage, terminate, and TSan lifecycle checks
+  passed. Within-run 10-worker synthetic medians are recorded; no frame-time claim.
 - [x] Fix forbidden pooled caller exceptions leaving a permanently incomplete batch.
   Fail fast on both worker and participating caller via noexcept; preserve no-pool
   exception propagation. Initial explicit catch revised after timing investigation.
@@ -28,7 +32,7 @@ engine/runtime audit remains incomplete; blocked validation is listed below.
   Record five 2880-sample matrices, including reordered/noexcept and A/A controls.
 - [x] Evaluate completion acknowledgments and multiple-in-flight design: retain
   current protocol because acknowledgments protect batch reuse; no representative
-  benefit established for handles, work stealing or adaptive chunks.
+  benefit established for handles or work stealing. Claim size was revisited later.
 - [x] Build affected Linux libraries and focused targets; run focused tests,
   sanitizers and available cross-compiler/emulation checks. Record platform limits.
 - [x] Inspect existing profiler: global worker-unsafe scope state; Job.Join excludes
@@ -36,6 +40,12 @@ engine/runtime audit remains incomplete; blocked validation is listed below.
 
 ## Verification evidence
 
+- 2026-10-28 chunk-size change, final sources: one `-O2` lifecycle run and one
+  TSan lifecycle run passed with no diagnostics. The same claim formula had
+  already passed three `-O2` lifecycle runs and the exit reproducer (0 for
+  shutdown and fallback, 42 for terminate paths). Default 10-worker benchmark
+  wrote 240 samples to `multithreading-audit/results/2026-10-28-chunks-x4.csv`
+  with matching serial output. Not a client or multi-worker-count rerun.
 - Linux Release Base, Model2, WorldClient and Gx libraries and optional benchmark
   target build successfully. Final focused suite: 15 tests, three repetitions each,
   all pass. Exit omission tests deliberately reproduce termination (not fixed).

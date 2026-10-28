@@ -73,11 +73,35 @@ median [minimum, maximum] of five samples:
 | 16 | uneven | 0.307 [0.306, 0.322] | 0.314 [0.304, 0.367] |
 | 16 | skewed | 1.514 [1.498, 1.534] | 1.546 [1.522, 1.601] |
 
-The synthetic skew distribution benefits from extra chunks in some configurations,
-but does not establish representative animation speedup. Keep current scheduler
-policy pending real engine cost distributions and frame measurements. Small jobs
-still pay publication and all-worker acknowledgment overhead. No adaptive chunks,
-work stealing, independent handles or completion replacement is justified here.
+The public ParallelFor columns above still use one range per participant, so they
+do not show the chunk-count effect. Within those same runs, forced 4× and 8×
+ranges did. That comparison is what the later section acts on. Small jobs still
+pay publication and all-worker acknowledgment overhead. No work stealing,
+independent handles, or completion replacement is justified here.
+
+## Four ranges per participant
+
+2026-10-28, same host, GCC 16.2.1 `-O2`, actual pool of 10 workers
+(`hardware_concurrency` 12, no `WOW_JOB_BENCH_WORKERS` override). One process,
+seed 335, five samples, 20 batches each. Raw rows:
+`../multithreading-audit/results/2026-10-28-chunks-x4.csv`.
+`parallel_for` is the production path after the change (44 ranges on 4096 items).
+`publish_wait` still forces 1×/2×/4×/8× worker ranges in that same process.
+Median [minimum, maximum] milliseconds per batch, 4096 items:
+
+| Distribution | parallel_for (44) | 10 ranges | 20 ranges | 40 ranges | 80 ranges |
+| --- | --- | --- | --- | --- | --- |
+| uniform | 0.176 [0.159, 0.187] | 0.200 [0.179, 0.251] | 0.178 [0.176, 0.187] | 0.186 [0.165, 0.200] | 0.204 [0.170, 0.233] |
+| uneven | 0.271 [0.264, 0.285] | 0.319 [0.282, 0.381] | 0.289 [0.274, 0.347] | 0.270 [0.266, 0.296] | 0.263 [0.252, 0.336] |
+| skewed | 1.111 [1.101, 1.142] | 1.551 [1.508, 1.560] | 1.495 [1.488, 1.533] | 1.220 [1.203, 1.266] | 0.650 [0.643, 0.675] |
+
+On this run the skewed 44-range and 10-range intervals do not overlap. Uniform
+44-range median is below the 10-range median. Eighty ranges are faster on the
+artificial prefix and slightly slower on uniform, which is why production stays
+at four ranges per participant. Serial output checks passed (nonzero exit would
+have stopped the run). This is still synthetic item cost, not animation, skinning,
+or presented frame time. The earlier identical-binary control still forbids
+treating a later cross-process rerun as a causal speedup.
 
 ## Measurement limits
 

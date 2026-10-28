@@ -4,8 +4,9 @@
 
 `Engine/Source/Base/Job/JobSystem.cpp` owns one static pool and one active batch.
 Publication holds `Pool::mu`; workers copy callback metadata under that mutex.
-An atomic index dynamically assigns contiguous ranges. `Start` chooses up to one
-range per worker; `ParallelFor` includes one additional caller range. `Wait` also
+An atomic index dynamically assigns contiguous ranges. Both `Start` and
+`ParallelFor` publish four ranges per participant (`Start` uses the workers;
+`ParallelFor` also counts the caller), clamped to the item count. `Wait` also
 claims ranges, then waits for both zero remaining ranges and every worker acknowledgment.
 The latter protects metadata reuse even after the last callback finishes. Removing
 acknowledgments alone would permit old workers to claim from a new batch.
@@ -40,7 +41,9 @@ hypotheses as reachable defects. Four dispatch sites currently remain: World.cpp
 (culling), M2Scene.cpp (animation and async skinning), CM2SceneRender.cpp (doodad
 skinning). Terrain and grass initialize the pool but currently fill mapped buffers
 serially. Client teardown/input reentrancy and renderer staging lifetimes require
-further validation. No new graphics-thread work or scheduler policy change is made.
+further validation. No graphics calls were moved onto workers. Claim size is now
+four ranges per participant; wakeup, completion, and single-batch publication
+are unchanged.
 
 Validation: Linux Release targets rebuilt and all 15 job/emergency-memory CTests
 passed three repetitions each, including caller and worker terminate-handler code
@@ -81,6 +84,17 @@ Wait already does useful range processing. No multiple-in-flight change is justi
 without representative overlap measurements. The only asynchronous in-tree dispatch
 is CPU skinning, already overlapped with terrain drawing. Hybrid/NUMA tuning cannot
 be inferred from this single-node, symmetric 6-core/12-thread host.
+
+## Chunk granularity
+
+One range per participant leaves several models or skin sections inside a single
+claim, so a heavy item cannot be separated from the cheap items beside it.
+`ChunkCount` publishes `4 * participants` ranges, never more than the item count.
+Counts at or below the participant count are unchanged. The factor is the measured
+4× column, not an adaptive controller and not 8×: on the prior matrix, 8× split an
+artificial hot prefix further but was slower than 4× for the 16-worker uneven case.
+The 2026-10-28 host rerun is in the benchmark record. This does not change wakeup
+or completion accounting, and it is not a frame-time result.
 
 Other threading sources found: Services/AsyncFile queue workers; Storm SThread/SLock
 platform wrappers; detached Unix/Darwin URL downloads; BlizzardCore process/thread
