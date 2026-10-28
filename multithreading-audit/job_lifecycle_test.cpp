@@ -183,6 +183,21 @@ int main() {
         if (count.load() != 60) return 2;
     }
     Job::Init();
+    for (unsigned iteration = 0; iteration < 100; ++iteration) {
+        std::vector<uint32_t> first(1 + iteration % 257, 0);
+        std::vector<uint32_t> second(1 + (iteration * 17) % 257, 0);
+        Job::Start(static_cast<uint32_t>(first.size()), WriteRange, first.data());
+        Job::Start(static_cast<uint32_t>(second.size()), WriteRange, second.data());
+        bool firstComplete = true;
+        for (uint32_t i = 0; i < first.size(); ++i) {
+            if (first[i] != i + 1) firstComplete = false;
+        }
+        Job::Wait();
+        if (!firstComplete) return 17;
+        for (uint32_t i = 0; i < second.size(); ++i) {
+            if (second[i] != i + 1) return 18;
+        }
+    }
     for (unsigned mode = 0; mode < 3; ++mode) {
         for (uint32_t size : {1u, 3u, 257u, 1025u}) {
             std::vector<uint32_t> values(size, 0);
