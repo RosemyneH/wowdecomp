@@ -7,7 +7,10 @@ add_executable(job_exit_repro
 target_include_directories(job_exit_repro PRIVATE ${CMAKE_SOURCE_DIR})
 target_link_libraries(job_exit_repro PRIVATE Threads::Threads)
 add_test(NAME job_exit_shutdown COMMAND job_exit_repro shutdown)
-set_tests_properties(job_exit_shutdown PROPERTIES TIMEOUT 60)
+add_test(NAME job_exit_without_shutdown COMMAND ${CMAKE_COMMAND}
+    -DREPRO=$<TARGET_FILE:job_exit_repro>
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_job_exit.cmake)
+set_tests_properties(job_exit_shutdown job_exit_without_shutdown PROPERTIES TIMEOUT 60)
 
 add_executable(job_lifecycle_test
     job_lifecycle_test.cpp
