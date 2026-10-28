@@ -97,17 +97,31 @@ uint32_t WorkerCount() {
 }
 
 void Init() {
-    std::lock_guard<std::mutex> lock(g_pool.mu);
+    std::unique_lock<std::mutex> lock(g_pool.mu);
     if (!g_pool.threads.empty()) {
         return;
     }
 
-    g_pool.workerCount = ReserveWorkerCount();
+    uint32_t workerCount = ReserveWorkerCount();
     g_pool.shutdown = false;
-    g_pool.threads.reserve(g_pool.workerCount);
-    for (uint32_t index = 0; index < g_pool.workerCount; ++index) {
-        g_pool.threads.emplace_back(WorkerMain);
+    try {
+        g_pool.threads.reserve(workerCount);
+        for (uint32_t index = 0; index < workerCount; ++index) {
+            g_pool.threads.emplace_back(WorkerMain);
+        }
+    } catch (...) {
+        g_pool.shutdown = true;
+        g_pool.cv.notify_all();
+        lock.unlock();
+        for (std::thread& thread : g_pool.threads) {
+            thread.join();
+        }
+        lock.lock();
+        g_pool.threads.clear();
+        g_pool.shutdown = false;
+        throw;
     }
+    g_pool.workerCount = workerCount;
 }
 
 void Shutdown() {
