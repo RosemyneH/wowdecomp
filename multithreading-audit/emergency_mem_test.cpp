@@ -65,5 +65,31 @@ int main() {
     for (unsigned i = 0; i < 32; ++i) {
         if (stagingUpload[i] != 0x66 || direct[i] != 0x77) return 13;
     }
+    unsigned char staleUpload[32] = {};
+    bool hasData = true;
+    bool valid = false;
+    auto* staleMap = static_cast<unsigned char*>(staging.Lock(32));
+    if (!staleMap) return 14;
+    std::memset(staleMap, 0x88, 32);
+    if (staging.Lock(32) != staleMap) return 15;
+    std::memcpy(staleUpload, staging.m_data.Ptr(), 32);
+    staging.Unlock();
+    valid = true;
+    bool refill = !(hasData && valid);
+    if (refill || staleUpload[0] != 0x88) return 16;
+
+    valid = false;
+    refill = !(hasData && valid);
+    if (!refill) return 17;
+    auto* freshMap = static_cast<unsigned char*>(staging.Lock(32));
+    if (!freshMap) return 18;
+    std::memset(freshMap, 0x99, 32);
+    std::memcpy(staleUpload, freshMap, 32);
+    staging.Unlock();
+    valid = true;
+    for (unsigned char byte : staleUpload) {
+        if (byte != 0x99) return 19;
+    }
+    if (!hasData || !valid) return 20;
     return 0;
 }
