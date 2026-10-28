@@ -111,6 +111,7 @@ void Init() {
 }
 
 void Shutdown() {
+    Wait();
     std::vector<std::thread> threads;
     {
         std::lock_guard<std::mutex> lock(g_pool.mu);
