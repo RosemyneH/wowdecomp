@@ -35,6 +35,12 @@ void Count(Job::Range range, void* user) {
 int main() {
     Job::ParallelFor(1, nullptr, nullptr);
     Job::Start(1, nullptr, nullptr);
+    std::atomic<unsigned> inlineCount{0};
+    Job::Start(1, Count, &inlineCount);
+    Job::ParallelFor(1, Count, &inlineCount);
+    Job::Wait();
+    Job::Shutdown();
+    if (inlineCount.load() != 2) return 4;
     Job::Init();
     Job::ParallelFor(0, nullptr, nullptr);
     Job::ParallelFor(1, nullptr, nullptr);
@@ -58,6 +64,23 @@ int main() {
     Job::Wait();
 
     Job::Init();
+    for (unsigned mode = 0; mode < 2; ++mode) {
+        BlockingJob prior;
+        std::atomic<unsigned> next{0};
+        Job::Start(1, Block, &prior);
+        while (!prior.entered.load()) std::this_thread::yield();
+        std::thread unblock([&] {
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            prior.release.store(true);
+        });
+        if (mode == 0) Job::Start(1, Count, &next);
+        else Job::ParallelFor(1, Count, &next);
+        bool priorCompleted = prior.calls.load() == 1;
+        unblock.join();
+        if (!priorCompleted) return 5;
+        Job::Wait();
+        if (next.load() != 1) return 6;
+    }
     std::vector<std::atomic<unsigned>> counts(257);
     for (auto& count : counts) count.store(0);
     for (unsigned i = 0; i < 30; ++i) {
