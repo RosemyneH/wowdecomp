@@ -104,6 +104,9 @@ int main() {
     Job::ParallelFor(1, nullptr, nullptr);
     Job::Start(0, Block, &job);
     Job::Start(1, nullptr, nullptr);
+    const uint32_t initialWorkers = Job::WorkerCount();
+    Job::Init();
+    if (Job::WorkerCount() != initialWorkers || job.calls.load() != 0) return 13;
     std::thread release([&] {
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
         job.release.store(true);
@@ -114,6 +117,9 @@ int main() {
     Job::Wait();
 
     Job::Init();
+    const uint32_t workersBeforeRepeatedInit = Job::WorkerCount();
+    Job::Init();
+    if (Job::WorkerCount() != workersBeforeRepeatedInit) return 14;
     for (unsigned mode = 0; mode < 2; ++mode) {
         BlockingJob prior;
         std::atomic<unsigned> next{0};
