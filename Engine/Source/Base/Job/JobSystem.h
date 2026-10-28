@@ -12,6 +12,10 @@ struct Range {
 
 using RangeFn = void (*)(Range range, void* user);
 
+// All APIs, including lifecycle and WorkerCount, require serialized access on
+// the engine main thread. Callbacks must not reenter this API. Init is idempotent;
+// Shutdown completes active work before joining workers. User data must remain
+// alive through Wait, the next nonempty dispatch, or Shutdown.
 void Init();
 void Shutdown();
 uint32_t WorkerCount();
