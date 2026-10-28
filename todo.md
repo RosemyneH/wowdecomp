@@ -7,12 +7,16 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-Exterior doodad sphere tests stay serial below 4096 items. Heavier jobs still
-use the pool. Engine/runtime validation that needs a client or other hardware
-remains blocked below.
+Small batches use at most four runners until the item count passes 16. Larger
+batches still open one more runner per four items up to the pool. Engine/runtime
+validation that needs a client or other hardware remains blocked below.
 
 ## Completed iterations
 
+- [x] Cap runners at `max(4, items/4)`. Back-to-back 8- and 16-item ParallelFor
+  intervals dropped with no overlap on uniform, heavy, and one-hot bodies.
+  64-, 256-, and 4096-item intervals still overlap, so large batches are
+  unchanged. Lifecycle and TSan passed, including two callbacks in flight.
 - [x] Raise the exterior doodad parallel gate from 32 to 4096. In-process
   16-step work is faster serial through 2048 items (non-overlapping) and faster
   parallel at 4096. 200-step work crosses over near 128 and 2000-step work near

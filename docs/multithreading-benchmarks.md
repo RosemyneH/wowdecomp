@@ -209,6 +209,31 @@ Heavier call sites (animation, CPU skinning) stay on the pool below that size.
 A strided index walk was slower than contiguous 16× ranges on the same host
 (4096 uniform 0.184 ms versus 0.033 ms) and is not used.
 
+## Runner cap
+
+Public `ParallelFor` before and after capping runners at `max(4, items/4)`.
+Back-to-back, 10 workers, seed 335, five samples. Distributions: uniform 200
+steps, heavy 2000 steps, one hot item at 16000 steps and the rest at 200.
+Rows: `2026-10-28-runners-before.csv` and `2026-10-28-runners-after.csv`.
+Median milliseconds per batch:
+
+| Items | Distribution | Before | After |
+| --- | --- | --- | --- |
+| 8 | uniform | 0.0216 [0.0205, 0.0325] | 0.0105 [0.0098, 0.0144] |
+| 8 | heavy | 0.0199 [0.0183, 0.0208] | 0.0135 [0.0126, 0.0143] |
+| 8 | one hot | 0.0311 [0.0293, 0.0348] | 0.0262 [0.0256, 0.0269] |
+| 16 | uniform | 0.0246 [0.0241, 0.0249] | 0.0088 [0.0083, 0.0107] |
+| 16 | heavy | 0.0237 [0.0222, 0.0285] | 0.0189 [0.0187, 0.0200] |
+| 16 | one hot | 0.0318 [0.0307, 0.0330] | 0.0253 [0.0252, 0.0256] |
+| 4096 | uniform | 0.1547 [0.1409, 0.2294] | 0.1542 [0.1356, 0.1634] |
+| 4096 | heavy | 1.3287 [1.2555, 1.3654] | 1.2875 [1.2570, 1.3128] |
+
+The 8- and 16-item intervals do not overlap. The 64-, 256-, and 4096-item
+intervals do: those batches already used the full pool under the cap. A separate
+runner sweep (`2026-10-28-runners-sweep.csv`) showed four runners beating both
+serial and the full pool for 16 heavy items, which is the cap chosen here.
+Not frame time.
+
 ## Measurement limits
 
 Historical results remain in `../multithreading-audit/benchmarks.html`. Do not

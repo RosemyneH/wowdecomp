@@ -81,7 +81,9 @@ on an I/O worker; unsupported concurrent API use and nested callback dispatch ar
 not made supported through partial mutex additions. A callback waiting on its own
 batch would deadlock. Future concurrency requires a separate ownership/API design.
 
-A batch wakes `min(ranges, workers)` workers and waits for those workers only.
+A batch wakes at most four runners through 16 items, then one more runner per four
+items, and never more runners than ranges or the pool. It waits only for the
+workers it released.
 Idle workers keep the previous callback pointer out of their registers because
 their per-worker run flag stays false; a spurious wakeup checks that flag under
 the pool mutex and goes back to sleep. The next publish cannot reuse the batch

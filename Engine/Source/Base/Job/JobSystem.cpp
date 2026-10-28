@@ -58,13 +58,25 @@ uint32_t ChunkCount(uint32_t count, uint32_t participants) {
     return static_cast<uint32_t>(chunks);
 }
 
-uint32_t WakeCount(uint32_t chunks, uint32_t workerCount, bool callerRuns) {
-    if (!callerRuns) {
-        return chunks < workerCount ? chunks : workerCount;
+// -- ʕ •ᴥ•ʔ✿ Keep four runners through 16 items, then one more runner per four items ✿ ʕ •ᴥ•ʔ
+uint32_t WakeCount(uint32_t count, uint32_t chunks, uint32_t workerCount, bool callerRuns) {
+    uint32_t runners = workerCount + (callerRuns ? 1u : 0u);
+    if (runners > chunks) {
+        runners = chunks;
     }
 
-    uint32_t runners = chunks < workerCount + 1u ? chunks : workerCount + 1u;
-    return runners - 1u;
+    uint32_t grainCap = count / 4u;
+    if (grainCap < 4u) {
+        grainCap = 4u;
+    }
+    if (runners > grainCap) {
+        runners = grainCap;
+    }
+
+    if (callerRuns) {
+        return runners - 1u;
+    }
+    return runners;
 }
 
 // Pooled callbacks must not unwind, including on a participating caller.
@@ -203,7 +215,7 @@ void Publish(uint32_t count, RangeFn fn, void* user, uint32_t chunks, bool calle
     g_pool.remaining.store(chunks);
     g_pool.finished = 0;
     g_pool.active = true;
-    WakeWorkers(WakeCount(chunks, g_pool.workerCount, callerRuns));
+    WakeWorkers(WakeCount(count, chunks, g_pool.workerCount, callerRuns));
 }
 
 void Join() {
