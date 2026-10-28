@@ -145,25 +145,7 @@ TSGrowableArray<CMapChunkBufBlock> CMapRenderChunk::s_chunkBlockArray;
 
 namespace {
 
-struct OwnedFill {
-    CMapRenderChunk* chunk;
-    char* vertices;
-    uint16_t* indices;
-    CGxBuf* vertexBuf;
-    CGxBuf* indexBuf;
-};
-
 std::vector<CMapRenderChunk*> s_ownedFills;
-
-bool RangesOverlap(const char* a, uint32_t aSize, const char* b, uint32_t bSize) {
-    if (!a || !b || !aSize || !bSize) {
-        return false;
-    }
-
-    uintptr_t a0 = reinterpret_cast<uintptr_t>(a);
-    uintptr_t b0 = reinterpret_cast<uintptr_t>(b);
-    return a0 < b0 + bSize && b0 < a0 + aSize;
-}
 
 void FillLockedBufs(CMapRenderChunk* chunk, char* vertices, uint16_t* indices) {
     if (vertices) {
@@ -200,14 +182,6 @@ void FillLockedBufs(CMapRenderChunk* chunk, char* vertices, uint16_t* indices) {
         if (chunk->m_mapChunks[1]) {
             chunk->m_mapChunks[1]->CreateIndices(&indices[chunk->m_batch.m_count], &chunk->m_batch);
         }
-    }
-}
-
-void FillOwnedRange(Job::Range range, void* user) {
-    OwnedFill* jobs = static_cast<OwnedFill*>(user);
-
-    for (uint32_t i = range.begin; i < range.end; ++i) {
-        FillLockedBufs(jobs[i].chunk, jobs[i].vertices, jobs[i].indices);
     }
 }
 
@@ -263,12 +237,6 @@ void FlushOwnedFills() {
         return;
     }
 
-    CMapChunk::SetVertexColorFormat(g_theGxDevicePtr->Caps().m_colorFormat);
-
-    std::vector<OwnedFill> jobs;
-    jobs.reserve(pending.size());
-    bool overlap = false;
-
     for (CMapRenderChunk* chunk : pending) {
         if (!chunk->m_chunkBuf) {
             continue;
@@ -277,78 +245,8 @@ void FlushOwnedFills() {
         CGxBuf* vertexBuf = chunk->m_chunkBuf->m_vertexBuf;
         CGxBuf* indexBuf = chunk->m_chunkBuf->m_indexBuf;
 
-        if (!vertexBuf || !indexBuf) {
-            continue;
-        }
-
-        int32_t vertexReady = vertexBuf->m_hasData && vertexBuf->m_valid;
-        int32_t indexReady = indexBuf->m_hasData && indexBuf->m_valid;
-
-        if (vertexReady && indexReady) {
-            continue;
-        }
-
-        OwnedFill job;
-        job.chunk = chunk;
-        job.vertices = nullptr;
-        job.indices = nullptr;
-        job.vertexBuf = vertexBuf;
-        job.indexBuf = indexBuf;
-
-        if (!vertexReady) {
-            job.vertices = g_theGxDevicePtr->BufLock(vertexBuf);
-
-            for (const OwnedFill& prev : jobs) {
-                if (RangesOverlap(job.vertices, vertexBuf->m_size, prev.vertices, prev.vertexBuf->m_size)) {
-                    overlap = true;
-                }
-            }
-        }
-
-        if (!indexReady) {
-            job.indices = reinterpret_cast<uint16_t*>(g_theGxDevicePtr->BufLock(indexBuf));
-
-            for (const OwnedFill& prev : jobs) {
-                if (RangesOverlap(reinterpret_cast<char*>(job.indices), indexBuf->m_size, reinterpret_cast<char*>(prev.indices), prev.indexBuf->m_size)) {
-                    overlap = true;
-                }
-            }
-        }
-
-        jobs.push_back(job);
-    }
-
-    if (jobs.empty()) {
-        return;
-    }
-
-    if (overlap) {
-        for (OwnedFill& job : jobs) {
-            if (job.vertices) {
-                g_theGxDevicePtr->BufUnlock(job.vertexBuf, 0);
-            }
-
-            if (job.indices) {
-                g_theGxDevicePtr->BufUnlock(job.indexBuf, 0);
-            }
-
-            job.chunk->RenderPrepBufs(job.vertexBuf, job.indexBuf);
-        }
-
-        return;
-    }
-
-    Job::ParallelFor(static_cast<uint32_t>(jobs.size()), FillOwnedRange, jobs.data());
-
-    for (OwnedFill& job : jobs) {
-        if (job.vertices) {
-            g_theGxDevicePtr->BufUnlock(job.vertexBuf, 0);
-            job.vertexBuf->m_hasData = 1;
-        }
-
-        if (job.indices) {
-            g_theGxDevicePtr->BufUnlock(job.indexBuf, 0);
-            job.indexBuf->m_hasData = 1;
+        if (vertexBuf && indexBuf) {
+            chunk->RenderPrepBufs(vertexBuf, indexBuf);
         }
     }
 }
