@@ -13,6 +13,9 @@ remains blocked below.
 
 ## Completed iterations
 
+- [x] Reject 32× worker ranges. One run put the 4096-item skewed median at 0.256 ms,
+  but cheap 512- and 4096-item bands moved up by about 0.004 ms with no overlap
+  against that run's 8× samples. Sixteen remains the cap.
 - [x] Raise the claim factor from 4 to 16 after two in-process runs showed the
   4096-item skewed median fall from about 1.25 ms to about 0.35 ms without moving
   cheap or uniform medians. `ParallelFor` no longer wakes a worker for a range it

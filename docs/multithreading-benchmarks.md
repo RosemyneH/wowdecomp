@@ -178,6 +178,14 @@ contains a 0.598 ms spike, so that row is not used as a speedup claim. Eight-ite
 batches stayed near 0.02 ms on both binaries because the item count is already
 below the chunk cap. Not frame time.
 
+A follow-up in the same harness replaced the 16× slot with 32× workers (320
+ranges at 4096 items). Skewed 4096-item median was 0.256 ms [0.219, 0.295],
+below the 16× runs above. Cheap 4096-item median rose to 0.031 ms [0.030, 0.033],
+above that run's 8× band of 0.027–0.028 ms, and cheap 512 items showed the same
+split. Thirty-two claims per worker are not used: the extra skewed gain comes
+with a repeatable cost on short tasks. Raw rows:
+`2026-10-28-policy-32.csv`. The fourth column of that file is 32× workers, not 16×.
+
 ## Measurement limits
 
 Historical results remain in `../multithreading-audit/benchmarks.html`. Do not
