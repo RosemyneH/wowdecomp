@@ -186,6 +186,29 @@ split. Thirty-two claims per worker are not used: the extra skewed gain comes
 with a repeatable cost on short tasks. Raw rows:
 `2026-10-28-policy-32.csv`. The fourth column of that file is 32× workers, not 16×.
 
+## Serial crossover
+
+In-process serial call versus public `ParallelFor`, 10 workers, seed 335, five
+samples, 20 batches. Item body is the same integer mix as the other benches.
+`S` means the two ranges do not overlap and serial is faster. Full rows:
+`2026-10-28-serial.csv` and `2026-10-28-serial-large.csv`. Median milliseconds:
+
+| Items | 16 steps serial / parallel | 200 steps | 2000 steps |
+| --- | --- | --- | --- |
+| 8 | 0.0001 / 0.023 S | 0.0022 / 0.020 S | 0.023 / 0.021 |
+| 32 | 0.0004 / 0.025 S | 0.0087 / 0.024 S | 0.092 / 0.036 P |
+| 128 | 0.0016 / 0.025 S | 0.035 / 0.029 P | 0.371 / 0.074 P |
+| 1024 | 0.012 / 0.029 S | 0.278 / 0.062 P | 2.929 / 0.375 P |
+| 2048 | 0.024 / 0.029 S |  |  |
+| 4096 | 0.049 / 0.039 P |  |  |
+
+Exterior doodad culling is a sphere test plus a short clip-buffer scan, in the
+neighborhood of the 16-step body rather than the 2000-step body. Its parallel
+gate is now 4096, the first measured size where 16-step work beat serial.
+Heavier call sites (animation, CPU skinning) stay on the pool below that size.
+A strided index walk was slower than contiguous 16× ranges on the same host
+(4096 uniform 0.184 ms versus 0.033 ms) and is not used.
+
 ## Measurement limits
 
 Historical results remain in `../multithreading-audit/benchmarks.html`. Do not

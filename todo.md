@@ -7,12 +7,17 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-Claim size is sixteen ranges per participant, and `ParallelFor` keeps one runner
-for the caller. Engine/runtime validation that needs a client or other hardware
+Exterior doodad sphere tests stay serial below 4096 items. Heavier jobs still
+use the pool. Engine/runtime validation that needs a client or other hardware
 remains blocked below.
 
 ## Completed iterations
 
+- [x] Raise the exterior doodad parallel gate from 32 to 4096. In-process
+  16-step work is faster serial through 2048 items (non-overlapping) and faster
+  parallel at 4096. 200-step work crosses over near 128 and 2000-step work near
+  16, so animation and skinning keep small parallel batches. Strided ranges were
+  slower than contiguous 16× on uniform and skewed 4096 and were not adopted.
 - [x] Reject 32× worker ranges. One run put the 4096-item skewed median at 0.256 ms,
   but cheap 512- and 4096-item bands moved up by about 0.004 ms with no overlap
   against that run's 8× samples. Sixteen remains the cap.

@@ -4194,7 +4194,8 @@ void CWorldScene::CullDoodadsExterior(TSList<CMapBaseObjLink, TSGetExplicitLink<
     }
 
     // ʕ •ᴥ•ʔ✿ Sphere tests only read the occlusion buffer. Model flags are applied after the barrier ✿ ʕ •ᴥ•ʔ
-    if (s_doodadCulls.size() >= 32) {
+    // ʕ •ᴥ•ʔ✿ A 16-step item stays faster serial through 2048 and only wins in parallel at 4096 ✿ ʕ •ᴥ•ʔ
+    if (s_doodadCulls.size() >= 4096) {
         Job::ParallelFor(static_cast<uint32_t>(s_doodadCulls.size()), CullDoodadRange, s_doodadCulls.data());
     } else {
         CullDoodadRange(Job::Range{0, static_cast<uint32_t>(s_doodadCulls.size())}, s_doodadCulls.data());
