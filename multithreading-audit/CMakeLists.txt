@@ -72,3 +72,10 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID AND CMAKE_CXX_COMPILER_ID
     target_sources(job_benchmark PRIVATE job_benchmark_hardware.cpp)
     target_link_options(job_benchmark PRIVATE "-Wl,--wrap=_ZNSt6thread20hardware_concurrencyEv")
 endif ()
+
+add_executable(job_policy_bench EXCLUDE_FROM_ALL
+    job_policy_bench.cpp
+    ${CMAKE_SOURCE_DIR}/Engine/Source/Base/Job/JobSystem.cpp
+)
+target_include_directories(job_policy_bench PRIVATE ${CMAKE_SOURCE_DIR})
+target_link_libraries(job_policy_bench PRIVATE Threads::Threads)

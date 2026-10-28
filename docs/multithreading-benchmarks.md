@@ -97,11 +97,11 @@ Median [minimum, maximum] milliseconds per batch, 4096 items:
 
 On this run the skewed 44-range and 10-range intervals do not overlap. Uniform
 44-range median is below the 10-range median. Eighty ranges are faster on the
-artificial prefix and slightly slower on uniform, which is why production stays
-at four ranges per participant. Serial output checks passed (nonzero exit would
-have stopped the run). This is still synthetic item cost, not animation, skinning,
-or presented frame time. The earlier identical-binary control still forbids
-treating a later cross-process rerun as a causal speedup.
+artificial prefix and slightly slower on uniform. A later in-process study, below,
+raised the production factor from four to sixteen after cheap and uniform medians
+stayed flat at the higher factors. Serial output checks passed. This is still
+synthetic item cost, not animation, skinning, or presented frame time. The earlier
+identical-binary control still forbids treating a small cross-process gap as causal.
 
 ## Selective worker wakeup
 
@@ -131,6 +131,52 @@ paths still using every worker once the range count exceeds the pool. The
 4096-item uniform gap is small and is not treated as a large-job speedup; the
 earlier identical-binary control showed that cross-process gaps of this host
 can be noise. These figures are synthetic dispatch cost, not frame time.
+
+## Sixteen ranges and caller-owned ParallelFor
+
+`job_policy_bench` forces Publish/Wait chunk counts of 1×, 4×, 8× and 16× workers
+on one 10-worker process. Distributions: cheap (16 steps), uniform (200), skewed
+(first 1/32 of items at 8000 steps). Sizes 32, 128, 512, 4096. Five samples, 20
+batches, seed 335, order shuffled inside each sample. Two runs:
+`../multithreading-audit/results/2026-10-28-policy.csv` and
+`2026-10-28-policy-repeat.csv`. Median milliseconds per batch:
+
+| Items | Distribution | ~1× | ~4× | ~8× | ~16× |
+| --- | --- | --- | --- | --- | --- |
+| 4096 | cheap, run 1 | 0.027 | 0.028 | 0.029 | 0.028 |
+| 4096 | cheap, run 2 | 0.024 | 0.028 | 0.028 | 0.029 |
+| 4096 | uniform, run 1 | 0.179 | 0.160 | 0.160 | 0.155 |
+| 4096 | uniform, run 2 | 0.172 | 0.151 | 0.160 | 0.145 |
+| 4096 | skewed, run 1 | 1.532 | 1.243 | 0.672 | 0.350 |
+| 4096 | skewed, run 2 | 1.552 | 1.251 | 0.678 | 0.362 |
+| 512 | skewed, run 1 | 0.203 | 0.163 | 0.107 | 0.066 |
+| 512 | skewed, run 2 | 0.203 | 0.168 | 0.104 | 0.075 |
+
+The 4096-item skewed bands do not overlap between 4×, 8× and 16× on either run.
+Cheap 4096-item medians stay within a few microseconds. Uniform medians do not
+move in a consistent direction; individual samples still spike into the 0.20 ms
+range at every factor, including 1×.
+
+Back-to-back public `ParallelFor` on the same host, current pool of 10 workers,
+seed 335. Before is `a5af2ff2` (four ranges per participant, caller plus up to
+one worker per range). After publishes sixteen ranges per participant and, for
+`ParallelFor` only, leaves one runner for the caller. Raw rows:
+`2026-10-28-x16-before.csv` and `2026-10-28-x16-after.csv`.
+
+| Items | Distribution | Before | After |
+| --- | --- | --- | --- |
+| 1 | uniform | 0.0064 [0.0057, 0.0089] | 0.0003 [0.0003, 0.0003] |
+| 1 | uneven | 0.0059 [0.0052, 0.0068] | 0.0001 [0.0001, 0.0001] |
+| 1 | skewed | 0.0056 [0.0051, 0.0066] | 0.0001 [0.0001, 0.0001] |
+| 4096 | uniform | 0.2225 [0.1744, 0.5980] | 0.1522 [0.1483, 0.2517] |
+| 4096 | uneven | 0.3450 [0.2857, 0.3673] | 0.2484 [0.2333, 0.2762] |
+| 4096 | skewed | 1.1353 [1.1055, 1.1767] | 0.3341 [0.3212, 0.3586] |
+
+One-item intervals do not overlap: that call no longer wakes a worker. The
+4096-item skewed and uneven intervals do not overlap. The uniform before-sample
+contains a 0.598 ms spike, so that row is not used as a speedup claim. Eight-item
+batches stayed near 0.02 ms on both binaries because the item count is already
+below the chunk cap. Not frame time.
 
 ## Measurement limits
 

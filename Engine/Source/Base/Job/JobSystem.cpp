@@ -49,13 +49,22 @@ uint32_t ReserveWorkerCount() {
     return 1;
 }
 
-// -- ʕ •ᴥ•ʔ✿ Four claims per participant. One range per worker pins a heavy model to its neighbors ✿ ʕ •ᴥ•ʔ
+// -- ʕ •ᴥ•ʔ✿ Sixteen claims per participant. Four left a hot prefix on one or two workers ✿ ʕ •ᴥ•ʔ
 uint32_t ChunkCount(uint32_t count, uint32_t participants) {
-    uint64_t chunks = static_cast<uint64_t>(participants) * 4u;
+    uint64_t chunks = static_cast<uint64_t>(participants) * 16u;
     if (chunks > count) {
         chunks = count;
     }
     return static_cast<uint32_t>(chunks);
+}
+
+uint32_t WakeCount(uint32_t chunks, uint32_t workerCount, bool callerRuns) {
+    if (!callerRuns) {
+        return chunks < workerCount ? chunks : workerCount;
+    }
+
+    uint32_t runners = chunks < workerCount + 1u ? chunks : workerCount + 1u;
+    return runners - 1u;
 }
 
 // Pooled callbacks must not unwind, including on a participating caller.
@@ -184,7 +193,7 @@ void Shutdown() {
     JoinSpawned(lock);
 }
 
-void Publish(uint32_t count, RangeFn fn, void* user, uint32_t chunks) {
+void Publish(uint32_t count, RangeFn fn, void* user, uint32_t chunks, bool callerRuns) {
     std::lock_guard<std::mutex> lock(g_pool.mu);
     g_pool.fn = fn;
     g_pool.user = user;
@@ -194,8 +203,7 @@ void Publish(uint32_t count, RangeFn fn, void* user, uint32_t chunks) {
     g_pool.remaining.store(chunks);
     g_pool.finished = 0;
     g_pool.active = true;
-    uint32_t wake = chunks < g_pool.workerCount ? chunks : g_pool.workerCount;
-    WakeWorkers(wake);
+    WakeWorkers(WakeCount(chunks, g_pool.workerCount, callerRuns));
 }
 
 void Join() {
@@ -250,7 +258,7 @@ void Start(uint32_t count, RangeFn fn, void* user) {
         return;
     }
 
-    Publish(count, fn, user, ChunkCount(count, g_pool.workerCount));
+    Publish(count, fn, user, ChunkCount(count, g_pool.workerCount), false);
 }
 
 void ParallelFor(uint32_t count, RangeFn fn, void* user) {
@@ -266,7 +274,7 @@ void ParallelFor(uint32_t count, RangeFn fn, void* user) {
     }
 
     uint32_t chunks = ChunkCount(count, g_pool.workerCount + 1);
-    Publish(count, fn, user, chunks);
+    Publish(count, fn, user, chunks, true);
     RunRanges(fn, user, count, chunks);
     Join();
 }

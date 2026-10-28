@@ -10,16 +10,16 @@
 #include <vector>
 
 namespace Job {
-void Publish(uint32_t count, RangeFn fn, void* user, uint32_t chunks);
+void Publish(uint32_t count, RangeFn fn, void* user, uint32_t chunks, bool callerRuns);
 }
 
-// -- ʕ •ᴥ•ʔ✿ Same clamp as JobSystem.cpp ChunkCount: four ranges per participant ✿ ʕ •ᴥ•ʔ
+// -- ʕ •ᴥ•ʔ✿ Same clamp as JobSystem.cpp ChunkCount: sixteen ranges per participant ✿ ʕ •ᴥ•ʔ
 uint32_t ReportedChunks(uint32_t size, uint32_t workers, unsigned multiplier) {
     if (!size) {
         return 0;
     }
     if (multiplier == 0) {
-        uint64_t chunks = static_cast<uint64_t>(workers + 1) * 4u;
+        uint64_t chunks = static_cast<uint64_t>(workers + 1) * 16u;
         return static_cast<uint32_t>(chunks > size ? size : chunks);
     }
     return std::min(size, workers * multiplier);
@@ -73,7 +73,7 @@ int main() {
                 if (multiplier == 0 || size == 0) {
                     Job::ParallelFor(size, Calculate, &work);
                 } else {
-                    Job::Publish(size, Calculate, &work, std::min(size, workers * multiplier));
+                    Job::Publish(size, Calculate, &work, std::min(size, workers * multiplier), false);
                     Job::Wait();
                 }
             };

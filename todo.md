@@ -7,11 +7,18 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-Scheduler claim size and small-batch wakeup are in place. Engine/runtime
-validation that needs a client or other hardware remains blocked below.
+Claim size is sixteen ranges per participant, and `ParallelFor` keeps one runner
+for the caller. Engine/runtime validation that needs a client or other hardware
+remains blocked below.
 
 ## Completed iterations
 
+- [x] Raise the claim factor from 4 to 16 after two in-process runs showed the
+  4096-item skewed median fall from about 1.25 ms to about 0.35 ms without moving
+  cheap or uniform medians. `ParallelFor` no longer wakes a worker for a range it
+  is about to run; one-item medians fell from about 0.006 ms to about 0.0003 ms
+  with non-overlapping ranges. Lifecycle, TSan, init-failure injection and the
+  caller-terminate path passed.
 - [x] Wake only `min(ranges, workers)` workers per batch so a one-item dispatch
   does not disturb the rest of the pool. Lifecycle, init-failure injection,
   TSan, and ASan passed. Back-to-back one-item medians dropped from about

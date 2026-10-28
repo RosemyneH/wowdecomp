@@ -5,9 +5,11 @@
 `Engine/Source/Base/Job/JobSystem.cpp` owns one static pool and one active batch.
 Publication holds `Pool::mu`; workers copy callback metadata under that mutex.
 An atomic index dynamically assigns contiguous ranges. Both `Start` and
-`ParallelFor` publish four ranges per participant (`Start` uses the workers;
-`ParallelFor` also counts the caller), clamped to the item count. `Wait` also
-claims ranges, then waits for both zero remaining ranges and an acknowledgment
+`ParallelFor` publish sixteen ranges per participant (`Start` uses the workers;
+`ParallelFor` also counts the caller), clamped to the item count. `ParallelFor`
+keeps one of those runners for the caller, so a one-item parallel call does not
+wake a worker. `Wait` also claims ranges, then waits for both zero remaining
+ranges and an acknowledgment
 from every worker that was released into the batch. Idle workers are not released.
 That acknowledgment protects metadata reuse: a worker still inside the callback
 must not observe the next batch's function pointer.
@@ -93,14 +95,12 @@ be inferred from this single-node, symmetric 6-core/12-thread host.
 
 ## Chunk granularity
 
-One range per participant leaves several models or skin sections inside a single
-claim, so a heavy item cannot be separated from the cheap items beside it.
-`ChunkCount` publishes `4 * participants` ranges, never more than the item count.
-Counts at or below the participant count are unchanged. The factor is the measured
-4× column, not an adaptive controller and not 8×: on the prior matrix, 8× split an
-artificial hot prefix further but was slower than 4× for the 16-worker uneven case.
-The 2026-10-28 host rerun is in the benchmark record. This does not change wakeup
-or completion accounting, and it is not a frame-time result.
+`ChunkCount` publishes `16 * participants` ranges, never more than the item count.
+Counts at or below that cap are one range per item. The factor comes from an
+in-process Publish/Wait study at 10 workers: 16× worker ranges cut the 4096-item
+skewed median from about 1.25 ms to about 0.35 ms on two runs, while cheap and
+uniform medians stayed in the same band. It is not an adaptive controller and it
+is not a frame-time result. Details are in the benchmark record.
 
 Other threading sources found: Services/AsyncFile queue workers; Storm SThread/SLock
 platform wrappers; detached Unix/Darwin URL downloads; BlizzardCore process/thread
