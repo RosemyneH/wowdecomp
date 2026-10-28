@@ -30,6 +30,6 @@ int main() {
         return count == 19 && Job::WorkerCount() == 0 ? 0 : 1;
     }
     Job::Shutdown();
-    std::fprintf(stderr, "injection did not trigger (fewer than two workers)\n");
+    std::fprintf(stderr, "injection did not trigger (worker count below requested attempt)\n");
     return 77;
 }
