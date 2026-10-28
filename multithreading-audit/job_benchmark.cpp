@@ -5,6 +5,8 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <random>
+#include <array>
 #include <vector>
 
 namespace Job {
@@ -41,38 +43,49 @@ void Calculate(Job::Range range, void* user) {
 }
 
 int main() {
-    constexpr uint32_t size = 4096;
     constexpr unsigned repeats = 20;
+    constexpr unsigned samples = 5;
+    constexpr unsigned seed = 335;
+    std::mt19937 random(seed);
     Job::Init();
     const uint32_t workers = Job::WorkerCount();
-    std::printf("workers=%u items=%u batches_per_sample=%u samples=5\n", workers, size, repeats);
-    for (unsigned distribution = 0; distribution < 3; ++distribution) {
-        Work reference{std::vector<uint64_t>(size), 1, distribution};
-        Calculate({0, 1}, &reference);
-        for (unsigned multiplier : {0u, 1u, 2u, 4u, 8u}) {
+    std::printf("workers=%u batches_per_sample=%u samples=%u seed=%u\n", workers, repeats, samples, seed);
+    std::puts("items,distribution,path,chunks,sample,ms_per_batch");
+    for (uint32_t size : {0u, 1u, 8u, 4096u}) {
+        for (unsigned distribution = 0; distribution < 3; ++distribution) {
+            Work reference{std::vector<uint64_t>(size), size, distribution};
+            if (size) Calculate({0, size}, &reference);
             Work work{std::vector<uint64_t>(size), size, distribution};
-            const uint32_t chunks = std::min(size, multiplier == 0 ? workers + 1 : workers * multiplier);
-            auto run = [&] {
-                if (multiplier == 0) {
+            std::array<unsigned, 5> multipliers{0, 1, 2, 4, 8};
+            auto run = [&](unsigned multiplier) {
+                if (multiplier == 0 || size == 0) {
                     Job::ParallelFor(size, Calculate, &work);
                 } else {
-                    Job::Publish(size, Calculate, &work, chunks);
+                    Job::Publish(size, Calculate, &work, std::min(size, workers * multiplier));
                     Job::Wait();
                 }
             };
-            run();
-            if (work.output != reference.output) return 1;
-            std::printf("distribution=%s mode=%s chunks=%u ms_per_batch=", distribution == 0 ? "uniform" : distribution == 1 ? "uneven" : "skewed", multiplier == 0 ? "parallel_for" : "publish_wait", chunks);
-            for (unsigned sample = 0; sample < 5; ++sample) {
-                const auto start = std::chrono::steady_clock::now();
-                for (unsigned iteration = 0; iteration < repeats; ++iteration) {
-                    run();
-                }
-                const auto elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-                if (work.output != reference.output) return 2;
-                std::printf("%s%.3f", sample ? "," : "", elapsed / repeats);
+            for (unsigned multiplier : multipliers) {
+                run(multiplier);
+                if (work.output != reference.output) return 1;
             }
-            std::puts("");
+            for (unsigned sample = 0; sample < samples; ++sample) {
+                std::shuffle(multipliers.begin(), multipliers.end(), random);
+                for (unsigned multiplier : multipliers) {
+                    // Empty dispatch has no internal Publish equivalent: measure only the API.
+                    if (!size && multiplier) continue;
+                    const auto start = std::chrono::steady_clock::now();
+                    for (unsigned iteration = 0; iteration < repeats; ++iteration) run(multiplier);
+                    const auto elapsed = std::chrono::duration<double, std::milli>(
+                        std::chrono::steady_clock::now() - start).count();
+                    if (work.output != reference.output) return 2;
+                    std::printf("%u,%s,%s,%u,%u,%.6f\n", size,
+                        distribution == 0 ? "uniform" : distribution == 1 ? "uneven" : "skewed",
+                        multiplier == 0 ? "parallel_for" : "publish_wait",
+                        std::min(size, multiplier == 0 ? workers + 1 : workers * multiplier),
+                        sample, elapsed / repeats);
+                }
+            }
         }
     }
     Job::Shutdown();

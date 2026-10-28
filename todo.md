@@ -1,54 +1,83 @@
 # Multithreading audit queue
 
-Branch: `mt`. Preserve unrelated working-tree changes. Historical source evidence
-and measurements remain in `multithreading-audit/{todo,audit,benchmarks}.html`;
-those records are prior observations, not fresh verification.
+Branch: `mt`; preserve unrelated working-tree changes. Historical investigation is
+in `multithreading-audit/{todo,audit,benchmarks}.html` and `nested-dispatch.html`.
+Current decisions/evidence: docs/multithreading-audit.md and
+ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defects.
 
 ## Active
 
-- [ ] Complete reproducible scheduler measurements and platform verification.
+No further production scheduler change justified by current evidence. Overall
+engine/runtime audit remains incomplete; blocked validation is listed below.
 
 ## Completed iterations
 
-- [x] Verify consistent fail-fast behavior for forbidden pooled callback exceptions;
-  previously caller exceptions escaped with a permanently incomplete batch.
+- [x] Fix forbidden pooled caller exceptions leaving a permanently incomplete batch.
+  Fail fast on both worker and participating caller via noexcept; preserve no-pool
+  exception propagation. Initial explicit catch revised after timing investigation.
+- [x] Inventory every Job dispatch/wait/init/shutdown call; document ownership and
+  barriers for animation, asynchronous skinning, doodad culling and mapped skinning.
+  Transitive runtime ownership validation remains blocked, not proven race-free.
+- [x] Audit scheduler publication, memory visibility, completion and lifecycle;
+  document serialized main-thread lifecycle/WorkerCount contract and forbidden
+  callback reentry. Concurrent API use is unsupported, not made thread-safe.
+- [x] Inspect terrain/grass serialized fills and Vulkan/D3D/OpenGL lock contracts;
+  rerun shared EmergencyMem regression. This is not actual terrain/backend coverage.
+- [x] Add optional reproducible microbenchmark, randomized chunk/order experiments,
+  sizes 0/1/8/4096, uniform/uneven/skewed costs, workers 1/2/4/8/10/16, serial checks.
+  Record five 2880-sample matrices, including reordered/noexcept and A/A controls.
+- [x] Evaluate completion acknowledgments and multiple-in-flight design: retain
+  current protocol because acknowledgments protect batch reuse; no representative
+  benefit established for handles, work stealing or adaptive chunks.
+- [x] Build affected Linux libraries and focused targets; run focused tests,
+  sanitizers and available cross-compiler/emulation checks. Record platform limits.
+- [x] Inspect existing profiler: global worker-unsafe scope state; Job.Join excludes
+  prior caller range work and WorldRender interval is not whole-frame timing.
 
-## Ordered backlog
+## Verification evidence
 
-- [ ] Finish call-site ownership/lifetime audit: animation, asynchronous skinning,
-  doodad culling and mapped-buffer skinning; verify teardown before resource release.
-- [x] Audit scheduler lifecycle/API concurrency contract, nested dispatch, publication
-  and completion invariants; explicitly document serialized lifecycle/WorkerCount access.
-  Call-site transitive lifetime verification remains open.
-- [ ] Validate terrain/grass mapped-buffer serialization with existing regressions
-  and inspect renderer backend contracts.
-- [ ] Improve reproducible chunk benchmarks: randomized configurations, worker counts
-  1/2/4/8/16 and available CPUs, small/uniform/uneven/skewed loads, repeated samples.
-- [ ] Evaluate completion acknowledgments, wakeups, scheduling and multiple in-flight
-  batches using measurements; avoid speculative scheduler replacement.
-- [ ] Run available client builds, isolated sanitizer tests and platform checks.
-- [ ] Document unavailable platform/runtime/frame-time measurements as explicit blockers.
+- Linux Release Base, Model2, WorldClient and Gx libraries and optional benchmark
+  target build successfully. Final focused suite: 15 tests, three repetitions each,
+  all pass. Exit omission tests deliberately reproduce termination (not fixed).
+- Final noexcept lifecycle: Linux GCC 16.2.1 ASan/UBSan and TSan pass once each.
+  Initial LSan sandbox ptrace failure retried successfully outside sandbox.
+- GNU Linux ARM64 lifecycle cross-build and QEMU/sysroot run pass once; emulation
+  is not native scheduler validation. MinGW Windows x64 lifecycle cross-build and
+  Wine lifecycle pass once. Final noexcept MinGW caller/worker exception tests
+  return 42 under Wine, fallback control returns 0. Native Windows/MSVC unverified.
+- Benchmarks compare cb54f581 baseline, 5bf61799 explicit catch and revised noexcept.
+  Explicit-catch uniform four-worker slowdown triggered revision. Revised GCC
+  RunRanges normal-path bytes match baseline. Reordered results vary; identical-
+  binary control also diverges dramatically, invalidating causal timing conclusions.
+  No speedup claimed and no adaptive scheduler change accepted from these results.
 
-## Completed / evidence
+## Blocked tasks / prerequisites
 
-- Existing work includes initialization-failure rollback, serialized lifecycle tests,
-  process-exit reproductions and mapped-buffer fixes. Revalidate before final completion.
-- Created `mt` from cb54f581; main history unchanged.
+- [ ] Live asynchronous skin input/model lifetimes, teardown reentrancy, animation
+  attachment/particle ownership, and actual mapped-buffer backend tests require a
+  working integrated client and representative model/map workloads. Current
+  WowClient build fails in pre-existing local sibling integration at
+  `/home/emma/Repos/synastria-sideload/src/sideload.cpp:548`: TYPEMASK_PLAYER undeclared.
+  Its uncommitted CMake integration auto-detects the sibling and has no disable
+  switch. Left user source unchanged; affected engine libraries do build.
+- [ ] Actual startup-fatal/active-resource teardown and production exception
+  reachability remain unverified. Isolated exit reproductions do not establish safe
+  client resource ordering; do not add a late exit join without that evidence.
+- [ ] Representative frame CPU utilization, per-worker tasks/durations, scheduling
+  overhead, queue/wakeup latency, total frame time/FPS/1% low/P95/P99 require the
+  integrated workload above and suitable instrumentation. Existing profiler cannot
+  supply those numbers safely from workers. Do not infer them from microbenchmarks.
+- [ ] Controlled performance acceptance/tuning requires a quieter/controlled host:
+  identical-binary A/A control failed comparability. No causal regression or speedup
+  conclusion is justified from current timing spread.
+- [ ] Native Windows x64/MSVC, Windows ARM64, Linux ARM64 and Android ARM64 runtime
+  verification requires target hardware/toolchains. Host has MinGW and GNU ARM64
+  cross-compilers, Wine/QEMU, but no native target runners; Android SDK only has
+  platform-tools, no NDK. Cross-build/emulation results are explicitly limited.
+- [ ] Historical AsyncFile/texture and lazy model-table race hypotheses need
+  controlled real-resource reproductions and ownership evidence before fixes.
 
-## Limitations
+## Git
 
-- Linux Release isolated targets rebuilt; 15 job/emergency-memory CTests passed
-  three repetitions each (45 executions). Caller and worker exceptions returned
-  terminate-handler code 42 promptly. Exit negative controls still reproduce omitted-shutdown
-  termination; those are not fixes. Full audit remains incomplete.
-
-- Current static inventory covers all four dispatch sites and both skin waits;
-  integration ownership caveats are in docs/multithreading-audit.md.
-- Linux WowClient build reached the unrelated sibling sideload source and failed
-  at sideload.cpp:548 (`TYPEMASK_PLAYER` undeclared). Its local CMake integration
-  auto-detects the sibling with no disable switch; left user work untouched.
-- Linux lifecycle passed ASan/UBSan outside ptrace sandbox and TSan inside sandbox,
-  once each. Initial LeakSanitizer run was blocked by ptrace, not a passing run.
-- MinGW Windows x64 and GNU Linux ARM64 lifecycle binaries cross-compiled.
-  ARM64 isolated lifecycle passed once under qemu-aarch64-static with GNU sysroot;
-  emulation is not native ARM64 scheduler verification.
+Created `mt` from cb54f581, preserving main history and unrelated modifications.
+Each verified iteration is committed/pushed to origin/mt. No unrelated files staged.

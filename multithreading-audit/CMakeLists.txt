@@ -60,3 +60,15 @@ add_executable(emergency_mem_test
 target_include_directories(emergency_mem_test PRIVATE ${CMAKE_SOURCE_DIR})
 add_test(NAME emergency_mem_test COMMAND emergency_mem_test)
 set_tests_properties(emergency_mem_test PROPERTIES TIMEOUT 60)
+
+# Optional microbenchmark: excluded from normal builds and tests.
+add_executable(job_benchmark EXCLUDE_FROM_ALL
+    job_benchmark.cpp
+    ${CMAKE_SOURCE_DIR}/Engine/Source/Base/Job/JobSystem.cpp
+)
+target_include_directories(job_benchmark PRIVATE ${CMAKE_SOURCE_DIR})
+target_link_libraries(job_benchmark PRIVATE Threads::Threads)
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_sources(job_benchmark PRIVATE job_benchmark_hardware.cpp)
+    target_link_options(job_benchmark PRIVATE "-Wl,--wrap=_ZNSt6thread20hardware_concurrencyEv")
+endif ()

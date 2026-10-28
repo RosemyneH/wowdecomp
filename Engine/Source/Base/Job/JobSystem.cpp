@@ -3,7 +3,6 @@
 
 #include <atomic>
 #include <condition_variable>
-#include <exception>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -42,7 +41,9 @@ uint32_t ReserveWorkerCount() {
     return 1;
 }
 
-void RunRanges(Job::RangeFn fn, void* user, uint32_t count, uint32_t chunks) {
+// Pooled callbacks must not unwind, including on a participating caller.
+// Otherwise a partial batch could escape without completion accounting.
+void RunRanges(Job::RangeFn fn, void* user, uint32_t count, uint32_t chunks) noexcept {
     uint32_t base = count / chunks;
     uint32_t extra = count % chunks;
 
@@ -55,14 +56,7 @@ void RunRanges(Job::RangeFn fn, void* user, uint32_t count, uint32_t chunks) {
         Job::Range range;
         range.begin = index * base + (index < extra ? index : extra);
         range.end = range.begin + base + (index < extra ? 1u : 0u);
-        try {
-            fn(range, user);
-        } catch (...) {
-            // A callback may have partially modified shared output. Match worker
-            // exception behavior even when the caller claims this range, rather
-            // than unwinding with an incomplete, permanently active batch.
-            std::terminate();
-        }
+        fn(range, user);
         g_pool.remaining.fetch_sub(1);
     }
 }

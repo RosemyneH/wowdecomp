@@ -26,7 +26,7 @@ Reachable through a throwing callback in a pooled ParallelFor; callbacks are
 contractually forbidden to throw. Production callback throw reachability is not
 proven. Worker exceptions already terminate the process.
 
-Decision: catch exceptions at the pooled invocation boundary and terminate on
+Decision: make the pooled invocation function noexcept, terminating on
 both caller and worker threads. Partial output cannot safely be treated as a
 successful batch. No-pool synchronous fallback behavior is preserved. Validate
 with isolated caller/worker terminate-handler tests, fallback control and lifecycle
@@ -100,3 +100,29 @@ failed in unrelated auto-detected sibling sideload code, at
 `/home/emma/Repos/synastria-sideload/src/sideload.cpp:548` (undeclared TYPEMASK_PLAYER).
 No edits made to that integration. Android SDK here contains platform-tools but
 no NDK; Windows ARM64/MSVC and native target runtimes remain unverified.
+
+Windows x64 MinGW lifecycle also passed once under Wine with an isolated temporary
+prefix after the sandbox rejected wineserver's local socket. Wine is not native
+Windows or MSVC verification. The isolated Windows exception executable compiled;
+its runtime cases remain to be checked.
+
+The existing Profiler has shared global stack/zone accumulators (`Profiler.cpp`,
+Scope constructor/destructor) and is not suitable for worker callbacks. Job.Join
+measures the final Join interval, excluding the calling thread's preceding range
+execution in Wait. Its WorldRender-rooted frameTicks describe that scoped render
+interval, not total presented frame time; deriving client FPS/1% lows from those
+records would be misleading. Do not add worker scopes without separate thread-local
+or synchronized accounting. Shared-memory profile format is left unchanged.
+
+The initial explicit catch was revised after benchmark regression investigation:
+RunRanges is now noexcept, preserving the same fail-fast policy with baseline's
+normal-path RunRanges machine code under GCC 16.2.1. Final isolated Linux tests
+passed 15 tests three repetitions. Affected Linux Base, Model2, WorldClient and Gx
+libraries rebuilt successfully. See the benchmark record for noisy timing controls;
+there is no optimization claim. Shutdown omission and direct-exit tests remain
+negative controls, not evidence that arbitrary client exits are now safe.
+
+Final noexcept verification repeated lifecycle under Linux ASan/UBSan and TSan,
+and GNU ARM64/QEMU, once each, all passed. MinGW pooled caller/worker exception
+cases under Wine returned terminate code 42; synchronous fallback returned 0.
+These are isolated tests, not live engine or native-platform safety proofs.
