@@ -33,12 +33,21 @@ void Count(Job::Range range, void* user) {
 }
 
 int main() {
+    Job::ParallelFor(1, nullptr, nullptr);
+    Job::Start(1, nullptr, nullptr);
     Job::Init();
+    Job::ParallelFor(0, nullptr, nullptr);
+    Job::ParallelFor(1, nullptr, nullptr);
+    Job::Start(1, nullptr, nullptr);
     BlockingJob job;
     Job::Start(1, Block, &job);
     while (!job.entered.load()) {
         std::this_thread::yield();
     }
+    Job::ParallelFor(0, Block, &job);
+    Job::ParallelFor(1, nullptr, nullptr);
+    Job::Start(0, Block, &job);
+    Job::Start(1, nullptr, nullptr);
     std::thread release([&] {
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
         job.release.store(true);

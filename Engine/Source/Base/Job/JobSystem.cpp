@@ -203,7 +203,7 @@ void Start(uint32_t count, RangeFn fn, void* user) {
 }
 
 void ParallelFor(uint32_t count, RangeFn fn, void* user) {
-    if (count == 0) {
+    if (!count || !fn) {
         return;
     }
 
