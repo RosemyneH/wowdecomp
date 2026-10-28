@@ -14,7 +14,11 @@ add_test(NAME job_exit_without_shutdown COMMAND ${CMAKE_COMMAND}
 add_test(NAME job_exit_via_std_exit COMMAND ${CMAKE_COMMAND}
     -DREPRO=$<TARGET_FILE:job_exit_repro> -DMODE=exit
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_job_exit.cmake)
-set_tests_properties(job_exit_shutdown job_exit_shutdown_via_std_exit job_exit_without_shutdown job_exit_via_std_exit PROPERTIES TIMEOUT 60)
+add_test(NAME job_exit_active_shutdown COMMAND job_exit_repro active_shutdown_exit)
+add_test(NAME job_exit_active_without_shutdown COMMAND ${CMAKE_COMMAND}
+    -DREPRO=$<TARGET_FILE:job_exit_repro> -DMODE=active_exit
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_job_exit.cmake)
+set_tests_properties(job_exit_shutdown job_exit_shutdown_via_std_exit job_exit_without_shutdown job_exit_via_std_exit job_exit_active_shutdown job_exit_active_without_shutdown PROPERTIES TIMEOUT 60)
 
 add_executable(job_lifecycle_test
     job_lifecycle_test.cpp
