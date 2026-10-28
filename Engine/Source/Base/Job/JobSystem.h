@@ -18,7 +18,7 @@ uint32_t WorkerCount();
 
 // Main thread only. Splits [0, count) across the pool and the calling thread.
 // Returns when every range has finished. fn must not call Job:: or anything on g_theGxDevicePtr.
-// -- ʕ •ᴥ•ʔ✿ Callbacks must not throw; pooled dispatch cannot safely recover an escaping exception. ✿ ʕ •ᴥ•ʔ
+// -- ʕ •ᴥ•ʔ✿ Callbacks must not throw; an escaping pooled callback exception terminates on any thread. ✿ ʕ •ᴥ•ʔ
 // -- ʕ •ᴥ•ʔ✿ Empty workloads and null callbacks are no-ops; they do not wait for prior work. ✿ ʕ •ᴥ•ʔ
 void ParallelFor(uint32_t count, RangeFn fn, void* user);
 
