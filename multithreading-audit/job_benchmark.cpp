@@ -49,18 +49,24 @@ int main() {
     for (unsigned distribution = 0; distribution < 3; ++distribution) {
         Work reference{std::vector<uint64_t>(size), 1, distribution};
         Calculate({0, 1}, &reference);
-        for (unsigned multiplier : {1u, 2u, 4u, 8u}) {
+        for (unsigned multiplier : {0u, 1u, 2u, 4u, 8u}) {
             Work work{std::vector<uint64_t>(size), size, distribution};
-            const uint32_t chunks = std::min(size, workers * multiplier);
-            Job::Publish(size, Calculate, &work, chunks);
-            Job::Wait();
+            const uint32_t chunks = std::min(size, multiplier == 0 ? workers + 1 : workers * multiplier);
+            auto run = [&] {
+                if (multiplier == 0) {
+                    Job::ParallelFor(size, Calculate, &work);
+                } else {
+                    Job::Publish(size, Calculate, &work, chunks);
+                    Job::Wait();
+                }
+            };
+            run();
             if (work.output != reference.output) return 1;
-            std::printf("distribution=%s groups=%u ms_per_batch=", distribution == 0 ? "uniform" : distribution == 1 ? "uneven" : "skewed", chunks);
+            std::printf("distribution=%s mode=%s chunks=%u ms_per_batch=", distribution == 0 ? "uniform" : distribution == 1 ? "uneven" : "skewed", multiplier == 0 ? "parallel_for" : "publish_wait", chunks);
             for (unsigned sample = 0; sample < 5; ++sample) {
                 const auto start = std::chrono::steady_clock::now();
                 for (unsigned iteration = 0; iteration < repeats; ++iteration) {
-                    Job::Publish(size, Calculate, &work, chunks);
-                    Job::Wait();
+                    run();
                 }
                 const auto elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
                 if (work.output != reference.output) return 2;
