@@ -27,7 +27,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)
     )
     target_include_directories(job_init_failure_repro PRIVATE ${CMAKE_SOURCE_DIR})
     target_link_libraries(job_init_failure_repro PRIVATE Threads::Threads)
-    foreach(attempt 1 2)
+    foreach(attempt 1 2 4 8)
         add_test(NAME job_init_failure_${attempt} COMMAND ${CMAKE_COMMAND} -E env
             LD_PRELOAD=$<TARGET_FILE:job_init_failure_inject> JOB_FAIL_CREATE_ATTEMPT=${attempt}
             $<TARGET_FILE:job_init_failure_repro>)

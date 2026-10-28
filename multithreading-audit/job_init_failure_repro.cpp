@@ -21,7 +21,6 @@ int main() {
         Job::Start(19, Run, &count);
         Job::Wait();
         if (count != 19) return 1;
-        Job::Shutdown();
         Job::Init();
         if (Job::WorkerCount() == 0) return 1;
         count = 0;
