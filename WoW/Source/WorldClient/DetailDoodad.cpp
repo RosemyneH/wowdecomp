@@ -596,35 +596,9 @@ static void UseVertexColorOrder() {
     s_vertexColorRgba = g_theGxDevicePtr->Caps().m_colorFormat == GxCF_rgba;
 }
 
-struct MappedBatch {
-    CDetailDoodadInstBatch* batch;
-    CGxVertexPNCT* vertices;
-    uint16_t* indices;
-    CGxBuf* vertexBuf;
-    CGxBuf* indexBuf;
-};
-
 static const uint32_t kGrassSlots = 512;
-static MappedBatch s_fills[kGrassSlots];
-static uint32_t s_fillCount;
 
-static void FillMappedRange(Job::Range range, void* user) {
-    MappedBatch* fills = static_cast<MappedBatch*>(user);
-
-    for (uint32_t i = range.begin; i < range.end; i++) {
-        MappedBatch& fill = fills[i];
-
-        if (fill.vertices) {
-            fill.batch->FillVertices(fill.vertices);
-        }
-
-        if (fill.indices) {
-            fill.batch->FillIndices(fill.indices);
-        }
-    }
-}
-
-static void FillVerticesOnMain(CDetailDoodadInstBatch& batch) {
+static bool FillVerticesOnMain(CDetailDoodadInstBatch& batch) {
     UseVertexColorOrder();
     LoadBatchModels(batch);
     CGxVertexPNCT* vertices = reinterpret_cast<CGxVertexPNCT*>(g_theGxDevicePtr->BufLock(batch.m_vertexBuf));
@@ -638,9 +612,10 @@ static void FillVerticesOnMain(CDetailDoodadInstBatch& batch) {
     if (vertices) {
         batch.m_vertexBuf->m_hasData = 1;
     }
+    return vertices != nullptr;
 }
 
-static void FillIndicesOnMain(CDetailDoodadInstBatch& batch) {
+static bool FillIndicesOnMain(CDetailDoodadInstBatch& batch) {
     LoadBatchModels(batch);
     uint16_t* indices = reinterpret_cast<uint16_t*>(g_theGxDevicePtr->BufLock(batch.m_indexBuf));
 
@@ -653,97 +628,39 @@ static void FillIndicesOnMain(CDetailDoodadInstBatch& batch) {
     if (indices) {
         batch.m_indexBuf->m_hasData = 1;
     }
+    return indices != nullptr;
 }
 
-static void QueueBatchFill(CDetailDoodadInstBatch& batch) {
-    if (!batch.m_texture) {
-        return;
-    }
-
-    if (!TextureGetGxTex(batch.m_texture, 0, nullptr)) {
-        return;
+static bool FillBatch(CDetailDoodadInstBatch& batch, bool canFill) {
+    if (!batch.m_texture || !TextureGetGxTex(batch.m_texture, 0, nullptr)) {
+        return false;
     }
 
     if (!batch.m_vertexBuf || batch.m_vertexBuf->m_pool->m_usage == GxPoolUsage_Stream) {
         AcquireBuffers(batch.m_vertexCount, &batch.m_vertexBuf, batch.m_indexCount, &batch.m_indexBuf);
     }
 
-    if (!batch.m_vertexBuf || !batch.m_indexBuf) {
-        return;
+    if (!batch.m_vertexBuf || !batch.m_indexBuf || !canFill) {
+        return false;
     }
 
-    int32_t needVertices = !batch.m_vertexBuf->m_hasData || !batch.m_vertexBuf->m_valid;
-    int32_t needIndices = !batch.m_indexBuf->m_hasData || !batch.m_indexBuf->m_valid;
-
-    if (!needVertices && !needIndices) {
-        return;
+    bool filled = false;
+    if (!batch.m_vertexBuf->m_hasData || !batch.m_vertexBuf->m_valid) {
+        filled = FillVerticesOnMain(batch);
     }
-
-    if (s_fillCount >= kGrassSlots) {
-        return;
+    if (!batch.m_indexBuf->m_hasData || !batch.m_indexBuf->m_valid) {
+        filled = FillIndicesOnMain(batch) || filled;
     }
-
-    LoadBatchModels(batch);
-
-    CGxVertexPNCT* vertices = nullptr;
-    uint16_t* indices = nullptr;
-
-    if (needVertices) {
-        vertices = reinterpret_cast<CGxVertexPNCT*>(g_theGxDevicePtr->BufLock(batch.m_vertexBuf));
-
-        if (!vertices) {
-            g_theGxDevicePtr->BufUnlock(batch.m_vertexBuf, 0);
-        }
-    }
-
-    if (needIndices) {
-        indices = reinterpret_cast<uint16_t*>(g_theGxDevicePtr->BufLock(batch.m_indexBuf));
-
-        if (!indices) {
-            g_theGxDevicePtr->BufUnlock(batch.m_indexBuf, 0);
-        }
-    }
-
-    if (!vertices && !indices) {
-        return;
-    }
-
-    MappedBatch& fill = s_fills[s_fillCount];
-    fill.batch = &batch;
-    fill.vertices = vertices;
-    fill.indices = indices;
-    fill.vertexBuf = vertices ? batch.m_vertexBuf : nullptr;
-    fill.indexBuf = indices ? batch.m_indexBuf : nullptr;
-    s_fillCount += 1;
+    return filled;
 }
 
 static void PrepareGrassFills() {
-    AcquireJobPool();
-    UseVertexColorOrder();
-    s_fillCount = 0;
-
+    uint32_t fillCount = 0;
     for (CDetailDoodadInst* inst = CWorldScene::sortTable.m_detailDoodadInstList.Head(); inst; inst = CWorldScene::sortTable.m_detailDoodadInstList.Next(inst)) {
         for (uint32_t i = 0; i < 4; i++) {
-            QueueBatchFill(inst->m_batches[i]);
-        }
-    }
-
-    if (s_fillCount > 0) {
-        // -- ʕ •ᴥ•ʔ✿ Main thread already locked these. Workers write only their own mapped batches ✿ ʕ •ᴥ•ʔ
-        Job::ParallelFor(s_fillCount, FillMappedRange, s_fills);
-    }
-
-    for (uint32_t i = 0; i < s_fillCount; i++) {
-        MappedBatch& fill = s_fills[i];
-
-        if (fill.vertexBuf) {
-            g_theGxDevicePtr->BufUnlock(fill.vertexBuf, 0);
-            fill.vertexBuf->m_hasData = 1;
-        }
-
-        if (fill.indexBuf) {
-            g_theGxDevicePtr->BufUnlock(fill.indexBuf, 0);
-            fill.indexBuf->m_hasData = 1;
+            if (FillBatch(inst->m_batches[i], fillCount < kGrassSlots)) {
+                ++fillCount;
+            }
         }
     }
 }
