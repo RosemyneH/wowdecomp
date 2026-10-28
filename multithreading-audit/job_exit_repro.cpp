@@ -21,9 +21,17 @@ void Block(Job::Range, void* user) {
     while (!job.release.load()) std::this_thread::yield();
 }
 
+void Throw(Job::Range, void*) {
+    throw 1;
+}
+
 int main(int argc, char** argv) {
     std::set_terminate([] { std::_Exit(42); });
     Job::Init();
+    if (argc > 1 && std::strcmp(argv[1], "worker_exception") == 0) {
+        Job::Start(1, Throw, nullptr);
+        for (;;) std::this_thread::yield();
+    }
     if (argc > 1 && (std::strcmp(argv[1], "active_exit") == 0 ||
                      std::strcmp(argv[1], "active_shutdown_exit") == 0)) {
         auto* job = new BlockedJob;
