@@ -82,7 +82,21 @@ void CollectRange(Job::Range range, void* user) {
     collected.ranges.push_back(range);
 }
 
+bool CheckInlineDispatch() {
+    if (Job::WorkerCount() != 0) return false;
+    for (unsigned mode = 0; mode < 2; ++mode) {
+        CollectedRanges collected;
+        const uint32_t size = std::numeric_limits<uint32_t>::max();
+        if (mode == 0) Job::Start(size, CollectRange, &collected);
+        else Job::ParallelFor(size, CollectRange, &collected);
+        if (collected.ranges.size() != 1 || collected.ranges[0].begin != 0 ||
+            collected.ranges[0].end != size) return false;
+    }
+    return true;
+}
+
 int main() {
+    if (!CheckInlineDispatch()) return 15;
     Job::ParallelFor(1, nullptr, nullptr);
     Job::Start(1, nullptr, nullptr);
     std::atomic<unsigned> inlineCount{0};
@@ -232,5 +246,6 @@ int main() {
         }
         Job::Wait();
     }
+    if (!CheckInlineDispatch()) return 16;
     std::puts("job lifecycle passed");
 }
