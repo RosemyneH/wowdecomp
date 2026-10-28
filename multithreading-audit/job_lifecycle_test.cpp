@@ -25,6 +25,19 @@ void Block(Job::Range, void* user) {
     ++job.calls;
 }
 
+struct MultiBlockingJob {
+    std::atomic<unsigned> entered{0};
+    std::atomic<unsigned> completed{0};
+    std::atomic<bool> release{false};
+};
+
+void BlockMultiple(Job::Range, void* user) {
+    auto& job = *static_cast<MultiBlockingJob*>(user);
+    ++job.entered;
+    while (!job.release.load()) std::this_thread::yield();
+    ++job.completed;
+}
+
 void Count(Job::Range range, void* user) {
     auto* counts = static_cast<std::atomic<unsigned>*>(user);
     for (uint32_t i = range.begin; i < range.end; ++i) {
@@ -80,6 +93,26 @@ int main() {
         if (!priorCompleted) return 5;
         Job::Wait();
         if (next.load() != 1) return 6;
+    }
+    if (Job::WorkerCount() >= 2) {
+        for (unsigned mode = 0; mode < 2; ++mode) {
+            MultiBlockingJob multiple;
+            Job::Start(2, BlockMultiple, &multiple);
+            while (multiple.entered.load() != 2) std::this_thread::yield();
+            std::thread unblock([&] {
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                multiple.release.store(true);
+            });
+            if (mode == 0) Job::Wait();
+            else Job::Shutdown();
+            bool bothCompleted = multiple.completed.load() == 2;
+            unblock.join();
+            if (!bothCompleted) return 7;
+            if (mode == 1) Job::Init();
+        }
+        std::puts("multiple active callbacks passed");
+    } else {
+        std::puts("multiple active callbacks skipped: fewer than two workers");
     }
     std::vector<std::atomic<unsigned>> counts(257);
     for (auto& count : counts) count.store(0);
