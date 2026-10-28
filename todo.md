@@ -3,7 +3,7 @@
 Branch: `mt`; preserve unrelated working-tree changes. Historical investigation is
 in `multithreading-audit/{todo,audit,benchmarks}.html` and `nested-dispatch.html`.
 Current decisions/evidence: docs/multithreading-audit.md and
- docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defects.
+docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defects.
 
 ## Active
 
@@ -81,3 +81,6 @@ engine/runtime audit remains incomplete; blocked validation is listed below.
 
 Created `mt` from cb54f581, preserving main history and unrelated modifications.
 Each verified iteration is committed/pushed to origin/mt. No unrelated files staged.
+
+CSV portability follow-up: store raw samples with LF endings and have the runner
+write LF explicitly; numeric data unchanged. Diff whitespace check passes.

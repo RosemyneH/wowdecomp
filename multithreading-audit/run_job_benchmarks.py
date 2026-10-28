@@ -17,7 +17,7 @@ cases = [(revision, workers) for revision in ("baseline", "current")
          for workers in (1, 2, 4, 8, 10, 16)]
 random.Random(args.seed).shuffle(cases)
 with Path(args.output).open("w", newline="") as output:
-    writer = csv.writer(output)
+    writer = csv.writer(output, lineterminator="\n")
     writer.writerow(("revision", "workers", "items", "distribution", "path",
                      "chunks", "sample", "ms_per_batch"))
     for revision, workers in cases:
