@@ -1,9 +1,12 @@
 #include "Engine/Source/Base/Job/JobSystem.h"
 #include "Engine/Source/Base/Profiler.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <limits>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -66,6 +69,17 @@ void CheckRange(Job::Range range, void* user) {
         return;
     }
     for (uint32_t i = range.begin; i < range.end; ++i) ++coverage.counts[i];
+}
+
+struct CollectedRanges {
+    std::mutex mutex;
+    std::vector<Job::Range> ranges;
+};
+
+void CollectRange(Job::Range range, void* user) {
+    auto& collected = *static_cast<CollectedRanges*>(user);
+    std::lock_guard<std::mutex> lock(collected.mutex);
+    collected.ranges.push_back(range);
 }
 
 int main() {
@@ -179,6 +193,26 @@ int main() {
             for (const auto& count : coverage.counts) {
                 if (count.load() != 1) return 10;
             }
+        }
+    }
+    for (uint32_t size : {std::numeric_limits<uint32_t>::max() - 1,
+                          std::numeric_limits<uint32_t>::max()}) {
+        for (unsigned mode = 0; mode < 2; ++mode) {
+            CollectedRanges collected;
+            if (mode == 0) {
+                Job::Start(size, CollectRange, &collected);
+                Job::Wait();
+            } else {
+                Job::ParallelFor(size, CollectRange, &collected);
+            }
+            std::sort(collected.ranges.begin(), collected.ranges.end(),
+                      [](Job::Range a, Job::Range b) { return a.begin < b.begin; });
+            uint32_t end = 0;
+            for (Job::Range range : collected.ranges) {
+                if (range.begin != end || range.end <= range.begin) return 11;
+                end = range.end;
+            }
+            if (end != size) return 12;
         }
     }
     Job::Shutdown();
