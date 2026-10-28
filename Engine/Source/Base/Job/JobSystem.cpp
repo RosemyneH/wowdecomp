@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -13,12 +14,19 @@
 
 namespace {
 
+struct WorkerSlot {
+    std::condition_variable cv;
+    std::thread thread;
+    bool run = false;
+};
+
 struct Pool {
     std::mutex mu;
-    std::condition_variable cv;
-    std::vector<std::thread> threads;
+    std::condition_variable joinCv;
+    std::vector<std::unique_ptr<WorkerSlot>> workers;
     uint32_t workerCount = 0;
-    uint32_t epoch = 0;
+    uint32_t wakeCursor = 0;
+    uint32_t released = 0;
     uint32_t finished = 0;
     bool shutdown = false;
     Job::RangeFn fn = nullptr;
@@ -41,6 +49,15 @@ uint32_t ReserveWorkerCount() {
     return 1;
 }
 
+// -- ʕ •ᴥ•ʔ✿ Four claims per participant. One range per worker pins a heavy model to its neighbors ✿ ʕ •ᴥ•ʔ
+uint32_t ChunkCount(uint32_t count, uint32_t participants) {
+    uint64_t chunks = static_cast<uint64_t>(participants) * 4u;
+    if (chunks > count) {
+        chunks = count;
+    }
+    return static_cast<uint32_t>(chunks);
+}
+
 // Pooled callbacks must not unwind, including on a participating caller.
 // Otherwise a partial batch could escape without completion accounting.
 void RunRanges(Job::RangeFn fn, void* user, uint32_t count, uint32_t chunks) noexcept {
@@ -61,23 +78,23 @@ void RunRanges(Job::RangeFn fn, void* user, uint32_t count, uint32_t chunks) noe
     }
 }
 
-void WorkerMain() {
+void WorkerMain(uint32_t index) {
 #if defined(__linux__)
     pthread_setname_np(pthread_self(), "wow-job");
 #endif
 
     std::unique_lock<std::mutex> lock(g_pool.mu);
-    uint32_t seen = 0;
+    WorkerSlot& self = *g_pool.workers[index];
 
     for (;;) {
-        g_pool.cv.wait(lock, [&] {
-            return g_pool.shutdown || g_pool.epoch != seen;
+        self.cv.wait(lock, [&] {
+            return g_pool.shutdown || self.run;
         });
         if (g_pool.shutdown) {
             return;
         }
 
-        seen = g_pool.epoch;
+        self.run = false;
         Job::RangeFn fn = g_pool.fn;
         void* user = g_pool.user;
         uint32_t count = g_pool.count;
@@ -86,21 +103,38 @@ void WorkerMain() {
         RunRanges(fn, user, count, chunks);
         lock.lock();
         g_pool.finished += 1;
-        g_pool.cv.notify_all();
+        g_pool.joinCv.notify_one();
     }
 }
 
+void WakeWorkers(uint32_t wake) {
+    uint32_t workerCount = g_pool.workerCount;
+    g_pool.released = wake;
+
+    for (uint32_t n = 0; n < wake; ++n) {
+        uint32_t index = g_pool.wakeCursor;
+        if (++g_pool.wakeCursor == workerCount) {
+            g_pool.wakeCursor = 0;
+        }
+        WorkerSlot& slot = *g_pool.workers[index];
+        slot.run = true;
+        slot.cv.notify_one();
+    }
 }
 
-namespace {
-
-// -- ʕ •ᴥ•ʔ✿ Four claims per participant. One range per worker pins a heavy model to its neighbors ✿ ʕ •ᴥ•ʔ
-uint32_t ChunkCount(uint32_t count, uint32_t participants) {
-    uint64_t chunks = static_cast<uint64_t>(participants) * 4u;
-    if (chunks > count) {
-        chunks = count;
+void JoinSpawned(std::unique_lock<std::mutex>& lock) {
+    lock.unlock();
+    for (std::unique_ptr<WorkerSlot>& slot : g_pool.workers) {
+        if (slot->thread.joinable()) {
+            slot->thread.join();
+        }
     }
-    return static_cast<uint32_t>(chunks);
+    lock.lock();
+    g_pool.workers.clear();
+    g_pool.workerCount = 0;
+    g_pool.released = 0;
+    g_pool.wakeCursor = 0;
+    g_pool.shutdown = false;
 }
 
 }
@@ -113,27 +147,24 @@ uint32_t WorkerCount() {
 
 void Init() {
     std::unique_lock<std::mutex> lock(g_pool.mu);
-    if (!g_pool.threads.empty()) {
+    if (!g_pool.workers.empty()) {
         return;
     }
 
     uint32_t workerCount = ReserveWorkerCount();
     g_pool.shutdown = false;
     try {
-        g_pool.threads.reserve(workerCount);
+        g_pool.workers.reserve(workerCount);
         for (uint32_t index = 0; index < workerCount; ++index) {
-            g_pool.threads.emplace_back(WorkerMain);
+            g_pool.workers.push_back(std::make_unique<WorkerSlot>());
+            g_pool.workers.back()->thread = std::thread(WorkerMain, index);
         }
     } catch (...) {
         g_pool.shutdown = true;
-        g_pool.cv.notify_all();
-        lock.unlock();
-        for (std::thread& thread : g_pool.threads) {
-            thread.join();
+        for (std::unique_ptr<WorkerSlot>& slot : g_pool.workers) {
+            slot->cv.notify_one();
         }
-        lock.lock();
-        g_pool.threads.clear();
-        g_pool.shutdown = false;
+        JoinSpawned(lock);
         throw;
     }
     g_pool.workerCount = workerCount;
@@ -141,24 +172,16 @@ void Init() {
 
 void Shutdown() {
     Wait();
-    std::vector<std::thread> threads;
-    {
-        std::lock_guard<std::mutex> lock(g_pool.mu);
-        if (g_pool.threads.empty()) {
-            return;
-        }
-        g_pool.shutdown = true;
-        g_pool.cv.notify_all();
-        threads.swap(g_pool.threads);
-        g_pool.workerCount = 0;
+    std::unique_lock<std::mutex> lock(g_pool.mu);
+    if (g_pool.workers.empty()) {
+        return;
     }
 
-    for (std::thread& thread : threads) {
-        thread.join();
+    g_pool.shutdown = true;
+    for (std::unique_ptr<WorkerSlot>& slot : g_pool.workers) {
+        slot->cv.notify_one();
     }
-
-    g_pool.shutdown = false;
-    g_pool.epoch = 0;
+    JoinSpawned(lock);
 }
 
 void Publish(uint32_t count, RangeFn fn, void* user, uint32_t chunks) {
@@ -171,8 +194,8 @@ void Publish(uint32_t count, RangeFn fn, void* user, uint32_t chunks) {
     g_pool.remaining.store(chunks);
     g_pool.finished = 0;
     g_pool.active = true;
-    g_pool.epoch += 1;
-    g_pool.cv.notify_all();
+    uint32_t wake = chunks < g_pool.workerCount ? chunks : g_pool.workerCount;
+    WakeWorkers(wake);
 }
 
 void Join() {
@@ -182,9 +205,9 @@ void Join() {
         return;
     }
 
-    // -- ʕ •ᴥ•ʔ✿ Stay until ranges finish and workers drop fn, so the next publish cannot race them. ✿ ʕ •ᴥ•ʔ
-    g_pool.cv.wait(lock, [] {
-        return g_pool.remaining.load() == 0 && g_pool.finished == g_pool.workerCount;
+    // -- ʕ •ᴥ•ʔ✿ Stay until ranges finish and the woken workers drop fn, so the next publish cannot race them. ✿ ʕ •ᴥ•ʔ
+    g_pool.joinCv.wait(lock, [] {
+        return g_pool.remaining.load() == 0 && g_pool.finished == g_pool.released;
     });
     g_pool.active = false;
     g_pool.fn = nullptr;

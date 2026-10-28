@@ -26,7 +26,7 @@ uint32_t WorkerCount();
 // -- ʕ •ᴥ•ʔ✿ Empty workloads and null callbacks are no-ops; they do not wait for prior work. ✿ ʕ •ᴥ•ʔ
 void ParallelFor(uint32_t count, RangeFn fn, void* user);
 
-// Main thread only. Wakes the pool and returns. The caller can draw while the workers run.
+// Main thread only. Wakes one worker per range, up to the pool size, and returns. The caller can draw while those workers run.
 // Wait joins that work. A later ParallelFor also joins it. fn has the same limits as ParallelFor.
 void Start(uint32_t count, RangeFn fn, void* user);
 void Wait();

@@ -7,9 +7,10 @@ Publication holds `Pool::mu`; workers copy callback metadata under that mutex.
 An atomic index dynamically assigns contiguous ranges. Both `Start` and
 `ParallelFor` publish four ranges per participant (`Start` uses the workers;
 `ParallelFor` also counts the caller), clamped to the item count. `Wait` also
-claims ranges, then waits for both zero remaining ranges and every worker acknowledgment.
-The latter protects metadata reuse even after the last callback finishes. Removing
-acknowledgments alone would permit old workers to claim from a new batch.
+claims ranges, then waits for both zero remaining ranges and an acknowledgment
+from every worker that was released into the batch. Idle workers are not released.
+That acknowledgment protects metadata reuse: a worker still inside the callback
+must not observe the next batch's function pointer.
 
 Dispatch/wait are documented main-thread-only; callbacks cannot call Job APIs or
 use the graphics device. Lifecycle concurrency is not established as safe. Empty
@@ -78,9 +79,14 @@ on an I/O worker; unsupported concurrent API use and nested callback dispatch ar
 not made supported through partial mutex additions. A callback waiting on its own
 batch would deadlock. Future concurrency requires a separate ownership/API design.
 
-All workers wake and acknowledge every nonempty pooled batch, even when count is
-one. Start and the next nonempty ParallelFor synchronize unrelated prior work;
-Wait already does useful range processing. No multiple-in-flight change is justified
+A batch wakes `min(ranges, workers)` workers and waits for those workers only.
+Idle workers keep the previous callback pointer out of their registers because
+their per-worker run flag stays false; a spurious wakeup checks that flag under
+the pool mutex and goes back to sleep. The next publish cannot reuse the batch
+until every woken worker has returned to its wait. One-item work therefore does
+not wake the rest of the pool. Start and the next nonempty ParallelFor still
+synchronize unrelated prior work. Wait already does useful range processing.
+No multiple-in-flight change is justified
 without representative overlap measurements. The only asynchronous in-tree dispatch
 is CPU skinning, already overlapped with terrain drawing. Hybrid/NUMA tuning cannot
 be inferred from this single-node, symmetric 6-core/12-thread host.

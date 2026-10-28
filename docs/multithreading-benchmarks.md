@@ -103,6 +103,35 @@ have stopped the run). This is still synthetic item cost, not animation, skinnin
 or presented frame time. The earlier identical-binary control still forbids
 treating a later cross-process rerun as a causal speedup.
 
+## Selective worker wakeup
+
+Back-to-back runs on the same host, GCC 16.2.1 `-O2`, 10 workers, seed 335,
+five samples. The first binary is `98066590` (four ranges per participant, every
+worker woken). The second is the selective wakeup. Raw rows:
+`../multithreading-audit/results/2026-10-28-wake-before.csv` and
+`2026-10-28-wake-after.csv`. Public `ParallelFor` only, milliseconds per batch,
+median [minimum, maximum]:
+
+| Items | Distribution | All workers | Selective |
+| --- | --- | --- | --- |
+| 1 | uniform | 0.0425 [0.0386, 0.0521] | 0.0057 [0.0054, 0.0063] |
+| 1 | uneven | 0.0411 [0.0391, 0.0474] | 0.0055 [0.0054, 0.0062] |
+| 1 | skewed | 0.0422 [0.0390, 0.0560] | 0.0059 [0.0057, 0.0060] |
+| 8 | uniform | 0.0427 [0.0404, 0.0441] | 0.0208 [0.0194, 0.0225] |
+| 8 | uneven | 0.0398 [0.0387, 0.0475] | 0.0198 [0.0185, 0.0572] |
+| 8 | skewed | 0.0407 [0.0378, 0.0479] | 0.0204 [0.0187, 0.0217] |
+| 4096 | uniform | 0.1798 [0.1660, 0.1919] | 0.1522 [0.1459, 0.1540] |
+| 4096 | uneven | 0.2721 [0.2539, 0.2916] | 0.2614 [0.2392, 0.3406] |
+| 4096 | skewed | 1.1190 [1.0951, 1.1275] | 1.1004 [1.0932, 1.1272] |
+
+The one-item intervals do not overlap. Eight-item uniform and skewed intervals
+do not overlap; the uneven eight-item selective maximum reaches the all-worker
+band. The 4096-item skewed and uneven intervals overlap, which matches both
+paths still using every worker once the range count exceeds the pool. The
+4096-item uniform gap is small and is not treated as a large-job speedup; the
+earlier identical-binary control showed that cross-process gaps of this host
+can be noise. These figures are synthetic dispatch cost, not frame time.
+
 ## Measurement limits
 
 Historical results remain in `../multithreading-audit/benchmarks.html`. Do not

@@ -7,12 +7,16 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-No further scheduler-policy change is justified beyond the four-range claim size.
-Engine/runtime validation that needs a client or other hardware remains blocked
-below.
+Scheduler claim size and small-batch wakeup are in place. Engine/runtime
+validation that needs a client or other hardware remains blocked below.
 
 ## Completed iterations
 
+- [x] Wake only `min(ranges, workers)` workers per batch so a one-item dispatch
+  does not disturb the rest of the pool. Lifecycle, init-failure injection,
+  TSan, and ASan passed. Back-to-back one-item medians dropped from about
+  0.042 ms to about 0.006 ms with non-overlapping ranges. Large skewed batches
+  stayed in the same band.
 - [x] Publish four ranges per participant so one heavy item is not sealed into
   the same claim as its neighbors. Coverage, terminate, and TSan lifecycle checks
   passed. Within-run 10-worker synthetic medians are recorded; no frame-time claim.
