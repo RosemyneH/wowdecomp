@@ -152,8 +152,9 @@ int main() {
         if (next.load() != 1) return 6;
     }
     if (Job::WorkerCount() >= 2) {
-        for (unsigned mode = 0; mode < 2; ++mode) {
+        for (unsigned mode = 0; mode < 4; ++mode) {
             MultiBlockingJob multiple;
+            std::atomic<unsigned> next{0};
             Job::Start(2, BlockMultiple, &multiple);
             while (multiple.entered.load() != 2) std::this_thread::yield();
             std::thread unblock([&] {
@@ -161,11 +162,17 @@ int main() {
                 multiple.release.store(true);
             });
             if (mode == 0) Job::Wait();
-            else Job::Shutdown();
+            else if (mode == 1) Job::Shutdown();
+            else if (mode == 2) Job::Start(1, Count, &next);
+            else Job::ParallelFor(1, Count, &next);
             bool bothCompleted = multiple.completed.load() == 2;
             unblock.join();
             if (!bothCompleted) return 7;
             if (mode == 1) Job::Init();
+            if (mode >= 2) {
+                Job::Wait();
+                if (next.load() != 1) return 19;
+            }
         }
         std::puts("multiple active callbacks passed");
     } else {
