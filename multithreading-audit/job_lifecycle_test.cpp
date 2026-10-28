@@ -45,6 +45,11 @@ void Count(Job::Range range, void* user) {
     }
 }
 
+void WriteRange(Job::Range range, void* user) {
+    auto* values = static_cast<uint32_t*>(user);
+    for (uint32_t i = range.begin; i < range.end; ++i) values[i] = i + 1;
+}
+
 int main() {
     Job::ParallelFor(1, nullptr, nullptr);
     Job::Start(1, nullptr, nullptr);
@@ -125,6 +130,24 @@ int main() {
     for (const auto& count : counts) {
         if (count.load() != 60) return 2;
     }
+    Job::Init();
+    for (unsigned mode = 0; mode < 3; ++mode) {
+        for (uint32_t size : {1u, 3u, 257u, 1025u}) {
+            std::vector<uint32_t> values(size, 0);
+            if (mode == 1) {
+                Job::ParallelFor(size, WriteRange, values.data());
+            } else {
+                Job::Start(size, WriteRange, values.data());
+                if (mode == 0) Job::Wait();
+                else Job::Shutdown();
+            }
+            for (uint32_t i = 0; i < size; ++i) {
+                if (values[i] != i + 1) return 8;
+            }
+            if (mode == 2) Job::Init();
+        }
+    }
+    Job::Shutdown();
     for (unsigned iteration = 0; iteration < 10; ++iteration) {
         for (auto& count : counts) count.store(0);
         Job::Init();
