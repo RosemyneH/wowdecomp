@@ -50,6 +50,24 @@ void WriteRange(Job::Range range, void* user) {
     for (uint32_t i = range.begin; i < range.end; ++i) values[i] = i + 1;
 }
 
+struct RangeCoverage {
+    std::vector<std::atomic<unsigned>> counts;
+    std::atomic<bool> invalid{false};
+
+    explicit RangeCoverage(uint32_t size) : counts(size) {
+        for (auto& count : counts) count.store(0);
+    }
+};
+
+void CheckRange(Job::Range range, void* user) {
+    auto& coverage = *static_cast<RangeCoverage*>(user);
+    if (range.begin >= range.end || range.end > coverage.counts.size()) {
+        coverage.invalid.store(true);
+        return;
+    }
+    for (uint32_t i = range.begin; i < range.end; ++i) ++coverage.counts[i];
+}
+
 int main() {
     Job::ParallelFor(1, nullptr, nullptr);
     Job::Start(1, nullptr, nullptr);
@@ -145,6 +163,22 @@ int main() {
                 if (values[i] != i + 1) return 8;
             }
             if (mode == 2) Job::Init();
+        }
+    }
+    const uint32_t workers = Job::WorkerCount();
+    for (uint32_t size : {1u, 2u, workers, workers + 1, workers * 2 + 3, 1025u}) {
+        for (unsigned mode = 0; mode < 2; ++mode) {
+            RangeCoverage coverage(size);
+            if (mode == 0) {
+                Job::Start(size, CheckRange, &coverage);
+                Job::Wait();
+            } else {
+                Job::ParallelFor(size, CheckRange, &coverage);
+            }
+            if (coverage.invalid.load()) return 9;
+            for (const auto& count : coverage.counts) {
+                if (count.load() != 1) return 10;
+            }
         }
     }
     Job::Shutdown();
