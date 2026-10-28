@@ -429,7 +429,7 @@ static int32_t Script_GetItemInfoInstant(lua_State* L) {
         }
     }
     const char* equip = stats->m_inventoryType < 29 ? s_inventoryTypeTokens[stats->m_inventoryType] : "";
-    const char* path = ClientDBStringLookup(3);
+    const char* path = ClientDBStringLookup(SLOOKUP_INVENTORYICONPATH);
     const char* art = CGItem_C::GetInventoryArt(static_cast<int32_t>(stats->m_displayId));
     char texture[260];
     SStrPrintf(texture, sizeof(texture), "%s%s%s", path ? path : "", path && *path ? "\\" : "", art ? art : "");
@@ -508,7 +508,7 @@ static bool ConsiderInteract(CGObject_C* object, CGPlayer_C* player, bool cone, 
     float dz = to.z - from.z;
     float dist = dx * dx + dy * dy + dz * dz;
     if (dist > kInteractYards * kInteractYards || dist >= bestDist) return false;
-    bool unit = (object->m_obj->m_type & TYPEMASK_UNIT) != 0;
+    bool unit = (object->m_obj->m_type & TYPE_UNIT) != 0;
     if (unit) {
         CGUnit_C* target = static_cast<CGUnit_C*>(object);
         if (!target->m_unit) return false;
@@ -516,7 +516,7 @@ static bool ConsiderInteract(CGObject_C* object, CGPlayer_C* player, bool cone, 
         bool skin = (target->m_unit->m_unitFieldFlags & kSkinnable) != 0;
         bool npc = player->CanAssist(target, false) && target->m_unit->m_unitNpcFlags;
         if (!loot && !skin && !npc) return false;
-    } else if (object->m_obj->m_type & TYPEMASK_GAMEOBJECT) {
+    } else if (object->m_obj->m_type & TYPE_GAMEOBJECT) {
         CGGameObject_C* go = static_cast<CGGameObject_C*>(object);
         if (!go->m_gameObject || !InteractableType(go->m_gameObject->m_typeID) || !go->CanUseNow()) return false;
     } else {
@@ -548,8 +548,8 @@ struct InteractPick {
 static int32_t InteractEnum(WOWGUID guid, void* param) {
     InteractPick* pick = static_cast<InteractPick*>(param);
     if (pick->filter && guid != pick->only) return 1;
-    CGObject_C* object = ClntObjMgrObjectPtr(guid, TYPEMASK_UNIT, __FILE__, __LINE__);
-    if (!object) object = ClntObjMgrObjectPtr(guid, TYPEMASK_GAMEOBJECT, __FILE__, __LINE__);
+    CGObject_C* object = ClntObjMgrObjectPtr(guid, TYPE_UNIT, __FILE__, __LINE__);
+    if (!object) object = ClntObjMgrObjectPtr(guid, TYPE_GAMEOBJECT, __FILE__, __LINE__);
     ConsiderInteract(object, pick->player, pick->cone, pick->cosHalf, pick->bestDist, pick->best);
     return 1;
 }
@@ -603,8 +603,8 @@ static void RunInteract() {
     if (s_interact == WOWGUID()) return;
     WOWGUID guid = s_interact;
     s_interact = WOWGUID();
-    CGObject_C* object = ClntObjMgrObjectPtr(guid, TYPEMASK_UNIT, __FILE__, __LINE__);
-    if (!object) object = ClntObjMgrObjectPtr(guid, TYPEMASK_GAMEOBJECT, __FILE__, __LINE__);
+    CGObject_C* object = ClntObjMgrObjectPtr(guid, TYPE_UNIT, __FILE__, __LINE__);
+    if (!object) object = ClntObjMgrObjectPtr(guid, TYPE_GAMEOBJECT, __FILE__, __LINE__);
     if (object) object->OnRightClick();
 }
 

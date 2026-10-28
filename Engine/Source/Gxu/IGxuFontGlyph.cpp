@@ -53,7 +53,7 @@ static int32_t FREETYPE_RenderGlyph(FT_Face face, uint32_t code, bool monochrome
         return 0;
     }
 
-    return FT_Render_Glyph(face->glyph, static_cast<FT_Render_Mode>(monochrome)) == 0;
+    return FT_Render_Glyph(face->glyph, static_cast<FT_Render_Mode>(monochrome)) == FT_Err_Ok;
 }
 
 bool GxuFontGlyphQueryAdvance(FT_Face face, uint32_t pixelSize, uint32_t code, bool monochrome, double* advance) {

@@ -1542,7 +1542,7 @@ void CGxDeviceVulkan::ISetDynamicState() {
     }
 
     float depthBias = -this->m_appRenderStates[GxRs_PolygonOffset].m_value.m_data.f[0] * 16777216.0f;
-    float blendFactor = static_cast<uint32_t>(this->m_appRenderStates[Unk84].m_value.m_data.f[0] * 255.0f) * (1.0f / 255.0f);
+    float blendFactor = static_cast<uint32_t>(this->m_appRenderStates[GxRs_BlendFactor].m_value.m_data.f[0] * 255.0f) * (1.0f / 255.0f);
 
     if (!this->m_dynamicValid || memcmp(&this->m_viewportVk, &this->m_boundViewport, sizeof(VkViewport))) {
         vkCmdSetViewport(cmd, 0, 1, &this->m_viewportVk);
@@ -1575,7 +1575,7 @@ void CGxDeviceVulkan::ISetTexGen(uint32_t tmu, int32_t texGen) {
 
     C44Matrix matrix;
 
-    if (texGen == GxTexGen_ObjectLinear || texGen == GxTexGen_EyeLinear) {
+    if (texGen == GxTexGen_ObjectLinear || texGen == GxTexGen_World) {
         CGxMatrixStack& view = this->m_xforms[GxXform_View];
         matrix = view.m_mtx[view.m_level].AffineInverse();
 
@@ -3148,7 +3148,7 @@ void CGxDeviceVulkan::ITexForceRecreation(int32_t all) {
 
         uint32_t texelStrideInBytes;
         const void* texels;
-        texId->m_userFunc(GxTex_3, texId->m_width, texId->m_height, 0, 0, texId->m_userArg, texelStrideInBytes, texels);
+        texId->m_userFunc(GxTex_Recreate, texId->m_width, texId->m_height, 0, 0, texId->m_userArg, texelStrideInBytes, texels);
     }
 
     if (this->m_window && this->m_vk.m_device) {

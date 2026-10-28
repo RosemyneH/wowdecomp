@@ -74,12 +74,12 @@ static bool ParseTrailingTokens(const char* token, WOWGUID& guid, CGPlayer_C* pl
             if (guid == ClntObjMgrGetActivePlayer()) {
                 guid = CGGameUI::m_lockedTarget;
             } else {
-                CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(guid, TYPEMASK_UNIT, __FILE__, __LINE__));
+                CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(guid, TYPE_UNIT, __FILE__, __LINE__));
                 guid = unit ? unit->m_unit->m_unitFieldTarget : WOWGUID();
             }
         } else if (!SStrCmpI(token, "pet", 3) && (guid == ClntObjMgrGetActivePlayer() || CGGameUI::IsPartyMember(guid) || (player && (player->m_player->m_playerFlags & 0x80000)))) {
             token += 3;
-            CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(guid, TYPEMASK_UNIT, __FILE__, __LINE__));
+            CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(guid, TYPE_UNIT, __FILE__, __LINE__));
 
             if (unit) {
                 guid = unit->m_unit->m_unitFieldCharm != WOWGUID() ? unit->m_unit->m_unitFieldCharm : unit->m_unit->m_unitFieldSummon;
@@ -98,7 +98,7 @@ static bool ParseTrailingTokens(const char* token, WOWGUID& guid, CGPlayer_C* pl
 // VERIFY: 618bd45a auto
 // OFFSET: 0x0060ABF0
 bool Script_GetGUIDFromToken(const char* token, WOWGUID& guid, bool defaultToTarget) {
-    CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
+    CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPE_PLAYER, __FILE__, __LINE__));
 
     if (!token || !*token) {
         if (!defaultToTarget) {
@@ -157,7 +157,7 @@ bool Script_GetGUIDFromToken(const char* token, WOWGUID& guid, bool defaultToTar
         token += 9;
         guid = CGGameUI::m_currentObjectTrack;
 
-        if (!ClntObjMgrObjectPtr(guid, TYPEMASK_UNIT, __FILE__, __LINE__) && !CGGameUI::IsRaidMemberOrPet(guid)) {
+        if (!ClntObjMgrObjectPtr(guid, TYPE_UNIT, __FILE__, __LINE__) && !CGGameUI::IsRaidMemberOrPet(guid)) {
             guid = WOWGUID();
         }
     } else if (!SStrCmpI(token, "focus", 5)) {
@@ -212,7 +212,7 @@ CGUnit_C* GetUnitFromName(const char* token) {
         return nullptr;
     }
 
-    return static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(guid, TYPEMASK_UNIT, __FILE__, __LINE__));
+    return static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(guid, TYPE_UNIT, __FILE__, __LINE__));
 }
 
 // VERIFY: 99bf3109 manual
@@ -234,7 +234,7 @@ void Script_SendUniqueSignal(const WOWGUID& guid, int32_t signal) {
 // VERIFY: a6908deb manual
 // OFFSET: 0x006144D0
 void Script_SendUniqueSignalToAllUnits(int32_t signal) {
-    CGUnit_C* player = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
+    CGUnit_C* player = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPE_PLAYER, __FILE__, __LINE__));
 
     if (player) {
         WOWGUID guid = player->m_obj->m_guid;
@@ -282,7 +282,7 @@ void Script_SendUniqueSignalToAllUnits(int32_t signal) {
             Script_SendUniqueSignal(opponent, signal);
         }
 
-        CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(CGBattlefieldInfo::m_arenaOpponents[i], TYPEMASK_UNIT, __FILE__, __LINE__));
+        CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(CGBattlefieldInfo::m_arenaOpponents[i], TYPE_UNIT, __FILE__, __LINE__));
         WOWGUID pet;
 
         if (unit) {
@@ -293,7 +293,7 @@ void Script_SendUniqueSignalToAllUnits(int32_t signal) {
         }
 
         if (pet) {
-            unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(CGBattlefieldInfo::m_arenaOpponents[i], TYPEMASK_UNIT, __FILE__, __LINE__));
+            unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(CGBattlefieldInfo::m_arenaOpponents[i], TYPE_UNIT, __FILE__, __LINE__));
             WOWGUID petGuid;
 
             if (unit) {
@@ -398,7 +398,7 @@ void ScriptEventsRegisterUnit(CGUnit_C* unit) {
         ClntObjMgrSetObjMirrorHandler(unit->m_obj->m_guid, ID_UNIT, i * sizeof(uint32_t), size, UnitFieldChangedHandler, nullptr, HANDLER_PRIORITY_NORMAL, 0);
     }
 
-    if (unit->m_obj->m_type & TYPEMASK_PLAYER) {
+    if (unit->m_obj->m_type & TYPE_PLAYER) {
         ClntObjMgrSetObjMirrorHandler(unit->m_obj->m_guid, ID_PLAYER, 0x21C, 0x98, PlayerInventoryChangedHandler, nullptr, HANDLER_PRIORITY_NORMAL, 0);
         ClntObjMgrSetObjMirrorHandler(unit->m_obj->m_guid, ID_PLAYER, 0x28, 0x1F4, PlayerQuestLogChangedHandler, nullptr, HANDLER_PRIORITY_NORMAL, 0);
     }
@@ -413,7 +413,7 @@ void ScriptEventsUnregisterUnit(CGUnit_C* unit) {
         }
     }
 
-    if (unit->m_obj->m_type & TYPEMASK_PLAYER) {
+    if (unit->m_obj->m_type & TYPE_PLAYER) {
         ClntObjMgrUnsetObjMirrorHandler(unit->m_obj->m_guid, ID_PLAYER, 0x21C, PlayerInventoryChangedHandler, nullptr);
         ClntObjMgrUnsetObjMirrorHandler(unit->m_obj->m_guid, ID_PLAYER, 0x28, PlayerQuestLogChangedHandler, nullptr);
     }
@@ -444,7 +444,7 @@ bool GetUnitByKeyword(const char* token, CGUnit_C** unit, bool defaultToTarget) 
         return false;
     }
 
-    *unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(guid, TYPEMASK_UNIT, __FILE__, __LINE__));
+    *unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(guid, TYPE_UNIT, __FILE__, __LINE__));
     return true;
 }
 
@@ -457,7 +457,7 @@ bool Script_GetNameFromToken(const char* token, const char** name, bool defaultT
         return false;
     }
 
-    CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(guid, TYPEMASK_UNIT, __FILE__, __LINE__));
+    CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(guid, TYPE_UNIT, __FILE__, __LINE__));
 
     if (unit) {
         if (!withRealm) {
@@ -498,7 +498,7 @@ bool Script_GetNameFromToken(const char* token, const char** name, bool defaultT
 // VERIFY: 8bbb45bf manual
 // OFFSET: 0x0060A630
 bool Script_GetGUIDFromString(const char** name, WOWGUID& guid) {
-    CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
+    CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPE_PLAYER, __FILE__, __LINE__));
     char buffer[49];
     char token[10];
     uint32_t length = 0;
@@ -762,7 +762,7 @@ const char* Script_GetAuraTokenFromGUID(const WOWGUID* guid) {
         return "mouseover";
     }
 
-    CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(*guid, TYPEMASK_UNIT, __FILE__, __LINE__));
+    CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(*guid, TYPE_UNIT, __FILE__, __LINE__));
 
     if (!unit) {
         return nullptr;
@@ -879,7 +879,7 @@ char** Script_GetTokenIDsFromGUID(const WOWGUID& guid, int32_t* count) {
         return nullptr;
     }
 
-    CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
+    CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPE_PLAYER, __FILE__, __LINE__));
 
     if (!player) {
         return nullptr;
@@ -1003,7 +1003,7 @@ static int32_t Script_GetAuraInfo(lua_State* L, int32_t index, ScriptAuraInfo* i
         filterIndex = index + 2;
     }
 
-    info->m_filter = 1;
+    info->m_filter = BUFF_FILTER_HELPFUL;
 
     if (lua_isstring(L, filterIndex)) {
         const char* filter = lua_tostring(L, filterIndex);
@@ -1017,17 +1017,17 @@ static int32_t Script_GetAuraInfo(lua_State* L, int32_t index, ScriptAuraInfo* i
             }
 
             if (!SStrCmpI(token, "HELPFUL", STORM_MAX_STR)) {
-                info->m_filter = (info->m_filter & ~3) | 1;
+                info->m_filter = (info->m_filter & ~(BUFF_FILTER_HELPFUL | BUFF_FILTER_HARMFUL)) | BUFF_FILTER_HELPFUL;
             } else if (!SStrCmpI(token, "HARMFUL", STORM_MAX_STR)) {
-                info->m_filter = (info->m_filter & ~3) | 2;
+                info->m_filter = (info->m_filter & ~(BUFF_FILTER_HELPFUL | BUFF_FILTER_HARMFUL)) | BUFF_FILTER_HARMFUL;
             } else if (!SStrCmpI(token, "PLAYER", STORM_MAX_STR)) {
-                info->m_filter |= 4;
+                info->m_filter |= BUFF_FILTER_PLAYER;
             } else if (!SStrCmpI(token, "RAID", STORM_MAX_STR)) {
-                info->m_filter |= 8;
+                info->m_filter |= BUFF_FILTER_RAID;
             } else if (!SStrCmpI(token, "CANCELABLE", STORM_MAX_STR)) {
-                info->m_filter |= 0x10;
+                info->m_filter |= BUFF_FILTER_CANCELABLE;
             } else if (!SStrCmpI(token, "NOT_CANCELABLE", STORM_MAX_STR)) {
-                info->m_filter |= 0x20;
+                info->m_filter |= BUFF_FILTER_NOT_CANCELABLE;
             }
         } while (token[0] && *filter);
     }
@@ -1051,7 +1051,7 @@ int32_t Script_GetUnitAuraInfo(lua_State* L, int32_t index, ScriptAuraInfo* info
 // VERIFY: f63fded5 manual
 // OFFSET: 0x006147C0
 int32_t PushUnitAura(lua_State* L, ScriptAuraInfo* info) {
-    CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(info->m_guid, TYPEMASK_UNIT, __FILE__, __LINE__));
+    CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(info->m_guid, TYPE_UNIT, __FILE__, __LINE__));
 
     if (unit) {
         if ((unit->m_auraEffectMask[36] & 0x80) && ClntObjMgrGetActivePlayer() && !unit->IsFriendly(ClntObjMgrGetActivePlayerObj())) {
@@ -1128,8 +1128,8 @@ int32_t PushUnitAura(lua_State* L, ScriptAuraInfo* info) {
         return 0;
     }
 
-    bool helpful = info->m_filter & 0x1;
-    bool raid = (info->m_filter & 0x8) != 0;
+    bool helpful = info->m_filter & BUFF_FILTER_HELPFUL;
+    bool raid = (info->m_filter & BUFF_FILTER_RAID) != 0;
     int32_t found = 0;
 
     for (uint32_t i = 0; i < 64 && auras[i]; i++) {
@@ -1153,7 +1153,7 @@ int32_t PushUnitAura(lua_State* L, ScriptAuraInfo* info) {
             continue;
         }
 
-        if ((auraFlags[i] & 0x10) ? (info->m_filter & 0x20) : (info->m_filter & 0x10)) {
+        if ((auraFlags[i] & 0x10) ? (info->m_filter & BUFF_FILTER_NOT_CANCELABLE) : (info->m_filter & BUFF_FILTER_CANCELABLE)) {
             continue;
         }
 

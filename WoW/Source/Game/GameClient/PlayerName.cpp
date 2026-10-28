@@ -121,7 +121,7 @@ void PlayerNameUpdateDrawCallback(PLAYERNAMEDESC* desc) {
         return;
     }
 
-    CGObject_C* object = ClntObjMgrObjectPtr(desc->m_guid, TYPEMASK_OBJECT, __FILE__, __LINE__);
+    CGObject_C* object = ClntObjMgrObjectPtr(desc->m_guid, TYPE_OBJECT, __FILE__, __LINE__);
 
     if (!object) {
         return;
@@ -228,7 +228,7 @@ PLAYERNAMEDESC* PlayerNameCreate(const WOWGUID& guid) {
         return nullptr;
     }
 
-    CGObject_C* object = ClntObjMgrObjectPtr(guid, TYPEMASK_OBJECT, __FILE__, __LINE__);
+    CGObject_C* object = ClntObjMgrObjectPtr(guid, TYPE_OBJECT, __FILE__, __LINE__);
 
     if (!object || !object->m_worldModel) {
         return nullptr;
@@ -248,7 +248,7 @@ void PlayerNameDelete(PLAYERNAMEDESC* desc) {
         return;
     }
 
-    CGObject_C* object = ClntObjMgrObjectPtr(desc->m_guid, TYPEMASK_OBJECT, __FILE__, __LINE__);
+    CGObject_C* object = ClntObjMgrObjectPtr(desc->m_guid, TYPE_OBJECT, __FILE__, __LINE__);
 
     if (object) {
         CM2Model* model = object->m_worldModel;
@@ -269,7 +269,7 @@ void PlayerNameDelete(PLAYERNAMEDESC* desc) {
 int32_t PLAYERNAMEDESC::ShouldRender(CGObject_C* object, uint32_t raidTarget) {
     int32_t show = 1;
 
-    if (object && (object->m_obj->m_type & TYPEMASK_UNIT)) {
+    if (object && (object->m_obj->m_type & TYPE_UNIT)) {
         CGUnit_C* unit = static_cast<CGUnit_C*>(object);
         show = !unit->IsDeadOrGhost() && !unit->m_namePlateFrame;
     }
@@ -282,7 +282,7 @@ int32_t PLAYERNAMEDESC::ShouldRender(CGObject_C* object, uint32_t raidTarget) {
 float PlayerNameComputeScale(CGObject_C* object) {
     float height;
 
-    if (object->m_obj->m_type & TYPEMASK_UNIT) {
+    if (object->m_obj->m_type & TYPE_UNIT) {
         height = static_cast<CGUnit_C*>(object)->GetStandHeight();
     } else if (object->m_worldModel && object->m_worldModel->IsLoaded(0, 0) && object->m_worldModel->HasAttachment(18)) {
         CM2Model* model = object->m_worldModel;
@@ -331,7 +331,7 @@ void PLAYERNAMEDESC::Render() {
         return;
     }
 
-    CGObject_C* object = ClntObjMgrObjectPtr(this->m_guid, TYPEMASK_OBJECT, __FILE__, __LINE__);
+    CGObject_C* object = ClntObjMgrObjectPtr(this->m_guid, TYPE_OBJECT, __FILE__, __LINE__);
 
     if (!object) {
         return;
@@ -486,7 +486,7 @@ void PLAYERNAMEDESC::RenderIfVisible(CM2Model* model, const CM2Lighting* lightin
         return;
     }
 
-    CGObject_C* object = ClntObjMgrObjectPtr(desc->m_guid, TYPEMASK_OBJECT, __FILE__, __LINE__);
+    CGObject_C* object = ClntObjMgrObjectPtr(desc->m_guid, TYPE_OBJECT, __FILE__, __LINE__);
 
     if (object && object->m_worldModel->IsDrawable(0, 0)) {
         desc->Render();
@@ -497,7 +497,7 @@ void PLAYERNAMEDESC::RenderIfVisible(CM2Model* model, const CM2Lighting* lightin
 // OFFSET: 0x007E50A0
 void PLAYERNAMEDESC::DeleteWorldText(uint32_t type) {
     for (int32_t i = 3; i >= 0; i--) {
-        if (this->m_worldText[i] && (type == 11 || WorldTextGetType(this->m_worldText[i]) == type)) {
+        if (this->m_worldText[i] && (type == WT_ALL || WorldTextGetType(this->m_worldText[i]) == type)) {
             WorldTextDelete(this->m_worldText[i]);
             this->m_worldText[i] = nullptr;
         }
@@ -515,7 +515,7 @@ void PlayerNameDeleteText(PLAYERNAMEDESC* desc, uint32_t type) {
 // VERIFY: e9a4b925 manual
 // OFFSET: 0x007E5170
 void PLAYERNAMEDESC::UpdateWorldText(uint32_t time) {
-    CGObject_C* object = ClntObjMgrObjectPtr(this->m_guid, TYPEMASK_OBJECT, __FILE__, __LINE__);
+    CGObject_C* object = ClntObjMgrObjectPtr(this->m_guid, TYPE_OBJECT, __FILE__, __LINE__);
 
     if (!object) {
         return;
@@ -542,7 +542,7 @@ void PLAYERNAMEDESC::UpdateWorldText(uint32_t time) {
 // VERIFY: 8aeccf6a manual
 // OFFSET: 0x007E5230
 void PLAYERNAMEDESC::UpdateWorldTextIcons() {
-    CGObject_C* object = ClntObjMgrObjectPtr(this->m_guid, TYPEMASK_OBJECT, __FILE__, __LINE__);
+    CGObject_C* object = ClntObjMgrObjectPtr(this->m_guid, TYPE_OBJECT, __FILE__, __LINE__);
 
     if (!object) {
         return;
@@ -584,7 +584,7 @@ void PLAYERNAMEDESC::CreateWorldText(uint32_t type, const char* text, const CImV
         return;
     }
 
-    CGObject_C* object = ClntObjMgrObjectPtr(this->m_guid, TYPEMASK_OBJECT, __FILE__, __LINE__);
+    CGObject_C* object = ClntObjMgrObjectPtr(this->m_guid, TYPE_OBJECT, __FILE__, __LINE__);
 
     if (!object) {
         return;
@@ -629,7 +629,7 @@ void PLAYERNAMEDESC::CreateWorldText(uint32_t type, const char* text, const CImV
     CGCamera* camera = CGWorldFrame::GetActiveCamera();
 
     if (camera) {
-        CGObject_C* transport = ClntObjMgrObjectPtr(camera->m_relativeTo, TYPEMASK_GAMEOBJECT, __FILE__, __LINE__);
+        CGObject_C* transport = ClntObjMgrObjectPtr(camera->m_relativeTo, TYPE_GAMEOBJECT, __FILE__, __LINE__);
 
         if (transport) {
             position *= transport->GetMatrix().AffineInverse();
@@ -642,7 +642,7 @@ void PLAYERNAMEDESC::CreateWorldText(uint32_t type, const char* text, const CImV
 // VERIFY: a695ce6e manual
 // OFFSET: 0x007E5FD0
 PLAYERNAMEDESC* ObjectNameCreate(const WOWGUID& guid) {
-    if (!guid || !ClntObjMgrObjectPtr(guid, TYPEMASK_OBJECT, __FILE__, __LINE__)) {
+    if (!guid || !ClntObjMgrObjectPtr(guid, TYPE_OBJECT, __FILE__, __LINE__)) {
         return nullptr;
     }
 

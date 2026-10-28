@@ -51,7 +51,7 @@ target_include_directories(Wow
 )
 
 if (WIN32)
-    target_link_options(Wow PRIVATE "/INCREMENTAL:NO" "/ENTRY:start")
+    target_link_options(Wow PRIVATE "/INCREMENTAL:NO" "/ENTRY:start" "/MAP")
 endif ()
 
 set(WOW_LIBS

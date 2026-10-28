@@ -345,7 +345,7 @@ void OsJoystickSetMouseMode(uint32_t index, int32_t enable) {
     LnxJoystickStick* stick = &joystick->m_sticks[mouseMode->m_stick];
 
     if (stick->m_xAxis >= 0 && stick->m_yAxis >= 0 && (axes[stick->m_xAxis] || axes[stick->m_yAxis])) {
-        OsQueuePut(OS_INPUT_14, mouseMode->m_stick, 0, 0, 0);
+        OsQueuePut(OS_INPUT_JOYSTICK_STICK, mouseMode->m_stick, 0, 0, 0);
     }
 
     int32_t x;
@@ -1135,7 +1135,7 @@ static void PollJoystick(uint32_t index, int32_t active) {
 
         if (xAxis >= 0 && yAxis >= 0 && (!mouseMode->m_enabled || i != mouseMode->m_stick)) {
             if (previousAxes[xAxis] != axes[xAxis] || previousAxes[yAxis] != axes[yAxis]) {
-                OsQueuePut(OS_INPUT_14, i, axes[xAxis], axes[yAxis], 0);
+                OsQueuePut(OS_INPUT_JOYSTICK_STICK, i, axes[xAxis], axes[yAxis], 0);
             }
         }
     }
@@ -1146,7 +1146,7 @@ static void PollJoystick(uint32_t index, int32_t active) {
         if ((joystick->m_axisMask & (1 << axis)) && !joystick->m_stickAxis[axis]) {
             if (!mouseMode->m_enabled || (axis != mouseStick->m_xAxis && axis != mouseStick->m_yAxis)) {
                 if (previousAxes[axis] != axes[axis]) {
-                    OsQueuePut(OS_INPUT_15, axis, axes[axis], 0, 0);
+                    OsQueuePut(OS_INPUT_JOYSTICK_AXIS, axis, axes[axis], 0, 0);
                 }
             }
         }
@@ -1171,7 +1171,7 @@ static void PollJoystick(uint32_t index, int32_t active) {
             MOUSEBUTTON mouseButton = button != mouseMode->m_leftButton ? MOUSE_BUTTON_RIGHT : MOUSE_BUTTON_LEFT;
             OsQueuePut(down ? OS_INPUT_MOUSE_DOWN : OS_INPUT_MOUSE_UP, mouseButton, x, y, 0);
         } else {
-            OsQueuePut(down ? OS_INPUT_16 : OS_INPUT_17, button, 0, 0, 0);
+            OsQueuePut(down ? OS_INPUT_JOYSTICK_BUTTON_DOWN : OS_INPUT_JOYSTICK_BUTTON_UP, button, 0, 0, 0);
         }
     }
 
@@ -1213,7 +1213,7 @@ static void PollJoystick(uint32_t index, int32_t active) {
                 direction = 8 * pov / 36000 + 1;
             }
 
-            OsQueuePut(OS_INPUT_18, i, direction, 0, 0);
+            OsQueuePut(OS_INPUT_JOYSTICK_HAT, i, direction, 0, 0);
         }
     }
 }

@@ -3,8 +3,8 @@
 
 static uint32_t s_enableCount;
 
-int32_t OsIMEGetLanguageMode() {
-    return 0;
+OS_IME_LANGUAGEMODE OsIMEGetLanguageMode() {
+    return OS_IME_MODE_ROMAN;
 }
 
 int32_t OsIMEGetCompositionString(char* buffer, uint32_t bufferSize) {

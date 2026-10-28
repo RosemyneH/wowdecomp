@@ -14,6 +14,7 @@
 #include "WoW/Source/DB/DBClient/DBCacheInstances.h"
 #include "WoW/Source/DB/DBClient/CreatureStats_C.h"
 #include "WoW/Source/DB/Rec/SpellRec.h"
+#include "WoW/Source/Magic/MagicClient/SpellEnums.h"
 #include "WoW/Source/Object/ItemStats.h"
 #include "WoW/Source/Object/Player.h"
 #include "WoW/Source/Object/Unit.h"
@@ -116,7 +117,7 @@ void CGDressUpModelFrame::UpdateModel() {
     uint32_t ready = this->m_component->RenderPrep(0) & 1;
     CM2Model* model = this->m_component->m_data.m_model;
 
-    CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(this->m_unitGuid, TYPEMASK_UNIT, __FILE__, __LINE__));
+    CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(this->m_unitGuid, TYPE_UNIT, __FILE__, __LINE__));
 
     if (unit && unit->m_unit && unit->m_unit->m_unitFieldNativedisplayid == unit->m_unit->m_unitFieldDisplayid) {
         // ʕ •ᴥ•ʔ✿ Prep just hid every geoset except the bald defaults. Put back the hair, ears, and face the world model is drawing ✿ ʕ •ᴥ•ʔ
@@ -284,7 +285,7 @@ void CGDressUpModelFrame::TryOnWithVisual(int32_t itemId, int32_t visual, int32_
 
             SpellRec learned;
 
-            if (spell.m_effect[0] != 36) {
+            if (spell.m_effect[0] != SPELL_EFFECT_LEARN_SPELL) {
                 continue;
             }
 
@@ -299,7 +300,7 @@ void CGDressUpModelFrame::TryOnWithVisual(int32_t itemId, int32_t visual, int32_
                 }
             }
 
-            if (g_spellDB.GetRecord(learnedId, &learned) && learned.m_effect[0] == 24) {
+            if (g_spellDB.GetRecord(learnedId, &learned) && learned.m_effect[0] == SPELL_EFFECT_CREATE_ITEM) {
                 this->TryOn(learned.m_effectItemType[0], nullptr, -1);
                 return;
             }
@@ -366,7 +367,7 @@ void CGDressUpModelFrame::TryOnWithVisual(int32_t itemId, int32_t visual, int32_
             ItemDisplayInfoRec display;
 
             if (g_itemDisplayInfoDB.GetRecord(stats->m_displayId, &display) && (display.m_flags & 0x1)) {
-                CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(this->m_unitGuid, TYPEMASK_PLAYER, __FILE__, __LINE__));
+                CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(this->m_unitGuid, TYPE_PLAYER, __FILE__, __LINE__));
 
                 if (player) {
                     int32_t emblemStyle;
@@ -566,7 +567,7 @@ void CGDressUpModelFrame::SetModel(CM2Model* model) {
         return;
     }
 
-    CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(this->m_unitGuid, TYPEMASK_PLAYER, __FILE__, __LINE__));
+    CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(this->m_unitGuid, TYPE_PLAYER, __FILE__, __LINE__));
 
     if (player) {
         this->m_component = CCharacterComponent::AllocComponent();
@@ -641,7 +642,7 @@ void CGDressUpModelFrame::SetModel(CM2Model* model) {
             }
         }
 
-        const CGUnitVirtualItem* mainHand = player->GetVirtualItem(0, true);
+        const CGUnitVirtualItem* mainHand = player->GetVirtualItem(VIRTUAL_MONSTER_SLOT_MAINHAND, true);
 
         if (mainHand) {
             this->m_mainHand = *mainHand;
@@ -649,7 +650,7 @@ void CGDressUpModelFrame::SetModel(CM2Model* model) {
             memset(&this->m_mainHand, 0, sizeof(this->m_mainHand));
         }
 
-        const CGUnitVirtualItem* offHand = player->GetVirtualItem(1, true);
+        const CGUnitVirtualItem* offHand = player->GetVirtualItem(VIRTUAL_MONSTER_SLOT_OFFHAND, true);
 
         if (offHand) {
             this->m_offHand = *offHand;

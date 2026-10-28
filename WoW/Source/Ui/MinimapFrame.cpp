@@ -1,3 +1,4 @@
+#include "WoW/Source/WorldClient/WorldConstants.h"
 #include "MinimapFrame.h"
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
 #include "Engine/Source/Services/Texture.h"
@@ -60,6 +61,10 @@
 #include "Engine/Source/Gxu/Gxu.h"
 #include "Engine/Source/Gx/CGxMatrixStack.h"
 #include "Engine/Source/Event/CMouseEvent.h"
+#include "Engine/Source/ShaderEffect/Types.h"
+
+static const float MAX_POI_DISTANCE = 694.44446f;
+static const float ICON_SIZE = 0.0125f;
 
 // STATIC: 0x00ACEBAC
 int32_t CGMinimapFrame::s_scaleChanged = 1;
@@ -157,8 +162,36 @@ static C2Vector s_blipTexCoords[32][4];
 // STATIC: 0x00BEBA40
 static int32_t s_inWorld;
 
+enum MINIMAP_OBJECT_TYPES : uint32_t {
+    // Current native subdivisions of the five-type reference domain.
+    MINIMAP_RAID = 0,
+    MINIMAP_PARTY = 1,
+    MINIMAP_PLAYER_HOSTILE = 2,
+    MINIMAP_PLAYER_OTHER_FACTION = 3,
+    MINIMAP_PLAYER_SAME_FACTION = 4,
+    MINIMAP_MONSTER_HOSTILE = 5,
+    MINIMAP_MONSTER_NEUTRAL = 6,
+    MINIMAP_MONSTER_FRIENDLY = 7,
+    MINIMAP_OBJECT = 8,
+    MINIMAP_QUEST_AVAILABLE = 9,
+    MINIMAP_QUEST_COMPLETE = 10,
+    MINIMAP_QUEST_REPEATABLE = 11,
+    MINIMAP_UNUSED_12 = 12, // No producer in the current native paths.
+    MINIMAP_FLIGHTMASTER = 13,
+    MINIMAP_UNUSED_14 = 14, // No producer in the current native paths.
+    MINIMAP_PET = 15,
+    MINIMAP_VEHICLE_GROUND_UNOCCUPIED = 16,
+    MINIMAP_VEHICLE_GROUND_OCCUPIED = 17,
+    MINIMAP_VEHICLE_AIR_UNOCCUPIED = 18,
+    MINIMAP_VEHICLE_AIR_OCCUPIED = 19,
+    MINIMAP_VEHICLE_UNUSED = 20, // No producer in the current native paths.
+    MINIMAP_VEHICLE_AIR_HORDE = 21,
+    MINIMAP_VEHICLE_AIR_ALLIANCE = 22,
+    MINIMAP_NUM_TYPES = 23,
+};
+
 // STATIC: 0x00BEB9A8
-static uint32_t s_hoverObjects[23];
+static uint32_t s_hoverObjects[MINIMAP_NUM_TYPES];
 
 // STATIC: 0x00BEBA74
 static uint32_t s_hoverPOIs;
@@ -281,7 +314,7 @@ static TSGrowableArray<C2Vector> s_blipTexCoords2;
 static TSGrowableArray<uint16_t> s_blipIndices;
 
 // STATIC: 0x00BF8098
-static TSGrowableArray<OBJINFO> s_objInfo[23];
+static TSGrowableArray<OBJINFO> s_objInfo[MINIMAP_NUM_TYPES];
 
 // STATIC: 0x00BF5FC8
 static C2Vector s_poiArrowPositions[3];
@@ -483,7 +516,7 @@ void CGMinimapFrame::OnLayerUpdate(float elapsedSec) {
     CSimpleFrame::OnLayerUpdate(elapsedSec);
 
     CGCamera* camera = CGWorldFrame::GetActiveCamera();
-    CGObject_C* target = ClntObjMgrObjectPtr(camera->m_targetGUID, TYPEMASK_OBJECT, __FILE__, __LINE__);
+    CGObject_C* target = ClntObjMgrObjectPtr(camera->m_targetGUID, TYPE_OBJECT, __FILE__, __LINE__);
 
     if (target) {
         this->UpdateRotation(target->GetFacing());
@@ -514,7 +547,7 @@ CGMinimapFrame::CGMinimapFrame(CSimpleFrame* parent) : CSimpleFrame(parent) {
     this->EnableEvent(SIMPLE_EVENT_MOUSE, -1);
 
     float scale = NDCToDDCHeight(1.0f) * 1.6666666f;
-    CGMinimapFrame::s_blipSize1 = 0.0125f * scale;
+    CGMinimapFrame::s_blipSize1 = ICON_SIZE * scale;
     CGMinimapFrame::s_blipHalfSize1 = CGMinimapFrame::s_blipSize1 * 0.5f;
     CGMinimapFrame::s_blipSize2 = scale * 0.0375f;
     CGMinimapFrame::s_blipHalfSize2 = CGMinimapFrame::s_blipSize2 * 0.5f;
@@ -673,7 +706,7 @@ void CGMinimapFrame::InitializeGame() {
 // OFFSET: 0x0057E980
 int32_t CGMinimapFrame::CountAvailableTrackingTypes() {
     int32_t count = 0;
-    CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
+    CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPE_PLAYER, __FILE__, __LINE__));
     uint32_t classMask = player ? 1 << player->m_unit->m_unitFieldBytes0[1] : 0;
 
     for (uint32_t i = 0; i < sizeof(CGMinimapFrame::s_trackingTypes) / sizeof(CGMinimapFrame::s_trackingTypes[0]); i++) {
@@ -691,7 +724,7 @@ int32_t CGMinimapFrame::CountAvailableTrackingTypes() {
 // OFFSET: 0x0057EB00
 const TrackingTypeInfo* CGMinimapFrame::GetTrackingTypeByIndex(int32_t index) {
     int32_t count = 0;
-    CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
+    CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPE_PLAYER, __FILE__, __LINE__));
     uint32_t classMask = player ? 1 << player->m_unit->m_unitFieldBytes0[1] : 0;
 
     for (uint32_t i = 0; i < sizeof(CGMinimapFrame::s_trackingTypes) / sizeof(CGMinimapFrame::s_trackingTypes[0]); i++) {
@@ -801,7 +834,7 @@ void UpdatePointsOfInterest() {
 
     int32_t worst = -1;
     uint32_t count = 0;
-    float distances[3] = { 694.44446f, 694.44446f, 694.44446f };
+    float distances[3] = { MAX_POI_DISTANCE, MAX_POI_DISTANCE, MAX_POI_DISTANCE };
     int32_t indices[3] = { -1, -1, -1 };
     int32_t importance[3];
 
@@ -815,7 +848,7 @@ void UpdatePointsOfInterest() {
         float dx = poi->m_pos[0] - s_playerPosition.x;
         float distance = sqrt(dx * dx + dy * dy);
 
-        if (distance > 694.44446f && poi != &s_dynamicPOIs[2]) {
+        if (distance > MAX_POI_DISTANCE && poi != &s_dynamicPOIs[2]) {
             continue;
         }
 
@@ -1116,11 +1149,11 @@ void MINIMAPTILE::Render(uint32_t index, const CImVector* color) {
     }
 
     g_theGxDevicePtr->RsSet(GxRs_Texture0, gxTex);
-    GxRsSet(GxRs_ColorOp0, 0);
-    GxRsSet(GxRs_AlphaOp0, 0);
+    GxRsSet(GxRs_ColorOp0, GxTexOp_Mod);
+    GxRsSet(GxRs_AlphaOp0, GxTexOp_Mod);
     g_theGxDevicePtr->RsSet(GxRs_Texture1, TextureGetGxTex(s_maskTexture, 1, nullptr));
-    GxRsSet(GxRs_ColorOp1, 0);
-    GxRsSet(GxRs_AlphaOp1, 0);
+    GxRsSet(GxRs_ColorOp1, GxTexOp_Mod);
+    GxRsSet(GxRs_AlphaOp1, GxTexOp_Mod);
     C3Vector normal(0.0f, 0.0f, 1.0f);
     GxPrimLockVertexPtrs(4, this->m_vertices, sizeof(C3Vector), &normal, 0, color, 0, nullptr, 0, this->m_texCoords, sizeof(C2Vector), this->m_maskCoords, sizeof(C2Vector));
     GxDrawLockedElements(GxPrim_TriangleStrip, 4, s_quadIndices);
@@ -1219,7 +1252,7 @@ static int32_t MinimapBuildSource(const int32_t* tile, char* path, uint32_t size
     MapRec* map = g_mapDB.GetRecord(s_minimapMapId);
 
     if (!map || !*map->m_directory) {
-        SysMsgPrintf(STATUS_ERROR, 2, "NOCONTINENTNAME|%d", s_minimapMapId);
+        SysMsgPrintf(SYSMSG_ERROR, 2, "NOCONTINENTNAME|%d", s_minimapMapId);
         return 0;
     }
 
@@ -1227,7 +1260,7 @@ static int32_t MinimapBuildSource(const int32_t* tile, char* path, uint32_t size
     MINIMAPMD5NAME* name = s_md5Names.Ptr(path);
 
     if (!name) {
-        SysMsgPrintf(STATUS_ERROR, 2, "No minimap texture: \"%s\"", path);
+        SysMsgPrintf(SYSMSG_ERROR, 2, "No minimap texture: \"%s\"", path);
         *path = 0;
         return 0;
     }
@@ -1292,7 +1325,7 @@ static void SetupTextureHandles(const int32_t* tile, int32_t reset, MINIMAPTILE*
             tiles[i].m_x = source[0];
             tiles[i].m_y = source[1];
         } else {
-            SysMsgPrintf(STATUS_ERROR, 4, "MINIMAPCHUNKNOTFOUND|%d|%d", source[0], source[1]);
+            SysMsgPrintf(SYSMSG_ERROR, 4, "MINIMAPCHUNKNOTFOUND|%d|%d", source[0], source[1]);
         }
     }
 }
@@ -1341,7 +1374,7 @@ static int32_t MinimapUpdatePosition(int32_t mapId, const C3Vector* position, C2
     }
 
     s_updateFlags &= ~1u;
-    C3Vector origin(17066.666f - baseTile[1] * 533.33331f, s_mapOrigin - 533.33331f * baseTile[0], 0.0f);
+    C3Vector origin(HALF_WORLD_SIZE - baseTile[1] * MD_AREA_POLY_SIZE, s_mapOrigin - MD_AREA_POLY_SIZE * baseTile[0], 0.0f);
     C2Vector origin2(origin);
     float inv = 1.0f / s_tileSize.y;
     uint32_t halfTiles = s_outdoorZoomTiles[s_outdoorZoom] >> 1;
@@ -1449,7 +1482,7 @@ static void SetupQuad(MINIMAPTILE* tiles, const MINIMAPQUADINFO* quad, int32_t c
     if (name) {
         SStrPrintf(path, sizeof(path), "%s\\%s", s_minimapTexturePath, name->m_md5Name);
     } else {
-        SysMsgPrintf(STATUS_ERROR, 2, "No minimap texture: \"%s\"", path);
+        SysMsgPrintf(SYSMSG_ERROR, 2, "No minimap texture: \"%s\"", path);
         path[0] = 0;
     }
 
@@ -1719,7 +1752,7 @@ void CGMinimapFrame::Render() {
     }
 
     CGCamera* camera = CGWorldFrame::GetActiveCamera();
-    CGObject_C* target = ClntObjMgrObjectPtr(camera->m_targetGUID, TYPEMASK_OBJECT, __FILE__, __LINE__);
+    CGObject_C* target = ClntObjMgrObjectPtr(camera->m_targetGUID, TYPE_OBJECT, __FILE__, __LINE__);
     C3Vector position = target ? target->GetPosition() : camera->m_position;
     CMapEntity* worldObject;
 
@@ -1977,7 +2010,7 @@ void CGMinimapFrame::Render() {
             this->m_lastUpdateTime = 1;
         }
 
-        for (uint32_t i = 0; i < 23; i++) {
+        for (uint32_t i = 0; i < MINIMAP_NUM_TYPES; i++) {
             s_objInfo[i].SetCount(0);
         }
 
@@ -2015,7 +2048,7 @@ void CGMinimapFrame::Render() {
 
         for (uint32_t i = 0; i < CGBattlefieldInfo::m_numVehicles; i++) {
             WOWGUID vehicleGuid = i < CGBattlefieldInfo::m_numVehicles ? CGBattlefieldInfo::m_vehicleGuids[i] : WOWGUID();
-            CGUnit_C* vehicle = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(vehicleGuid, TYPEMASK_UNIT, __FILE__, __LINE__));
+            CGUnit_C* vehicle = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(vehicleGuid, TYPE_UNIT, __FILE__, __LINE__));
 
             if (!vehicle || vehicle->IsDeadOrGhost()) {
                 continue;
@@ -2053,19 +2086,19 @@ void CGMinimapFrame::Render() {
 
             switch (vehicleRec->m_uiLocomotionType) {
                 case 0:
-                    list = (vehicle->m_unit->m_unitFieldFlags & 0x1000000) ? &s_objInfo[17] : &s_objInfo[16];
+                    list = (vehicle->m_unit->m_unitFieldFlags & 0x1000000) ? &s_objInfo[MINIMAP_VEHICLE_GROUND_OCCUPIED] : &s_objInfo[MINIMAP_VEHICLE_GROUND_UNOCCUPIED];
                     break;
 
                 case 1:
-                    list = (vehicle->m_unit->m_unitFieldFlags & 0x1000000) ? &s_objInfo[19] : &s_objInfo[18];
+                    list = (vehicle->m_unit->m_unitFieldFlags & 0x1000000) ? &s_objInfo[MINIMAP_VEHICLE_AIR_OCCUPIED] : &s_objInfo[MINIMAP_VEHICLE_AIR_UNOCCUPIED];
                     break;
 
                 case 3:
-                    list = &s_objInfo[21];
+                    list = &s_objInfo[MINIMAP_VEHICLE_AIR_HORDE];
                     break;
 
                 case 4:
-                    list = &s_objInfo[22];
+                    list = &s_objInfo[MINIMAP_VEHICLE_AIR_ALLIANCE];
                     break;
 
                 default:
@@ -2095,7 +2128,7 @@ void CGMinimapFrame::Render() {
                 continue;
             }
 
-            OBJINFO* info2 = s_objInfo[1].New();
+            OBJINFO* info2 = s_objInfo[MINIMAP_PARTY].New();
             info2->m_guid = s_partyMembers[i].m_guid;
             info2->m_otherFloor = 0;
             float radius = param.m_radius;
@@ -2115,7 +2148,7 @@ void CGMinimapFrame::Render() {
                 continue;
             }
 
-            OBJINFO* info2 = s_objInfo[0].New();
+            OBJINFO* info2 = s_objInfo[MINIMAP_RAID].New();
             info2->m_guid = s_raidMembers[i].m_guid;
             info2->m_otherFloor = 0;
             float radius = param.m_radius;
@@ -2222,7 +2255,7 @@ int32_t CGMinimapFrame::ObjectEnumProc(WOWGUID guid, void* param) {
 
     MINIMAPENUMPARAM* data = static_cast<MINIMAPENUMPARAM*>(param);
     CGPlayer_C* player = data->m_player;
-    CGObject_C* object = ClntObjMgrObjectPtr(guid, TYPEMASK_OBJECT, __FILE__, __LINE__);
+    CGObject_C* object = ClntObjMgrObjectPtr(guid, TYPE_OBJECT, __FILE__, __LINE__);
 
     if (!object) {
         return 1;
@@ -2242,34 +2275,34 @@ int32_t CGMinimapFrame::ObjectEnumProc(WOWGUID guid, void* param) {
     uint32_t type;
     uint32_t objectType = object->m_obj->m_type;
 
-    if (objectType == (TYPEMASK_GAMEOBJECT | TYPEMASK_OBJECT)) {
+    if (objectType == HEIR_TYPE_GAMEOBJECT) {
         CGGameObject_C* gameObject = static_cast<CGGameObject_C*>(object);
 
         if (gameObject->IsTracked() && static_cast<CGUnit_C*>(player)->CanInteract(gameObject)) {
-            type = 8;
+            type = MINIMAP_OBJECT;
         } else {
             uint32_t status = gameObject->m_questStatus;
 
             if (status == 10) {
-                type = 10;
+                type = MINIMAP_QUEST_COMPLETE;
             } else if (status == 8 || (status == 2 && CGMinimapFrame::IsTrackingTrivialQuests())) {
-                type = 9;
+                type = MINIMAP_QUEST_AVAILABLE;
             } else if (status == 7 || (status == 4 && CGMinimapFrame::IsTrackingTrivialQuests())) {
-                type = 11;
+                type = MINIMAP_QUEST_REPEATABLE;
             } else {
                 if (!player->CanTrackObject(gameObject)) {
                     return 1;
                 }
 
-                type = 8;
+                type = MINIMAP_OBJECT;
             }
         }
     } else {
-        if (objectType == (TYPEMASK_PLAYER | TYPEMASK_UNIT | TYPEMASK_OBJECT)) {
+        if (objectType == (TYPE_PLAYER | TYPE_UNIT | TYPE_OBJECT)) {
             if (CGGameUI::IsInParty(guid) || CGGameUI::IsPartyMember(guid)) {
                 return 1;
             }
-        } else if (objectType != (TYPEMASK_UNIT | TYPEMASK_OBJECT)) {
+        } else if (objectType != (TYPE_UNIT | TYPE_OBJECT)) {
             return 1;
         }
 
@@ -2277,7 +2310,7 @@ int32_t CGMinimapFrame::ObjectEnumProc(WOWGUID guid, void* param) {
         const WOWGUID& controller = unit->m_unit->m_unitFieldCharmedby ? unit->m_unit->m_unitFieldCharmedby : unit->m_unit->m_unitFieldSummonedby;
 
         if (controller == ClntObjMgrGetActivePlayer()) {
-            type = 15;
+            type = MINIMAP_PET;
         } else {
             if (unit->m_unit->m_unitFieldHealth <= 0 && !unit->CanInteractWhileDead()) {
                 return 1;
@@ -2288,38 +2321,38 @@ int32_t CGMinimapFrame::ObjectEnumProc(WOWGUID guid, void* param) {
                     tracked = 1;
                 }
 
-                type = 8;
+                type = MINIMAP_OBJECT;
             } else {
                 uint32_t status = unit->m_questStatus;
 
                 if (status == 10) {
-                    type = 10;
+                    type = MINIMAP_QUEST_COMPLETE;
                 } else if (status == 8 || (status == 2 && CGMinimapFrame::IsTrackingTrivialQuests())) {
-                    type = 9;
+                    type = MINIMAP_QUEST_AVAILABLE;
                 } else if (status == 7 || (status == 4 && CGMinimapFrame::IsTrackingTrivialQuests())) {
-                    type = 11;
+                    type = MINIMAP_QUEST_REPEATABLE;
                 } else if (unit->m_interactIconType) {
-                    type = 13;
-                    questGiver = 1;
+                    type = MINIMAP_FLIGHTMASTER;
+                    questGiver = 1; // The native tooltip flag identifies a flight master.
                 } else {
                     if (!player->CanTrackUnit(unit)) {
                         return 1;
                     }
 
-                    if (unit->m_obj->m_type & TYPEMASK_PLAYER) {
+                    if (unit->m_obj->m_type & TYPE_PLAYER) {
                         if (player->CanAttack(unit)) {
-                            type = 2;
+                            type = MINIMAP_PLAYER_HOSTILE;
                         } else {
                             int32_t faction = static_cast<CGPlayer_C*>(unit)->GetPVPFactionIndex();
-                            type = 4 - (faction != player->GetPVPFactionIndex());
+                            type = MINIMAP_PLAYER_SAME_FACTION - (faction != player->GetPVPFactionIndex());
                         }
                     } else {
                         UNIT_REACTION reaction = unit->UnitReaction(player);
 
                         if (reaction < UNIT_REACTION_FRIENDLY) {
-                            type = (reaction > UNIT_REACTION_HOSTILE) + 5;
+                            type = (reaction > UNIT_REACTION_HOSTILE) + MINIMAP_MONSTER_HOSTILE;
                         } else {
-                            type = 7;
+                            type = MINIMAP_MONSTER_FRIENDLY;
                         }
                     }
                 }
@@ -2359,13 +2392,13 @@ static void SetMemberData(WOWGUID guid, MEMBERINFO* member, CGPlayer_C* player, 
     float dx = s_playerPosition.x;
     float dy = s_playerPosition.y;
     C3Vector position(0.0f, 0.0f, 0.0f);
-    CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(guid, TYPEMASK_UNIT, __FILE__, __LINE__));
+    CGUnit_C* unit = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(guid, TYPE_UNIT, __FILE__, __LINE__));
 
     if (unit) {
         if (unit->m_vehiclePassenger && unit->m_vehiclePassenger->m_state) {
             for (uint32_t i = 0; i < CGBattlefieldInfo::m_numVehicles; i++) {
                 WOWGUID vehicleGuid = i < CGBattlefieldInfo::m_numVehicles ? CGBattlefieldInfo::m_vehicleGuids[i] : WOWGUID();
-                CGUnit_C* vehicle = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(vehicleGuid, TYPEMASK_UNIT, __FILE__, __LINE__));
+                CGUnit_C* vehicle = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(vehicleGuid, TYPE_UNIT, __FILE__, __LINE__));
 
                 if (!vehicle) {
                     continue;
@@ -2425,7 +2458,7 @@ static void SetMemberData(WOWGUID guid, MEMBERINFO* member, CGPlayer_C* player, 
         position.y = state->m_posY;
 
         for (uint32_t i = 0; i < CGBattlefieldInfo::m_numVehicles; i++) {
-            CGUnit_C* vehicle = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(CGBattlefieldInfo::GetVehicleGuid(i), TYPEMASK_UNIT, __FILE__, __LINE__));
+            CGUnit_C* vehicle = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(CGBattlefieldInfo::GetVehicleGuid(i), TYPE_UNIT, __FILE__, __LINE__));
 
             if (!vehicle) {
                 continue;
@@ -2475,7 +2508,7 @@ static void SetMemberData(WOWGUID guid, MEMBERINFO* member, CGPlayer_C* player, 
 // VERIFY: 9e41d744 manual
 // OFFSET: 0x007F4320
 static void MinimapGetPartyMembers(MEMBERINFO* members) {
-    CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
+    CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPE_PLAYER, __FILE__, __LINE__));
 
     if (!player) {
         return;
@@ -2496,7 +2529,7 @@ static void MinimapGetPartyMembers(MEMBERINFO* members) {
 // VERIFY: 18766529 manual
 // OFFSET: 0x007F4390
 static void MinimapGetRaidMembers(MEMBERINFO* members) {
-    CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPEMASK_PLAYER, __FILE__, __LINE__));
+    CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPE_PLAYER, __FILE__, __LINE__));
 
     if (!player) {
         return;
@@ -2656,7 +2689,7 @@ void CGMinimapFrame::LeaveWorld() {
     s_indoor.m_texture = nullptr;
     s_poiInfo.Clear();
 
-    for (uint32_t i = 0; i < 23; i++) {
+    for (uint32_t i = 0; i < MINIMAP_NUM_TYPES; i++) {
         s_objInfo[i].Clear();
     }
 
@@ -2670,7 +2703,7 @@ void CGMinimapFrame::RenderGroupBlips(const C44Matrix& rotation) {
         return;
     }
 
-    for (uint32_t list = 0; list < 2; list++) {
+    for (uint32_t list = MINIMAP_RAID; list < MINIMAP_PLAYER_HOSTILE; list++) {
         for (uint32_t i = 0; i < s_objInfo[list].m_count; i++) {
             OBJINFO* info = &s_objInfo[list].m_data[i];
 
@@ -2708,7 +2741,7 @@ void CGMinimapFrame::RenderGroupBlips(const C44Matrix& rotation) {
 
             int32_t icon = info->m_icon - 1;
 
-            if (!list) {
+            if (!list) { // Raid classes use the second half of the class atlas.
                 icon += 16;
             }
 
@@ -2745,7 +2778,7 @@ void CGMinimapFrame::RenderObjectBlips(const C44Matrix& rotation, bool otherFloo
         return;
     }
 
-    for (uint32_t list = 2; list < 16; list++) {
+    for (uint32_t list = MINIMAP_PLAYER_HOSTILE; list < MINIMAP_VEHICLE_GROUND_UNOCCUPIED; list++) {
         for (uint32_t i = 0; i < s_objInfo[list].m_count; i++) {
             OBJINFO* info = &s_objInfo[list].m_data[i];
 
@@ -2810,8 +2843,8 @@ void CGMinimapFrame::RenderObjectBlips(const C44Matrix& rotation, bool otherFloo
 // VERIFY: a016d4c5 manual
 // OFFSET: 0x00580720
 void CGMinimapFrame::RenderVehicleBlips(const C44Matrix& rotation) {
-    for (uint32_t list = 16; list < 23; list++) {
-        CTexture* texture = s_vehicleTextures[list - 16];
+    for (uint32_t list = MINIMAP_VEHICLE_GROUND_UNOCCUPIED; list < MINIMAP_NUM_TYPES; list++) {
+        CTexture* texture = s_vehicleTextures[list - MINIMAP_VEHICLE_GROUND_UNOCCUPIED];
 
         if (!s_objInfo[list].m_count || !texture) {
             continue;
@@ -3256,7 +3289,7 @@ void CGMinimapFrame::RenderInside(float scale, const C2Vector* center, const CIm
 // VERIFY: 2325fb71 manual
 // OFFSET: 0x0057E020
 static int32_t UpdateObjectInteractIcon(WOWGUID guid, void* param) {
-    CGObject_C* object = ClntObjMgrObjectPtr(guid, TYPEMASK_OBJECT, __FILE__, __LINE__);
+    CGObject_C* object = ClntObjMgrObjectPtr(guid, TYPE_OBJECT, __FILE__, __LINE__);
 
     if (object && (object->m_questStatus == 2 || object->m_questStatus == 3 || object->m_questStatus == 4)) {
         object->UpdateInteractIcon();
@@ -3295,7 +3328,7 @@ int32_t CGMinimapFrame::OnLayerTrackUpdate(const CMouseEvent& evt) {
     if (!CSimpleFrame::OnLayerTrackUpdate(evt)) {
         bool anyObject = false;
 
-        for (uint32_t i = 0; i < 23; i++) {
+        for (uint32_t i = 0; i < MINIMAP_NUM_TYPES; i++) {
             if (s_hoverObjects[i]) {
                 anyObject = true;
                 break;
@@ -3330,10 +3363,10 @@ int32_t CGMinimapFrame::OnLayerTrackUpdate(const CMouseEvent& evt) {
         }
     }
 
-    uint32_t objects[23];
+    uint32_t objects[MINIMAP_NUM_TYPES];
     memset(objects, 0, sizeof(objects));
 
-    for (uint32_t i = 0; i < 23; i++) {
+    for (uint32_t i = 0; i < MINIMAP_NUM_TYPES; i++) {
         for (uint32_t j = 0; j < s_objInfo[i].Count(); j++) {
             OBJINFO& info = s_objInfo[i][j];
             float x = info.m_position.x + rect.minX;
@@ -3344,7 +3377,7 @@ int32_t CGMinimapFrame::OnLayerTrackUpdate(const CMouseEvent& evt) {
             }
 
             const char* name;
-            CGObject_C* object = ClntObjMgrObjectPtr(info.m_guid, TYPEMASK_OBJECT, __FILE__, __LINE__);
+            CGObject_C* object = ClntObjMgrObjectPtr(info.m_guid, TYPE_OBJECT, __FILE__, __LINE__);
 
             if (object) {
                 name = object->GetObjectName();
@@ -3387,7 +3420,7 @@ int32_t CGMinimapFrame::OnLayerTrackUpdate(const CMouseEvent& evt) {
 
     bool objectsChanged = false;
 
-    for (uint32_t i = 0; i < 23; i++) {
+    for (uint32_t i = 0; i < MINIMAP_NUM_TYPES; i++) {
         if (s_hoverObjects[i] != objects[i]) {
             objectsChanged = true;
             break;
@@ -3404,7 +3437,7 @@ int32_t CGMinimapFrame::OnLayerTrackUpdate(const CMouseEvent& evt) {
     s_hoverRaid = raid;
     bool anyObject = false;
 
-    for (uint32_t i = 0; i < 23; i++) {
+    for (uint32_t i = 0; i < MINIMAP_NUM_TYPES; i++) {
         s_hoverObjects[i] = objects[i];
 
         if (objects[i]) {
@@ -3487,14 +3520,14 @@ int32_t CGMinimapFrame::OnLayerTrackUpdate(const CMouseEvent& evt) {
         }
     }
 
-    for (uint32_t i = 0; i < 23; i++) {
+    for (uint32_t i = 0; i < MINIMAP_NUM_TYPES; i++) {
         for (uint32_t j = 0; j < s_objInfo[i].Count(); j++) {
             if (!(s_hoverObjects[i] & (1 << j))) {
                 continue;
             }
 
             const char* name;
-            CGObject_C* object = ClntObjMgrObjectPtr(s_objInfo[i][j].m_guid, TYPEMASK_OBJECT, __FILE__, __LINE__);
+            CGObject_C* object = ClntObjMgrObjectPtr(s_objInfo[i][j].m_guid, TYPE_OBJECT, __FILE__, __LINE__);
 
             if (object) {
                 name = object->GetObjectName();
