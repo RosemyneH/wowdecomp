@@ -5,8 +5,9 @@
 `Engine/Source/Base/Job/JobSystem.cpp` owns one static pool and one active batch.
 Publication holds `Pool::mu`; workers copy callback metadata under that mutex.
 An atomic index dynamically assigns contiguous ranges. Both `Start` and
-`ParallelFor` publish sixteen ranges per participant (`Start` uses the workers;
-`ParallelFor` also counts the caller), clamped to the item count. `ParallelFor`
+`ParallelFor` publish at least sixteen ranges per participant. Batches large
+enough that eight items per range is finer than that use the finer split, up to
+1024 ranges. `ParallelFor`
 keeps one of those runners for the caller, so a one-item parallel call does not
 wake a worker. `Wait` also claims ranges, then waits for both zero remaining
 ranges and an acknowledgment
@@ -97,12 +98,10 @@ be inferred from this single-node, symmetric 6-core/12-thread host.
 
 ## Chunk granularity
 
-`ChunkCount` publishes `16 * participants` ranges, never more than the item count.
-Counts at or below that cap are one range per item. The factor comes from an
-in-process Publish/Wait study at 10 workers: 16× worker ranges cut the 4096-item
-skewed median from about 1.25 ms to about 0.35 ms on two runs, while cheap and
-uniform medians stayed in the same band. It is not an adaptive controller and it
-is not a frame-time result. Details are in the benchmark record.
+`ChunkCount` publishes at least `16 * participants` ranges. When `count / 8`
+is larger, it uses that many ranges instead, capped at 1024. The cap exists so a
+`uint32_t` count cannot publish hundreds of millions of ranges. The 4096-item
+measurement that chose eight items per range is in the benchmark record.
 
 Other threading sources found: Services/AsyncFile queue workers; Storm SThread/SLock
 platform wrappers; detached Unix/Darwin URL downloads; BlizzardCore process/thread

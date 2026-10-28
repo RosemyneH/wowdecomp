@@ -234,6 +234,30 @@ runner sweep (`2026-10-28-runners-sweep.csv`) showed four runners beating both
 serial and the full pool for 16 heavy items, which is the cap chosen here.
 Not frame time.
 
+## 4096-item range width
+
+In-process Publish/Wait at 10 workers, 4096 items, chunk counts 176 (the previous
+production `ParallelFor` width), 352, 512, 1024, 2048, and 4096. Two runs, five
+samples, 20 batches, seed 335. Rows: `2026-10-28-wide.csv` and
+`2026-10-28-wide-repeat.csv`. Median milliseconds:
+
+| Distribution | 176 | 512 | 1024 | 4096 |
+| --- | --- | --- | --- | --- |
+| cheap, run 1 | 0.029 | 0.037 | 0.049 | 0.137 |
+| cheap, run 2 | 0.032 | 0.036 | 0.052 |  |
+| uniform, run 1 | 0.143 | 0.150 | 0.156 | 0.168 |
+| heavy, run 1 | 1.278 | 1.261 | 1.258 | 1.247 |
+| skewed, run 1 | 0.336 | 0.236 | 0.212 | 0.299 |
+| skewed, run 2 | 0.320 | 0.246 | 0.228 |  |
+
+Heavy and uniform stay flat: those bodies are already spread across the pool, and
+more ranges do not create more cores. Skewed keeps falling through 512 ranges on
+both runs, with no overlap against 176. At 1024 the second run overlaps 512.
+Cheap climbs the whole way; at 1024 it meets the serial time of about 0.049 ms,
+and at 4096 ranges it is slower than serial. Production therefore uses about
+eight items per range for a 4096-item batch (512 ranges here) and refuses counts
+past 1024 ranges. Not frame time.
+
 ## Measurement limits
 
 Historical results remain in `../multithreading-audit/benchmarks.html`. Do not

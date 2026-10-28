@@ -7,12 +7,16 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-Small batches use at most four runners until the item count passes 16. Larger
-batches still open one more runner per four items up to the pool. Engine/runtime
+4096-item batches use about eight items per range, capped at 1024 ranges.
+Uniform and heavy 4096-item times did not move with finer ranges. Engine/runtime
 validation that needs a client or other hardware remains blocked below.
 
 ## Completed iterations
 
+- [x] Spread large batches to about eight items per range. Two in-process runs
+  moved 4096-item skewed medians from about 0.33 ms at 176 ranges to about
+  0.24 ms at 512, with no overlap. Cheap 4096 stayed under its serial time.
+  1024 ranges and one range per item were slower again. Lifecycle and TSan passed.
 - [x] Cap runners at `max(4, items/4)`. Back-to-back 8- and 16-item ParallelFor
   intervals dropped with no overlap on uniform, heavy, and one-hot bodies.
   64-, 256-, and 4096-item intervals still overlap, so large batches are

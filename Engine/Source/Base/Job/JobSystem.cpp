@@ -49,9 +49,17 @@ uint32_t ReserveWorkerCount() {
     return 1;
 }
 
-// -- ʕ •ᴥ•ʔ✿ Sixteen claims per participant. Four left a hot prefix on one or two workers ✿ ʕ •ᴥ•ʔ
+// -- ʕ •ᴥ•ʔ✿ Large batches use about eight items per range so a hot prefix can reach every runner ✿ ʕ •ᴥ•ʔ
 uint32_t ChunkCount(uint32_t count, uint32_t participants) {
-    uint64_t chunks = static_cast<uint64_t>(participants) * 16u;
+    uint64_t wide = static_cast<uint64_t>(participants) * 16u;
+    uint64_t spread = static_cast<uint64_t>(count) / 8u;
+    if (spread > 1024u) {
+        spread = 1024u;
+    }
+    uint64_t chunks = spread > wide ? spread : wide;
+    if (chunks < 1u) {
+        chunks = 1u;
+    }
     if (chunks > count) {
         chunks = count;
     }
