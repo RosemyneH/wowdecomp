@@ -44,5 +44,26 @@ int main() {
             if (byte != 0x33 + i) return 7;
         }
     }
+    unsigned char direct[32];
+    unsigned char stagingUpload[32] = {};
+    auto* stagingMap = static_cast<unsigned char*>(staging.Lock(32));
+    if (!stagingMap) return 8;
+    std::memset(stagingMap, 0x44, 32);
+    std::memset(direct, 0x55, 32);
+    if (!staging.m_lock) return 9;
+    std::memcpy(direct, staging.m_data.Ptr(), 32);
+    staging.Unlock();
+    if (direct[0] != 0x44 || staging.m_lock) return 10;
+
+    stagingMap = static_cast<unsigned char*>(staging.Lock(32));
+    if (!stagingMap) return 11;
+    std::memset(stagingMap, 0x66, 32);
+    std::memcpy(stagingUpload, staging.m_data.Ptr(), 32);
+    staging.Unlock();
+    std::memset(direct, 0x77, 32);
+    if (staging.m_lock) return 12;
+    for (unsigned i = 0; i < 32; ++i) {
+        if (stagingUpload[i] != 0x66 || direct[i] != 0x77) return 13;
+    }
     return 0;
 }
