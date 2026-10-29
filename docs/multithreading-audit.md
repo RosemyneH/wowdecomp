@@ -23,13 +23,13 @@ all referenced inputs/outputs must survive until that join.
 
 ## Area purge and wait reentry
 
-`CMap::PreUpdateAreas` (`Map.cpp:2027`) purges an out-of-range area when its async object is missing or no longer current. A finished read clears `m_isCurrent` before the post callback (`AsyncFile.cpp:459`). `CMapArea::Purge` then `Cancel`s. A current read returns 0, nulls `m_fileBuffer`, and frees that buffer from `FreeAsyncObject`. Any other state returns 1, unlinks the object, and the area destructor frees `m_fileBuffer` (`MapArea.cpp:606`). Map update and the poll handler share the caller thread, so purge does not run in the gap between the poll's unlock and its callback. No lifetime change from this pass.
+`CMap::PreUpdateAreas` (`Map.cpp:2027`) purges an out-of-range area when its async object is missing or no longer current. A finished read clears `m_isCurrent` before the post callback (`AsyncFile.cpp:464`). `CMapArea::Purge` then `Cancel`s. A current read returns 0, nulls `m_fileBuffer`, and frees that buffer from `FreeAsyncObject`. Any other state returns 1, unlinks the object, and the area destructor frees `m_fileBuffer` (`MapArea.cpp:606`). Map update and the poll handler share the caller thread, so purge does not run in the gap between the poll's unlock and its callback. The poll copies `m_userPostloadCallback` and `m_userArg` before that unlock (`AsyncFile.cpp`). A later `Cancel` can recycle the object without changing the callback this dequeue already took. The argument's lifetime is still the caller's: a second thread that cancels and frees that argument before the call returns is not closed here.
 
 `AsyncFileReadWait` increments `s_waiting` and, if `m_isProcessed` is already set, used to return without clearing it. The next wait then hits the fatal reentry guard. `CM2Model::WaitForLoad` (`M2Model.cpp:731`) calls wait twice while `m_asyncObject` can still be set. The processed return now decrements the guard. A nested wait from inside a callback still trips that guard on purpose.
 
 ## Async destroy flag
 
-`AsyncFileReadDestroyObject` (`AsyncFile.cpp`) used to drop `g_queueLock` and spin on plain `m_isCurrent`. The I/O worker stores that byte only while holding the same lock (`AsyncFile.cpp:459`). Those accesses were a data race if destruction observed an in-flight read. The wait now re-acquires the lock for every check. `Cancel` still avoids this wait for a current object by deferring cleanup to the post callback. No TSan run of the async file workers was taken.
+`AsyncFileReadDestroyObject` (`AsyncFile.cpp`) used to drop `g_queueLock` and spin on plain `m_isCurrent`. The I/O worker stores that byte only while holding the same lock (`AsyncFile.cpp:464`). Those accesses were a data race if destruction observed an in-flight read. The wait now re-acquires the lock for every check. `Cancel` still avoids this wait for a current object by deferring cleanup to the post callback. No TSan run of the async file workers was taken.
 
 ## Deferred texture staging
 

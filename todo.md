@@ -7,11 +7,17 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-Poll still reads the post callback pointer after releasing the queue lock.
-Client frame measurements stay blocked.
+`AsyncFileReadWaitAll` returns without polling when no file read is queued, so
+deferred texture objects on `s_asyncTextureList` stay deferred. Decide from the
+callers whether that is the budget contract. Client frame measurements stay
+blocked.
 
 ## Completed iterations
 
+- [x] Copy the post callback and its argument under the queue lock before the
+  poll invokes them. `Cancel` can recycle the object after the unlock. The
+  copied argument is still the caller's lifetime. `AsyncFile.cpp` typechecks
+  with the Linux client flags. No async-worker run.
 - [x] Clear `s_waiting` when `AsyncFileReadWait` finds the object already
   processed. `WaitForLoad` calls it twice while the shared pointer is still
   set, and the old return left the fatal reentry guard stuck. A wait entered

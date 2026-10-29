@@ -142,8 +142,11 @@ int32_t AsyncFileReadPollHandler(const void* data, void* param) {
         }
 
         object->m_isProcessed = 1;
+        // ʕ •ᴥ•ʔ✿ Copy the callback before unlock. Cancel can recycle this object once the lock drops ✿ ʕ •ᴥ•ʔ
+        void* callback = object->m_userPostloadCallback;
+        void* arg = object->m_userArg;
         g_queueLock.Leave();
-        reinterpret_cast<void (*)(void*)>(object->m_userPostloadCallback)(object->m_userArg);
+        reinterpret_cast<void (*)(void*)>(callback)(arg);
         s_progressCount--;
 
         if (OsGetAsyncTimeMs() - start > s_handlerTimeout) {
