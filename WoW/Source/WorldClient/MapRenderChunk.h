@@ -102,9 +102,6 @@ class CMapRenderChunk {
     static void QueueMultiPass(CMapRenderChunk* renderChunk);
     static void FlushMultiPass();
     static void BeginQueuedTerrain();
-    static void ArmTerrainReplay(int32_t record);
-    static int32_t ReplayTerrain();
-    static int32_t TerrainImmediate(CMapRenderChunk* chunk);
     static void RenderMultiPassAdditive(CMapRenderChunk* renderChunk);
     static void SetShaders(int32_t a1, int32_t a2);
     static void InitializeVertexShaderConstants(const C44Matrix& world, const C44Matrix& view);
