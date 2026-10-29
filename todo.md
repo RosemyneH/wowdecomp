@@ -7,12 +7,16 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-Sequence and event callbacks are cleared next to loaded callbacks in unit and
-object teardown. Confirm they only run on the caller thread. Client frame
-measurements stay blocked.
+`m_lightingCallback` and `m_drawCallback` are cleared in unit teardown. Confirm
+their call sites stay on the caller thread. Client frame measurements stay
+blocked.
 
 ## Completed iterations
 
+- [x] Hold the poll lock across `OnSequenceInterrupted` and `SetSequenceCallback`.
+  A low-priority sequence load invokes the sequence callback on a scheduler
+  thread. Event callbacks still run from `AdvanceTime` on the caller.
+  `M2Model.cpp` typechecks with the Linux client flags.
 - [x] Clear `m_loadedCallback` inside `CM2Model::Release` while holding the poll
   lock. `UpdateLoaded` can invoke that callback from skin completion on a
   scheduler thread. Units, effects, particles, and simple models all release

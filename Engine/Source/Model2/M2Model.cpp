@@ -791,7 +791,10 @@ static int32_t BatchesMatch(const M2Batch* a, const M2Batch* b, const M2SkinSect
 // VERIFY: bf4ba22e auto
 // OFFSET: 0x00823FE0
 void CM2Model::SetSequenceCallback(void* callback, uint64_t param) {
+    AsyncFile::EnterPollLock();
+
     if (this->m_sequenceCallback == callback && this->m_sequenceCallbackParam == param) {
+        AsyncFile::LeavePollLock();
         return;
     }
 
@@ -799,6 +802,7 @@ void CM2Model::SetSequenceCallback(void* callback, uint64_t param) {
     this->m_sequenceCallback = callback;
 
     if (!(this->m_fFlags & 1)) {
+        AsyncFile::LeavePollLock();
         return;
     }
 
@@ -809,6 +813,8 @@ void CM2Model::SetSequenceCallback(void* callback, uint64_t param) {
     } else if (data->m_sequences.m_count <= 1 && (!this->m_eventCallback || !data->m_events.m_count)) {
         this->m_fFlags &= ~0x400000u;
     }
+
+    AsyncFile::LeavePollLock();
 }
 
 // VERIFY: 673d0acf auto
@@ -2156,16 +2162,19 @@ float CM2Model::GetBoneSequenceSpeed(uint32_t boneId) {
 // VERIFY: 6b99d12c manual
 // OFFSET: 0x008269C0
 int32_t CM2Model::OnSequenceInterrupted(uint32_t boneId, uint16_t boneIndex) {
+    AsyncFile::EnterPollLock();
     M2SequenceCallback callback = reinterpret_cast<M2SequenceCallback>(this->m_sequenceCallback);
     M2ModelBone* bone = &this->m_bones[boneIndex];
 
     if (!callback || bone->m_sequence.m_sequenceIndex == 0xFFFF || bone->m_sequence.m_finished) {
+        AsyncFile::LeavePollLock();
         return 1;
     }
 
     M2CompBone* compBone = &this->m_shared->m_data->m_bones[boneIndex];
 
     if (compBone->m_boneId == 0xFFFFFFFF && boneIndex) {
+        AsyncFile::LeavePollLock();
         return 1;
     }
 
@@ -2174,7 +2183,7 @@ int32_t CM2Model::OnSequenceInterrupted(uint32_t boneId, uint16_t boneIndex) {
     callback(this, id, bone->m_sequenceId, 1, 0, this->m_sequenceCallbackParam);
 
     int32_t result = this->Release();
-
+    AsyncFile::LeavePollLock();
     return result ? 1 : result;
 }
 

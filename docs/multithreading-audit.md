@@ -21,6 +21,12 @@ or null dispatches do not join prior work. Nonempty dispatches join prior work;
 shutdown waits, signals termination, and joins all threads. Callback user data and
 all referenced inputs/outputs must survive until that join.
 
+## Sequence and event callbacks
+
+`OnSequenceInterrupted` invokes `m_sequenceCallback`. One caller is `LowPrioritySequenceLoadedCallback`, which runs on a scheduler thread inside the poll lock (`M2Shared.cpp`). The pointer is now read and the callback runs while `OnSequenceInterrupted` holds that lock. `SetSequenceCallback` writes it under the same lock, so unit and object teardown waits out an in-flight interrupt. `Release` from the interrupt re-enters the lock.
+
+`ProcessEventCallbacks` and `CallSequenceCallback` are reached from `ProcessCallbacksRecursive`, and that is called from `CM2Scene::AdvanceTime` (`M2Scene.cpp:70`) on the caller before the animation dispatch. No scheduler caller of the event callback was found. `SetEventCallback` stays a plain store.
+
 ## Model loaded callbacks
 
 `CM2Model::UpdateLoaded` runs `m_loadedCallback` at the end of `InitializeLoaded`, including on the scheduler thread that is finishing a skin profile. Units, effects, particles, simple models, and detail doodads all pass themselves as the argument. `CM2Model::Release` now takes the poll lock, clears that callback, and only then drops the reference or deletes the model. A release from inside the callback re-enters the lock. Teardown that already called `SetLoadedCallback(nullptr)` before `Release` is covered by the same wait.
