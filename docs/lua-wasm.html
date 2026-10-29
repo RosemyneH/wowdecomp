@@ -54,7 +54,7 @@ cargo build --target wasm32-unknown-unknown --release</pre>
 <p>The crate is a <code>cdylib</code> depending on <code>Addons/Wasm/sdk/wow-addon-sdk</code>. The module must export <code>memory</code>. Imports outside the <code>wow</code> module, including WASI, fail validation.</p>
 
 <h2>Exports</h2>
-<p><code>wow_addon_v2!</code> exports the two required callbacks. <code>wow_on_update</code> is optional and is not part of the macro. <code>wow_alloc</code> and <code>wow_free</code> are <code>#[no_mangle]</code> exports from the SDK crate; the host uses them to copy an event payload into guest memory and to free it afterward. A v2 addon that is missing <code>wow_on_event_v2</code> does not finish loading. Event delivery is skipped if <code>wow_alloc</code> is missing.</p>
+<p><code>wow_addon_v2!</code> exports <code>wow_on_load</code>, <code>wow_on_event_v2</code>, and <code>wow_on_event_span</code>. <code>wow_on_update</code> is optional and is not part of the macro. <code>wow_alloc</code> and <code>wow_free</code> are <code>#[no_mangle]</code> exports from the SDK crate. The host keeps one 64 KiB scratch buffer in the guest and copies each payload there; a larger payload is allocated and freed for that call. A v2 addon that is missing <code>wow_on_event_v2</code> does not finish loading. Event delivery is skipped if <code>wow_alloc</code> is missing.</p>
 <pre>use wow_addon_sdk::ui::*;
 use wow_addon_sdk::*;
 
@@ -72,7 +72,7 @@ fn on_event(name: &amp;str, args: &amp;[EventArg]) -> i32 {
 pub extern "C" fn wow_on_update() -> i32 { 0 }
 
 wow_addon_v2!(on_load, on_event);</pre>
-<p><code>wow_on_load</code> runs once and must return <code>0</code>. A negative return fails the addon. <code>wow_on_event_v2</code> receives a WEV1 blob; the macro decodes it and calls <code>on_event(name, args)</code>. <code>wow_on_update</code>, when exported, is called about five times a second (every 200 ms) on the main thread. Returning from a callback is the only way the guest runs. There is no background thread.</p>
+<p><code>wow_on_load</code> runs once and must return <code>0</code>. A negative return fails the addon. <code>wow_on_event_v2</code> receives one WEV1 blob; the macro decodes it and calls <code>on_event(name, args)</code>. A combat-log burst is one <code>wow_on_event_span</code> call with a WEVS blob (count, then length-prefixed WEV1 payloads), and the macro calls <code>on_event</code> once per line. Addons built before that export still receive one <code>wow_on_event_v2</code> call per line. <code>wow_on_update</code>, when exported, is called about five times a second (every 200 ms) on the main thread. Returning from a callback is the only way the guest runs. There is no background thread.</p>
 <p>WEV1 argument tags, as <code>EventArg</code>: <code>Nil</code>, <code>Bool</code>, <code>Number(f64)</code>, <code>Text</code>, <code>Truncated(text, original_len)</code> past 1024 bytes, <code>Redacted</code>. Strings in a payload are capped, and a payload that would pass 4096 bytes collapses the extra argument to <code>Redacted</code>.</p>
 
 <h2>Lua to host</h2>

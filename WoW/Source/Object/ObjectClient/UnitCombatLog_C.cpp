@@ -38,6 +38,7 @@
 #include "WoW/Source/Game/ValidateName.h"
 #include "Engine/Source/Base/ConvertUTF.h"
 #include "WoW/Source/Object/CreatureStats.h"
+#include "WoW/Source/WasmAddonClient.h"
 #include "WoW/Source/DB/Rec/SummonPropertiesRec.h"
 
 // STATIC: 0x00ADB758
@@ -878,6 +879,10 @@ bool CombatLogEntry::MatchesFilter() {
 // VERIFY: c77149c7 manual
 // OFFSET: 0x0074F910
 void SendCombatLogEvents() {
+    struct CombatBurst {
+        CombatBurst() { WasmAddonClient_BeginCombatBurst(); }
+        ~CombatBurst() { WasmAddonClient_EndCombatBurst(); }
+    } combatBurst;
     char text[4096];
     bool logging = CGChat::IsChatLogging(1) != 0;
     lua_State* L = FrameScript_GetContext();

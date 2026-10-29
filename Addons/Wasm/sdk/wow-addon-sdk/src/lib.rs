@@ -349,6 +349,27 @@ pub fn decode_event(bytes: &[u8]) -> Option<(String, Vec<EventArg>)> {
     Some((name, args))
 }
 
+/// ʕ •ᴥ•ʔ✿ WEVS is a burst of WEV1 payloads: magic, count, then length-prefixed blobs ✿ ʕ •ᴥ•ʔ
+pub fn visit_span(bytes: &[u8], mut visit: impl FnMut(&[u8]) -> i32) -> i32 {
+    if bytes.len() < 8 || &bytes[0..4] != b"WEVS" { return -1; }
+    let Ok(count_bytes) = bytes[4..8].try_into() else { return -1; };
+    let count = u32::from_le_bytes(count_bytes) as usize;
+    let mut pos = 8usize;
+    let mut status = 0i32;
+    for _ in 0..count {
+        if pos + 4 > bytes.len() { return -1; }
+        let Ok(len_bytes) = bytes[pos..pos + 4].try_into() else { return -1; };
+        let n = u32::from_le_bytes(len_bytes) as usize;
+        pos += 4;
+        if pos + n > bytes.len() { return -1; }
+        let next = visit(&bytes[pos..pos + n]);
+        if next != 0 { status = next; }
+        pos += n;
+    }
+    if pos != bytes.len() { return -1; }
+    status
+}
+
 /// ʕ ◕ᴥ◕ ʔ✿ Export from your addon with `wow_addon!(on_load, on_event)` or forward manually ✿ ʕ ◕ᴥ◕ ʔ
 #[macro_export]
 macro_rules! wow_addon {
@@ -375,6 +396,14 @@ macro_rules! wow_addon_v2 {
                 Some((name, args)) => $on_event(&name, &args),
                 None => -1,
             }
+        }
+        #[no_mangle]
+        pub extern "C" fn wow_on_event_span(ptr: *const u8, len: u32) -> i32 {
+            let bytes = unsafe { core::slice::from_raw_parts(ptr, len as usize) };
+            $crate::visit_span(bytes, |one| match $crate::decode_event(one) {
+                Some((name, args)) => $on_event(&name, &args),
+                None => -1,
+            })
         }
     };
 }

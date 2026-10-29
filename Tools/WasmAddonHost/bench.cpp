@@ -179,8 +179,12 @@ static void RunScale(const fs::path& dist, int frames) {
             std::vector<double> frameTimes;
             for (int frame = 0; frame < frames; frame++) {
                 auto ft0 = std::chrono::steady_clock::now();
-                for (int k = 0; k < eventsPerFrame; k++)
-                    DispatchLikeClient(manager, "COMBAT_LOG_EVENT_UNFILTERED", CombatPayload(k));
+                if (eventsPerFrame > 0 && manager.HasSubscriber("COMBAT_LOG_EVENT_UNFILTERED")) {
+                    std::vector<std::vector<uint8_t>> burst;
+                    burst.reserve((size_t)eventsPerFrame);
+                    for (int k = 0; k < eventsPerFrame; k++) burst.push_back(CombatPayload(k).Finish());
+                    manager.DispatchEventBurst("COMBAT_LOG_EVENT_UNFILTERED", burst);
+                }
                 EventPayloadWriter unit("UNIT_HEALTH", 0);
                 unit.String("player", 6);
                 DispatchLikeClient(manager, "UNIT_HEALTH", std::move(unit));

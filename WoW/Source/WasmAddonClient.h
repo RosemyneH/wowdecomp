@@ -11,3 +11,5 @@ void WasmAddonClient_UnloadWorldAddOns();
 bool WasmAddonClient_LoadPackage(const char* name);
 bool WasmAddonClient_UnloadPackage(const char* name);
 bool WasmAddonClient_ReloadPackage(const char* name);
+void WasmAddonClient_BeginCombatBurst();
+void WasmAddonClient_EndCombatBurst();

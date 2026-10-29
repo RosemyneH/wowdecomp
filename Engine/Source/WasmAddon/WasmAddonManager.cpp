@@ -26,6 +26,24 @@ bool ReadFileLimited(const fs::path& path, uintmax_t maxBytes, std::vector<uint8
 void PutU32(std::vector<uint8_t>& out, uint32_t v) {
     out.push_back((uint8_t)v); out.push_back((uint8_t)(v >> 8)); out.push_back((uint8_t)(v >> 16)); out.push_back((uint8_t)(v >> 24));
 }
+void PutU32At(uint8_t* p, uint32_t v) {
+    p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); p[2] = (uint8_t)(v >> 16); p[3] = (uint8_t)(v >> 24);
+}
+std::vector<uint8_t> PackSpan(const std::vector<std::vector<uint8_t>>& payloads, size_t begin, size_t end) {
+    size_t total = 8;
+    for (size_t i = begin; i < end; i++) total += 4 + payloads[i].size();
+    std::vector<uint8_t> out(total);
+    out[0] = 'W'; out[1] = 'E'; out[2] = 'V'; out[3] = 'S';
+    PutU32At(out.data() + 4, (uint32_t)(end - begin));
+    size_t pos = 8;
+    for (size_t i = begin; i < end; i++) {
+        PutU32At(out.data() + pos, (uint32_t)payloads[i].size());
+        pos += 4;
+        if (!payloads[i].empty()) std::memcpy(out.data() + pos, payloads[i].data(), payloads[i].size());
+        pos += payloads[i].size();
+    }
+    return out;
+}
 } // namespace
 
 bool WasmAddonManager::EnsureRuntime() {
@@ -313,17 +331,66 @@ bool WasmAddonManager::ResolveConfirm(uint32_t requestId, bool accept) {
 
 void WasmAddonManager::RearmConfirm() { m_confirm.Rearm(Now()); }
 
+static constexpr uint32_t kEventScratch = 65536;
+
+void WasmAddonManager::PrepareEventBuffer(Addon& addon) {
+    if (!addon.instance) return;
+    addon.eventV2 = addon.instance->HasExport("wow_on_event_v2");
+    addon.eventV1 = addon.instance->HasExport("wow_on_event");
+    addon.eventSpan = addon.instance->HasExport("wow_on_event_span");
+    addon.eventFree = addon.instance->HasExport("wow_free");
+    if (!addon.instance->HasExport("wow_alloc")) return;
+    int64_t ptr = 0;
+    if (!InvokeExport(addon, "wow_alloc", {(int64_t)kEventScratch}, ptr) || ptr <= 0) return;
+    addon.eventBuf = (uint32_t)ptr;
+    addon.eventCap = kEventScratch;
+}
+
+void WasmAddonManager::ReleaseEventBuffer(Addon& addon) {
+    if (!addon.eventBuf || !addon.instance || !addon.eventFree) {
+        addon.eventBuf = 0;
+        addon.eventCap = 0;
+        return;
+    }
+    int64_t ignored = 0;
+    InvokeExport(addon, "wow_free", {(int64_t)addon.eventBuf, (int64_t)addon.eventCap}, ignored);
+    addon.eventBuf = 0;
+    addon.eventCap = 0;
+}
+
+bool WasmAddonManager::DeliverEvent(Addon& addon, const char* exportName, const uint8_t* bytes, uint32_t len) {
+    if (!addon.instance || (!bytes && len)) return false;
+    uint32_t dest = 0;
+    bool ephemeral = false;
+    if (addon.eventBuf && len <= addon.eventCap) {
+        dest = addon.eventBuf;
+    } else {
+        int64_t allocPtr = 0;
+        if (!InvokeExport(addon, "wow_alloc", {(int64_t)len}, allocPtr) || allocPtr <= 0) {
+            if (addon.info.state == AddonState::Running) RecordError(addon, "event delivery requires wow_alloc export");
+            return false;
+        }
+        dest = (uint32_t)allocPtr;
+        ephemeral = true;
+    }
+    if (!addon.instance->WriteMemory(dest, bytes, len)) {
+        RecordError(addon, "event buffer out of bounds");
+        return false;
+    }
+    int64_t ignored = 0;
+    InvokeExport(addon, exportName, {(int64_t)dest, (int64_t)len}, ignored);
+    if (ephemeral && addon.eventFree && addon.info.state == AddonState::Running)
+        InvokeExport(addon, "wow_free", {(int64_t)dest, (int64_t)len}, ignored);
+    return true;
+}
+
 void WasmAddonManager::DispatchEventTo(size_t addonIndex, const std::string& name, const std::vector<uint8_t>& payload) {
     if (addonIndex >= m_addons.size()) return;
     Addon& addon = *m_addons[addonIndex];
-    if (addon.info.state != AddonState::Running || !addon.instance || !addon.instance->HasExport("wow_on_event_v2")) return;
+    if (addon.info.state != AddonState::Running || !addon.eventV2) return;
     addon.info.stats.eventsReceived++;
-    int64_t allocPtr = 0, ignored = 0;
-    if (!addon.instance->HasExport("wow_alloc") || !InvokeExport(addon, "wow_alloc", {(int64_t)payload.size()}, allocPtr) || allocPtr <= 0) return;
-    if (!addon.instance->WriteMemory((uint32_t)allocPtr, payload.data(), (uint32_t)payload.size())) return;
-    InvokeExport(addon, "wow_on_event_v2", {allocPtr, (int64_t)payload.size()}, ignored);
-    if (addon.info.state == AddonState::Running && addon.instance->HasExport("wow_free"))
-        InvokeExport(addon, "wow_free", {allocPtr, (int64_t)payload.size()}, ignored);
+    DeliverEvent(addon, "wow_on_event_v2", payload.data(), (uint32_t)payload.size());
+    (void)name;
 }
 
 uint32_t WasmAddonManager::EffectiveGrants(const Manifest& manifest, const std::string& sha256) const {
@@ -442,7 +509,6 @@ bool WasmAddonManager::InvokeExport(Addon& addon, const char* name, const std::v
     addon.info.stats.callbackTimeUs += us;
     addon.info.stats.maxCallbackTimeUs = std::max(addon.info.stats.maxCallbackTimeUs, us);
     addon.info.stats.fuelUsed += addon.instance->ConsumedFuel();
-    addon.info.stats.memoryBytes = addon.instance->MemoryBytes();
     addon.info.stats.peakMemoryBytes = std::max(addon.info.stats.peakMemoryBytes, addon.info.stats.memoryBytes);
     if (!ok && error.compare(0, 5, "host ") != 0) FailAddon(addon, std::string(name) + ": " + error);
     if (!ok) addon.info.lastError = error;
@@ -1121,6 +1187,7 @@ bool WasmAddonManager::LoadAddon(const std::string& directory) {
     int64_t result = 0;
     if (!InvokeExport(*raw, "wow_on_load", {}, result)) return false;
     if (result != Ok) { FailAddon(*raw, "wow_on_load returned " + std::to_string(result)); return false; }
+    PrepareEventBuffer(*raw);
     return true;
 }
 
@@ -1141,6 +1208,7 @@ bool WasmAddonManager::UnloadAddon(const std::string& addonId) {
             if (m_host) m_host->ReleaseLua(addon.info.manifest.id);
         }
         if (wasRunning) { SaveStorage(addon, 0); SaveStorage(addon, 1); }
+        ReleaseEventBuffer(addon);
         addon.uiHandles.clear();
         addon.instance.reset();
         addon.info.state = AddonState::Unloaded;
@@ -1205,12 +1273,17 @@ void WasmAddonManager::DispatchEvent(const std::string& eventName, const std::ve
     m_dispatchBudget = 1024;
     QueuedEvent current{eventName, payload};
     while (true) {
-        std::vector<uint8_t> effective = current.payload;
-        if (effective.empty()) {
-            EventPayloadWriter writer(current.name, 0);
-            effective = writer.Finish();
+        const std::vector<uint8_t>* effective = &current.payload;
+        std::vector<uint8_t> synthesized;
+        if (current.payload.empty()) {
+            synthesized = EventPayloadWriter(current.name, 0).Finish();
+            effective = &synthesized;
         }
         bool combat = current.name == "COMBAT_LOG_EVENT" || current.name == "COMBAT_LOG_EVENT_UNFILTERED";
+        bool chat = current.name.size() >= 9 && current.name.compare(0, 9, "CHAT_MSG_") == 0;
+        bool unit = current.name.size() >= 5 && current.name.compare(0, 5, "UNIT_") == 0;
+        const std::vector<uint8_t>* redacted = nullptr;
+        std::vector<uint8_t> redactedStore;
         for (auto& addonPtr : m_addons) {
             Addon& addon = *addonPtr;
             if (addon.info.state != AddonState::Running || !addon.subscriptionsSet.count(current.name) || !addon.instance) continue;
@@ -1218,34 +1291,125 @@ void WasmAddonManager::DispatchEvent(const std::string& eventName, const std::ve
             m_dispatchBudget--;
             addon.info.stats.eventsReceived++;
             // ʕ •ᴥ•ʔ✿ Chat and combat payloads are withheld without the matching sensitive permission ✿ ʕ •ᴥ•ʔ
-            bool chat = current.name.size() >= 9 && current.name.compare(0, 9, "CHAT_MSG_") == 0;
-            bool unit = current.name.size() >= 5 && current.name.compare(0, 5, "UNIT_") == 0;
             bool gated = (chat && !(addon.info.grantedPermissions & PermChatRead)) ||
                          (combat && !(addon.info.grantedPermissions & PermCombatRead)) ||
                          (unit && !(addon.info.grantedPermissions & PermUnitsRead));
-            std::vector<uint8_t> bytes = gated ? RedactPayload(effective) : effective;
             bool v2 = addon.info.manifest.apiVersion >= 2;
-            if (!v2 && !addon.instance->HasExport("wow_on_event")) continue;
-            if (v2 && !addon.instance->HasExport("wow_on_event_v2")) continue;
-            const std::vector<uint8_t>& data = v2 ? bytes : effective;
-            const char* exportName = v2 ? "wow_on_event_v2" : "wow_on_event";
-            // ʕ ◕ᴥ◕ ʔ✿ v1 addons receive just the event name, exactly as before ✿ ʕ ◕ᴥ◕ ʔ
-            const uint8_t* ptr = v2 ? data.data() : (const uint8_t*)current.name.data();
-            uint32_t len = v2 ? (uint32_t)data.size() : (uint32_t)current.name.size();
-            int64_t allocPtr = 0, ignored = 0;
-            if (!addon.instance->HasExport("wow_alloc") || !InvokeExport(addon, "wow_alloc", {(int64_t)len}, allocPtr) || allocPtr <= 0) {
-                if (addon.info.state == AddonState::Running) RecordError(addon, "event delivery requires wow_alloc export");
-                continue;
+            if (v2 && !addon.eventV2) continue;
+            if (!v2 && !addon.eventV1) continue;
+            const uint8_t* ptr = nullptr;
+            uint32_t len = 0;
+            if (!v2) {
+                // ʕ ◕ᴥ◕ ʔ✿ v1 addons receive just the event name, exactly as before ✿ ʕ ◕ᴥ◕ ʔ
+                ptr = (const uint8_t*)current.name.data();
+                len = (uint32_t)current.name.size();
+            } else if (!gated) {
+                ptr = effective->data();
+                len = (uint32_t)effective->size();
+            } else {
+                if (!redacted) {
+                    redactedStore = RedactPayload(*effective);
+                    redacted = &redactedStore;
+                }
+                ptr = redacted->data();
+                len = (uint32_t)redacted->size();
             }
-            if (!addon.instance->WriteMemory((uint32_t)allocPtr, ptr, len)) { RecordError(addon, "event buffer out of bounds"); continue; }
-            InvokeExport(addon, exportName, {allocPtr, (int64_t)len}, ignored);
-            if (addon.info.state == AddonState::Running && addon.instance->HasExport("wow_free")) InvokeExport(addon, "wow_free", {allocPtr, (int64_t)len}, ignored);
+            DeliverEvent(addon, v2 ? "wow_on_event_v2" : "wow_on_event", ptr, len);
         }
         if (m_queuedEvents.empty()) break;
         current = std::move(m_queuedEvents.front());
         m_queuedEvents.erase(m_queuedEvents.begin());
     }
     m_dispatching = false;
+}
+
+void WasmAddonManager::DeliverBurstRange(const std::string& eventName, const std::vector<std::vector<uint8_t>>& payloads, size_t begin, size_t end) {
+    bool combat = eventName == "COMBAT_LOG_EVENT" || eventName == "COMBAT_LOG_EVENT_UNFILTERED";
+    bool chat = eventName.size() >= 9 && eventName.compare(0, 9, "CHAT_MSG_") == 0;
+    bool unit = eventName.size() >= 5 && eventName.compare(0, 5, "UNIT_") == 0;
+    bool needGranted = false;
+    bool needRedacted = false;
+    for (auto& addonPtr : m_addons) {
+        Addon& addon = *addonPtr;
+        if (addon.info.state != AddonState::Running || !addon.subscriptionsSet.count(eventName) || !addon.instance || !addon.eventSpan) continue;
+        bool gated = (chat && !(addon.info.grantedPermissions & PermChatRead)) ||
+                     (combat && !(addon.info.grantedPermissions & PermCombatRead)) ||
+                     (unit && !(addon.info.grantedPermissions & PermUnitsRead));
+        if (gated) needRedacted = true;
+        else needGranted = true;
+    }
+    std::vector<uint8_t> grantedSpan;
+    std::vector<uint8_t> redactedSpan;
+    if (needGranted) grantedSpan = PackSpan(payloads, begin, end);
+    if (needRedacted) {
+        std::vector<std::vector<uint8_t>> redacted;
+        redacted.reserve(end - begin);
+        for (size_t i = begin; i < end; i++) redacted.push_back(RedactPayload(payloads[i]));
+        redactedSpan = PackSpan(redacted, 0, redacted.size());
+    }
+    size_t count = end - begin;
+    for (auto& addonPtr : m_addons) {
+        Addon& addon = *addonPtr;
+        if (addon.info.state != AddonState::Running || !addon.subscriptionsSet.count(eventName) || !addon.instance) continue;
+        if (m_dispatchBudget == 0) { RecordActivity(addon.info.manifest.id, "event.budget", "delivery budget exhausted; dropping event chain"); continue; }
+        m_dispatchBudget--;
+        addon.info.stats.eventsReceived += (uint32_t)count;
+        bool gated = (chat && !(addon.info.grantedPermissions & PermChatRead)) ||
+                     (combat && !(addon.info.grantedPermissions & PermCombatRead)) ||
+                     (unit && !(addon.info.grantedPermissions & PermUnitsRead));
+        bool v2 = addon.info.manifest.apiVersion >= 2;
+        if (v2 && addon.eventSpan) {
+            const std::vector<uint8_t>& span = gated ? redactedSpan : grantedSpan;
+            DeliverEvent(addon, "wow_on_event_span", span.data(), (uint32_t)span.size());
+            continue;
+        }
+        if (v2 && !addon.eventV2) continue;
+        if (!v2 && !addon.eventV1) continue;
+        for (size_t i = begin; i < end; i++) {
+            const uint8_t* ptr = nullptr;
+            uint32_t len = 0;
+            std::vector<uint8_t> redactedOne;
+            if (!v2) {
+                ptr = (const uint8_t*)eventName.data();
+                len = (uint32_t)eventName.size();
+            } else if (!gated) {
+                ptr = payloads[i].data();
+                len = (uint32_t)payloads[i].size();
+            } else {
+                redactedOne = RedactPayload(payloads[i]);
+                ptr = redactedOne.data();
+                len = (uint32_t)redactedOne.size();
+            }
+            DeliverEvent(addon, v2 ? "wow_on_event_v2" : "wow_on_event", ptr, len);
+        }
+    }
+}
+
+void WasmAddonManager::DispatchEventBurst(const std::string& eventName, const std::vector<std::vector<uint8_t>>& payloads) {
+    if (payloads.empty()) return;
+    if (payloads.size() == 1) { DispatchEvent(eventName, payloads[0]); return; }
+    if (eventName == "AUCTION_HOUSE_CLOSED" || eventName == "AUCTION_ITEM_LIST_UPDATE") {
+        const ConfirmRequest* before = m_confirm.Front();
+        m_confirm.CancelAuctions(Now());
+        const ConfirmRequest* after = m_confirm.Front();
+        if (before && (!after || after->id != before->id) && m_host) {
+            m_host->ConfirmHide(before->id);
+            ShowNextConfirm();
+        }
+    }
+    if (m_dispatching || m_callbackDepth > 0) {
+        for (const std::vector<uint8_t>& payload : payloads) m_queuedEvents.push_back({eventName, payload});
+        return;
+    }
+    m_dispatching = true;
+    m_dispatchBudget = 1024;
+    constexpr size_t kChunk = 128;
+    for (size_t begin = 0; begin < payloads.size(); begin += kChunk) {
+        size_t end = std::min(payloads.size(), begin + kChunk);
+        DeliverBurstRange(eventName, payloads, begin, end);
+    }
+    m_dispatching = false;
+    FlushQueuedEvents();
 }
 
 bool WasmAddonManager::CallExportInt(const std::string& addonId, const char* exportName, int64_t& out) {

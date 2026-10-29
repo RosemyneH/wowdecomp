@@ -335,7 +335,36 @@ int main(int argc, char** argv) {
         CHECK(v == 5);
         CHECK(m.CallExportInt("test.payload", "wow_last_argc", v));
         CHECK(v == 2);
+        std::vector<std::vector<uint8_t>> burst;
+        EventPayloadWriter first("BAG_UPDATE", 0);
+        first.Number(3);
+        EventPayloadWriter second("BAG_UPDATE", 0);
+        second.Number(7);
+        burst.push_back(first.Finish());
+        burst.push_back(second.Finish());
+        m.DispatchEventBurst("BAG_UPDATE", burst);
+        CHECK(m.CallExportInt("test.payload", "wow_last_num", v));
+        CHECK(v == 7);
         m.Shutdown();
+
+        MockHost scaleHost; WasmAddonManager scale; scale.Initialize(tmp.string(), &scaleHost);
+        CHECK(scale.LoadAddon((dist / "bench-scale").string()));
+        scale.SetPermissionOverride("bench.scale", PermCombatRead, true);
+        int64_t mode = 0;
+        CHECK(scale.CallExportIntArg("bench.scale", "wow_set_mode", 0, mode));
+        std::vector<std::vector<uint8_t>> lines;
+        for (int i = 0; i < 100; i++) {
+            EventPayloadWriter line("COMBAT_LOG_EVENT_UNFILTERED", 0);
+            line.Number(i);
+            lines.push_back(line.Finish());
+        }
+        scale.DispatchEventBurst("COMBAT_LOG_EVENT_UNFILTERED", lines);
+        int64_t events = 0;
+        CHECK(scale.CallExportIntArg("bench.scale", "wow_events", 0, events));
+        CHECK(events == 100);
+        int64_t spans = 0;
+        if (scale.CallExportIntArg("bench.scale", "wow_span_calls", 0, spans)) CHECK(spans == 1);
+        scale.Shutdown();
 
         // ʕ ●ᴥ●ʔ✿ A v1 module relabelled api_version=2 must fail, not silently degrade ✿ ʕ ●ᴥ●ʔ
         MockHost host2; WasmAddonManager m2; m2.Initialize(tmp.string(), &host2);

@@ -51,6 +51,27 @@ public:
     std::deque<HostEnv> hostEnvs;
     uint64_t fuelBudget = 0;
     mutable uint64_t lastConsumed = 0;
+    struct CachedExport {
+        bool looked = false;
+        bool found = false;
+        wasmtime_func_t func{};
+        size_t params = 0;
+        size_t results = 0;
+    };
+    struct NamedExport { const char* name; CachedExport slot; };
+    mutable NamedExport hotExports[4] = {
+        {"wow_on_event_v2", {}},
+        {"wow_on_event", {}},
+        {"wow_alloc", {}},
+        {"wow_free", {}},
+    };
+    mutable std::map<std::string, CachedExport> callCache;
+
+    CachedExport& ExportSlot(const char* name) {
+        for (NamedExport& entry : hotExports)
+            if (std::strcmp(entry.name, name) == 0) return entry.slot;
+        return callCache[name];
+    }
 
     ~WasmtimeInstance() override {
         if (linker) wasmtime_linker_delete(linker);
@@ -85,27 +106,37 @@ public:
     }
 
     bool Call(const char* name, const std::vector<int64_t>& args, int64_t& result, std::string& error) override {
-        wasmtime_extern_t item;
-        if (!wasmtime_instance_export_get(Context(), &instance, name, std::strlen(name), &item) || item.kind != WASMTIME_EXTERN_FUNC) {
+        CachedExport& slot = ExportSlot(name);
+        if (!slot.looked) {
+            slot.looked = true;
+            slot.results = 1;
+            wasmtime_extern_t item;
+            if (wasmtime_instance_export_get(Context(), &instance, name, std::strlen(name), &item) && item.kind == WASMTIME_EXTERN_FUNC) {
+                slot.found = true;
+                slot.func = item.of.func;
+                wasm_functype_t* funcType = wasmtime_func_type(Context(), &slot.func);
+                if (funcType) {
+                    slot.params = wasm_functype_params(funcType)->size;
+                    slot.results = wasm_functype_results(funcType)->size;
+                    wasm_functype_delete(funcType);
+                }
+            }
+        }
+        if (!slot.found) {
             error = std::string("missing export: ") + name;
+            return false;
+        }
+        if (slot.params != args.size()) {
+            error = "host arity mismatch calling " + std::string(name);
             return false;
         }
         std::vector<wasmtime_val_t> vals(args.size());
         for (size_t i = 0; i < args.size(); i++) { vals[i].kind = WASMTIME_I32; vals[i].of.i32 = (int32_t)args[i]; }
-        // ʕ •ᴥ•ʔ✿ Honour the export's real arity (wow_free returns nothing) ✿ ʕ •ᴥ•ʔ
-        wasm_functype_t* funcType = wasmtime_func_type(Context(), &item.of.func);
-        if (funcType && wasm_functype_params(funcType)->size != args.size()) {
-            wasm_functype_delete(funcType);
-            error = "host arity mismatch calling " + std::string(name);
-            return false;
-        }
-        size_t resultCount = funcType ? wasm_functype_results(funcType)->size : 1;
-        std::vector<wasmtime_val_t> results(resultCount);
+        std::vector<wasmtime_val_t> results(slot.results);
         for (auto& r : results) r.kind = WASMTIME_I32;
-        if (funcType) wasm_functype_delete(funcType);
         wasmtime_context_set_fuel(Context(), limits.fuelPerCallback);
         wasm_trap_t* trap = nullptr;
-        wasmtime_error_t* err = wasmtime_func_call(Context(), &item.of.func, vals.data(), vals.size(), results.data(), results.size(), &trap);
+        wasmtime_error_t* err = wasmtime_func_call(Context(), &slot.func, vals.data(), vals.size(), results.data(), results.size(), &trap);
         uint64_t remaining = 0;
         if (wasmtime_context_get_fuel(Context(), &remaining) == nullptr)
             lastConsumed = limits.fuelPerCallback >= remaining ? limits.fuelPerCallback - remaining : 0;

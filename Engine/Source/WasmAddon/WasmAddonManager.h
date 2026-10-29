@@ -22,6 +22,7 @@ public:
     bool LoadAddon(const std::string& directory);
     bool UnloadAddon(const std::string& addonId);
     void DispatchEvent(const std::string& eventName, const std::vector<uint8_t>& payload = {});
+    void DispatchEventBurst(const std::string& eventName, const std::vector<std::vector<uint8_t>>& payloads);
     bool HasSubscriber(const std::string& eventName) const;
     bool CallExportInt(const std::string& addonId, const char* exportName, int64_t& out);
     void TickConfirm();
@@ -55,6 +56,12 @@ private:
         bool storageDirty[2] = {};
         uint64_t storageBytesInCallback = 0;
         uint32_t hostCallsInCallback = 0;
+        uint32_t eventBuf = 0;
+        uint32_t eventCap = 0;
+        bool eventV1 = false;
+        bool eventV2 = false;
+        bool eventSpan = false;
+        bool eventFree = false;
     };
 
     int64_t HandleHostCall(Addon& addon, IWasmInstance& instance, HostFn fn, const std::vector<int64_t>& args);
@@ -74,6 +81,10 @@ private:
     void ShowNextConfirm();
     void DeliverConfirmResult(const ConfirmQueue::Completed& completed, int32_t detail);
     void DispatchEventTo(size_t addonIndex, const std::string& name, const std::vector<uint8_t>& payload);
+    void PrepareEventBuffer(Addon& addon);
+    void ReleaseEventBuffer(Addon& addon);
+    bool DeliverEvent(Addon& addon, const char* exportName, const uint8_t* bytes, uint32_t len);
+    void DeliverBurstRange(const std::string& eventName, const std::vector<std::vector<uint8_t>>& payloads, size_t begin, size_t end);
     void LoadStorage(Addon& addon, int scope);
     void SaveStorage(Addon& addon, int scope);
     std::string StorageDir(int scope) const { return scope == 0 ? m_storageAccountDir : m_storageCharacterDir; }

@@ -1580,6 +1580,8 @@ return true
 ClientHostServices s_host;
 WasmAddon::WasmAddonManager s_manager;
 bool s_initialized = false;
+int s_combatBurstDepth = 0;
+std::vector<std::pair<std::string, std::vector<uint8_t>>> s_combatBurst;
 
 void ClientHostServices::ConfirmShow(const WasmAddon::ConfirmRequest& request) {
     std::string name = "addon";
@@ -1619,6 +1621,10 @@ void OnGameEvent(uint32_t, const char* eventName, lua_State* L, int32_t argCount
             }
             default: writer.Nil(); break;
         }
+    }
+    if (s_combatBurstDepth && (std::strcmp(eventName, "COMBAT_LOG_EVENT") == 0 || std::strcmp(eventName, "COMBAT_LOG_EVENT_UNFILTERED") == 0)) {
+        s_combatBurst.emplace_back(eventName, writer.Finish());
+        return;
     }
     s_manager.DispatchEvent(eventName, writer.Finish());
 }
@@ -1794,6 +1800,21 @@ int32_t CCommand_WasmAddons(const char*, const char*) {
 }
 
 } // namespace
+
+void WasmAddonClient_BeginCombatBurst() {
+    if (!s_initialized) return;
+    s_combatBurstDepth++;
+}
+
+void WasmAddonClient_EndCombatBurst() {
+    if (!s_initialized || s_combatBurstDepth == 0) return;
+    if (--s_combatBurstDepth) return;
+    auto queued = std::move(s_combatBurst);
+    s_combatBurst.clear();
+    std::map<std::string, std::vector<std::vector<uint8_t>>> groups;
+    for (auto& item : queued) groups[std::move(item.first)].push_back(std::move(item.second));
+    for (auto& [name, payloads] : groups) s_manager.DispatchEventBurst(name, payloads);
+}
 
 void WasmAddonClient_ServiceConfirms() {
     if (!s_initialized) return;
