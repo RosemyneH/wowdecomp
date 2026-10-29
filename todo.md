@@ -7,12 +7,17 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-Scheduler policy and the animation helper call chain are recorded. Further
-measurements need a client frame or another machine. That work is in the
-blocked list.
+Cull helper ownership and the historical async hypotheses that are still
+unconfirmed in current source. Client frame measurements stay blocked.
 
 ## Completed iterations
 
+- [x] Stop deferred texture destruction from subtracting a staging reservation
+  that was never added. `CreateBlpAsync` can queue an object with a null buffer.
+  The destructor copied that buffer and size before `Cancel` and now changes
+  `s_asyncLoadBufferUsed` only when the buffer was allocated.
+  `texture_staging_test` covers the null release and a matched acquire/release.
+  Not a live BLP load.
 - [x] Trace animation helpers against the parallel roots. `AnimateMT` writes
   per-model state and animates attachments on the same worker.
   `FindKey` does not store into shared tracks. Sequence callbacks run in

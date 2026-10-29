@@ -21,6 +21,12 @@ or null dispatches do not join prior work. Nonempty dispatches join prior work;
 shutdown waits, signals termination, and joins all threads. Callback user data and
 all referenced inputs/outputs must survive until that join.
 
+## Deferred texture staging
+
+`CreateBlpAsync` (`Texture.cpp`) links an async object onto the deferred list when the file does not fit the 4 MiB staging budget. That path leaves `m_buffer` null and does not add `m_size` to `s_asyncLoadBufferUsed`. `AsyncTextureProcess` is the only store of `m_buffer`, and it is the add. `CTexture::~CTexture` used to call `AsyncFile::Cancel` and then subtract `m_size` after the object had been recycled, including when no buffer had been reserved. An unsigned subtract from a smaller used count wraps the budget and later admits more reads.
+
+`TextureStagingUsed` changes the counter only when `m_buffer` is non-null. The destructor copies the buffer and size before `Cancel`. A failed `SMemAlloc` no longer reserves staging either, so a null buffer stays a zero change on both acquire and release. `multithreading-audit/texture_staging_test.cpp` checks the null-buffer release and a matched acquire/release. This is not a live texture-load run.
+
 ## Confirmed caller exception failure
 
 Location: `JobSystem.cpp`, `RunRanges` callback invocation, remaining decrement and
@@ -125,8 +131,10 @@ no NDK; Windows ARM64/MSVC and native target runtimes remain unverified.
 
 Windows x64 MinGW lifecycle also passed once under Wine with an isolated temporary
 prefix after the sandbox rejected wineserver's local socket. Wine is not native
-Windows or MSVC verification. The isolated Windows exception executable compiled;
-its runtime cases remain to be checked.
+Windows or MSVC verification. The isolated Windows exception executable's pooled
+caller and worker cases returned terminate code 42 under Wine; the synchronous
+fallback returned 0. Those results are recorded again with the final noexcept
+check below.
 
 The existing Profiler has shared global stack/zone accumulators (`Profiler.cpp`,
 Scope constructor/destructor) and is not suitable for worker callbacks. Job.Join

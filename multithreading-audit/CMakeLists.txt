@@ -53,6 +53,11 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)
     endforeach()
 endif ()
 
+add_executable(texture_staging_test texture_staging_test.cpp)
+target_include_directories(texture_staging_test PRIVATE ${CMAKE_SOURCE_DIR})
+add_test(NAME texture_staging_test COMMAND texture_staging_test)
+set_tests_properties(texture_staging_test PROPERTIES TIMEOUT 60)
+
 add_executable(emergency_mem_test
     emergency_mem_test.cpp
     ${CMAKE_SOURCE_DIR}/Engine/Source/Gx/CGxDevice/EmergencyMem.cpp

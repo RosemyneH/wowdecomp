@@ -16,6 +16,7 @@
 #include "Engine/Source/Services/Texture.h"
 #include "Engine/Source/Services/TextureBlob.h"
 #include "Engine/Source/Services/TextureInt.h"
+#include "Engine/Source/Services/TextureStaging.h"
 #include "Engine/Source/Storm/H/storm.h"
 #include "Engine/Source/Tempest/C2Vector.h"
 
@@ -151,8 +152,9 @@ void CTextureAtlas::Update(CTexture* texture) {
 // VERIFY: 89c9895e manual
 // OFFSET: 0x004B5130
 void AsyncTextureDestroyedCallback(CAsyncObject* object) {
-    s_asyncLoadBufferUsed -= object->m_size;
     void* buffer = object->m_buffer;
+    uint32_t size = object->m_size;
+    s_asyncLoadBufferUsed = TextureStagingUsed(s_asyncLoadBufferUsed, buffer, size, 1);
     AsyncFileReadDestroyObject(object);
     SMemFree(buffer, __FILE__, __LINE__, 0);
 }
@@ -230,8 +232,9 @@ MipBits* GetDefaultTexture(uint32_t width, uint32_t height) {
 // OFFSET: 0x004B5300
 void AsyncTextureFailureCallback(CTexture* texture) {
     CAsyncObject* object = texture->m_asyncObject;
-    s_asyncLoadBufferUsed -= object->m_size;
     void* buffer = object->m_buffer;
+    uint32_t size = object->m_size;
+    s_asyncLoadBufferUsed = TextureStagingUsed(s_asyncLoadBufferUsed, buffer, size, 1);
     AsyncFileReadDestroyObject(object);
     SMemFree(buffer, __FILE__, __LINE__, 0);
 }
@@ -1027,7 +1030,7 @@ void CTextureAtlas::Reload() {
 void AsyncTextureProcess(CAsyncObject* object, int32_t immediate) {
     object->m_link.Unlink();
     object->m_buffer = SMemAlloc(object->m_size, __FILE__, __LINE__, 0);
-    s_asyncLoadBufferUsed += object->m_size;
+    s_asyncLoadBufferUsed = TextureStagingUsed(s_asyncLoadBufferUsed, object->m_buffer, object->m_size, 0);
     AsyncFileReadObject(object, immediate);
 }
 
@@ -1867,8 +1870,10 @@ void AsyncTextureSuccessCallback(CTexture* texture) {
 
     SFileCloseFile(texture->m_asyncObject->m_file);
     texture->m_asyncObject->m_file = nullptr;
-    s_asyncLoadBufferUsed -= texture->m_asyncObject->m_size;
-    SMemFree(texture->m_asyncObject->m_buffer, __FILE__, __LINE__, 0);
+    void* buffer = texture->m_asyncObject->m_buffer;
+    uint32_t size = texture->m_asyncObject->m_size;
+    s_asyncLoadBufferUsed = TextureStagingUsed(s_asyncLoadBufferUsed, buffer, size, 1);
+    SMemFree(buffer, __FILE__, __LINE__, 0);
     AsyncFileReadDestroyObject(texture->m_asyncObject);
     texture->m_asyncObject = nullptr;
 }
@@ -2117,10 +2122,12 @@ CTexture::~CTexture() {
             this->m_asyncObject->m_userPostUnloadCallback = reinterpret_cast<void*>(AsyncTextureDestroyedCallback);
             this->m_asyncObject->m_userPostloadCallback = this->m_asyncObject->m_userPostUnloadCallback;
         } else {
-            void* buffer = this->m_asyncObject->m_buffer;
+            CAsyncObject* object = this->m_asyncObject;
+            void* buffer = object->m_buffer;
+            uint32_t size = object->m_size;
 
-            if (AsyncFile::Cancel(this->m_asyncObject, AsyncTextureDestroyedCallback)) {
-                s_asyncLoadBufferUsed -= this->m_asyncObject->m_size;
+            if (AsyncFile::Cancel(object, AsyncTextureDestroyedCallback)) {
+                s_asyncLoadBufferUsed = TextureStagingUsed(s_asyncLoadBufferUsed, buffer, size, 1);
                 SMemFree(buffer, __FILE__, __LINE__, 0);
             }
         }
