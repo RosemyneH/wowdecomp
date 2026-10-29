@@ -21,6 +21,10 @@ or null dispatches do not join prior work. Nonempty dispatches join prior work;
 shutdown waits, signals termination, and joins all threads. Callback user data and
 all referenced inputs/outputs must survive until that join.
 
+## Area callback and purge
+
+`CMapArea::AsyncCallback` runs from `AsyncFileReadPollHandler`, which a scheduler thread can enter. The callback uses the area and then clears `m_asyncObject`. `CMap::PreUpdateAreas` used to read `m_isCurrent` and purge that area with no shared lock. `PreUpdateAreas` now takes the poll lock, reads `m_isCurrent` under the queue lock, and purges only when the read is not in flight. `CMapArea::Purge` takes the poll lock before `Cancel`, so `PurgeMaps` waits out a callback too. The poll lock is released before chunk teardown.
+
 ## Poll progress count
 
 `SchedulerThreadProcProcess` calls `SynthesizePoll` for whichever context that scheduler thread is running (`EvtSched.cpp:631`). `AsyncFileReadPollHandler` is the global `EVENT_ID_POLL` handler, and map loading calls it directly too. Two of those calls can overlap. `s_progressCount` was a plain integer decremented after the queue lock was released.

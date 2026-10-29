@@ -44,6 +44,9 @@ void CMapArea::PurgeChunk(CMapChunk* chunk) {
 // VERIFY: 3489b6fa manual
 // OFFSET: 0x007C35F0
 void CMapArea::Purge() {
+    // ʕ •ᴥ•ʔ✿ The load callback runs under this lock on a scheduler thread ✿ ʕ •ᴥ•ʔ
+    AsyncFile::EnterPollLock();
+
     if (this->m_asyncObject) {
         if (!AsyncFile::Cancel(this->m_asyncObject, CMapArea::FreeAsyncObject)) {
             this->m_fileBuffer = nullptr;
@@ -52,6 +55,8 @@ void CMapArea::Purge() {
         this->m_asyncObject = nullptr;
         this->m_file = nullptr;
     }
+
+    AsyncFile::LeavePollLock();
 
     for (CMapBaseObjLink* link = this->m_chunkLinkList.Head(); link;) {
         CMapChunk* chunk = static_cast<CMapChunk*>(link->m_owner);

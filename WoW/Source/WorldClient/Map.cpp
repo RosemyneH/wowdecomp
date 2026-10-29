@@ -2024,9 +2024,18 @@ void CMap::PreUpdateAreas(bool addToScene) {
             entries[entryCount].m_dist = NTempest::DistanceSquared(area->m_bounds, pos);
             entries[entryCount].m_area = area;
             entryCount++;
-        } else if (!area->m_asyncObject || !area->m_asyncObject->m_isCurrent) {
-            CMap::FreeBaseObjLink(link);
-            CMap::PurgeArea(area);
+        } else {
+            AsyncFile::EnterPollLock();
+            AsyncFile::EnterQueueLock();
+            int32_t inFlight = area->m_asyncObject && area->m_asyncObject->m_isCurrent;
+            AsyncFile::LeaveQueueLock();
+
+            if (!inFlight) {
+                CMap::FreeBaseObjLink(link);
+                CMap::PurgeArea(area);
+            }
+
+            AsyncFile::LeavePollLock();
         }
 
         link = next;

@@ -7,12 +7,16 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-`CMapArea::AsyncCallback` runs on the scheduler thread that is inside the poll
-lock. `CMap::PreUpdateAreas` can purge that area from another thread and does
-not take the poll lock. Client frame measurements stay blocked.
+`CM2Shared::SkinProfileLoadedCallback` runs on the scheduler thread inside the
+poll lock. Find any main-thread path that frees that shared object without the
+same lock. Client frame measurements stay blocked.
 
 ## Completed iterations
 
+- [x] Take the poll lock around an out-of-range area purge. The load callback
+  runs on a scheduler thread and still uses the area. `m_isCurrent` is read
+  under the queue lock. `CMapArea::Purge` takes the poll lock before `Cancel`.
+  `Map.cpp` and `MapArea.cpp` typecheck with the Linux client flags.
 - [x] Take the poll lock around texture staging and the deferred lists. Draw
   code and a scheduler-thread poll callback were both updating
   `s_asyncLoadBufferUsed`. The lock is acquired before the queue lock.
