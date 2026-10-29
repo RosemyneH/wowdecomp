@@ -7,11 +7,20 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-Remaining async-file lifetime hypotheses: area purge versus an in-flight
-callback, and skin-profile wait reentry. Client frame measurements stay blocked.
+Poll still reads the post callback pointer after releasing the queue lock.
+Client frame measurements stay blocked.
 
 ## Completed iterations
 
+- [x] Clear `s_waiting` when `AsyncFileReadWait` finds the object already
+  processed. `WaitForLoad` calls it twice while the shared pointer is still
+  set, and the old return left the fatal reentry guard stuck. A wait entered
+  from inside a callback still fails that guard. `AsyncFile.cpp` typechecks
+  with the Linux client flags. No async-worker run.
+- [x] Trace area purge against a posted read. Out-of-range purge cancels when
+  `m_isCurrent` is clear. Immediate cancel lets the area destructor free the
+  file buffer. An in-flight read nulls that pointer and frees the buffer from
+  `FreeAsyncObject`. Purge and poll are on the caller thread. No code change.
 - [x] Trace exterior doodad culling. Workers read frustum planes and the clip
   buffer. Each index writes its own result. The clip buffer is painted in
   `UpdateOcclusion` after that bucket's culls return. Model flags and scene

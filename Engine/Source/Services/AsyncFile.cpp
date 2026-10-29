@@ -284,6 +284,8 @@ void AsyncFileReadWait(CAsyncObject* object) {
 
     if (object->m_isProcessed) {
         g_queueLock.Leave();
+        // ʕ •ᴥ•ʔ✿ Leave the guard clear. WaitForLoad calls this twice while the pointer is still set ✿ ʕ •ᴥ•ʔ
+        s_waiting--;
         return;
     }
 
