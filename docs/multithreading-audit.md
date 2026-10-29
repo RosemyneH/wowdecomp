@@ -21,6 +21,12 @@ or null dispatches do not join prior work. Nonempty dispatches join prior work;
 shutdown waits, signals termination, and joins all threads. Callback user data and
 all referenced inputs/outputs must survive until that join.
 
+## Poll progress count
+
+`SchedulerThreadProcProcess` calls `SynthesizePoll` for whichever context that scheduler thread is running (`EvtSched.cpp:631`). `AsyncFileReadPollHandler` is the global `EVENT_ID_POLL` handler, and map loading calls it directly too. Two of those calls can overlap. `s_progressCount` was a plain integer decremented after the queue lock was released.
+
+The handler now takes a recursive `s_pollLock` for the whole call, including the callback. A callback on that same thread may poll again. A second thread waits. The counter stays a plain integer because only one thread is inside the handler. The queue lock is still dropped before the callback so an I/O worker can post. The texture staging counter is still touched from draw code outside this lock.
+
 ## Post list and free list
 
 `AsyncFileReadPollHandler` and the I/O worker already edit `s_asyncFileReadPostList` under `g_queueLock`. `AsyncFileReadDestroyObject`, `AsyncFile::Cancel`, and `AsyncFileReadAllocObject` edit the free list under that lock. `AllocObject` initializes the object's fields after releasing the lock, once the node is unlinked and no other allocator can see it.

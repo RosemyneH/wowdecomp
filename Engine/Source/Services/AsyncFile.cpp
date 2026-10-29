@@ -72,6 +72,9 @@ static TSGrowableArray<int32_t (*)()> s_asyncStatusHandlers;
 // STATIC: 0x00B4A240
 SCritSect g_queueLock;
 
+// ʕ •ᴥ•ʔ✿ Every scheduler thread synthesizes POLL. This stays recursive so a callback can poll again ✿ ʕ •ᴥ•ʔ
+static SCritSect s_pollLock;
+
 // VERIFY: 5a8ab5a9 auto
 // OFFSET: 0x004B50A0
 int32_t CAsyncObject::IsPending() {
@@ -133,6 +136,7 @@ void AsyncFileReadUnloadPostList() {
 // VERIFY: acd49bbd manual
 // OFFSET: 0x004B9B20
 int32_t AsyncFileReadPollHandler(const void* data, void* param) {
+    s_pollLock.Enter();
     uint32_t start = OsGetAsyncTimeMs();
 
     while (true) {
@@ -168,6 +172,7 @@ int32_t AsyncFileReadPollHandler(const void* data, void* param) {
         s_asyncPollHandlers[i]();
     }
 
+    s_pollLock.Leave();
     return 1;
 }
 

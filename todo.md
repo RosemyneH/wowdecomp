@@ -7,12 +7,17 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-`s_progressCount` is decremented in the poll handler after the queue lock is
-released. Confirm a second poll cannot run at the same time. Client frame
-measurements stay blocked.
+The texture staging counter and deferred lists are updated from draw code while
+a scheduler thread may be inside a poll callback. Client frame measurements
+stay blocked.
 
 ## Completed iterations
 
+- [x] Serialize `AsyncFileReadPollHandler` with a recursive section. Every
+  scheduler thread synthesizes `EVENT_ID_POLL`, and map load calls the handler
+  directly. `s_progressCount` stays a plain integer because those calls no
+  longer overlap. A callback on the same thread can poll again. `AsyncFile.cpp`
+  typechecks with the Linux client flags.
 - [x] Unlink and copy the shutdown post callback under `g_queueLock`.
   `AsyncFileReadDestroy` joins the workers before that drain. Free-list
   alloc, cancel, and destroy already hold the lock. The free-list clear stays
