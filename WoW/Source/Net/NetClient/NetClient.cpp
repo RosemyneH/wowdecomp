@@ -1,5 +1,4 @@
 #include "NetClient.h"
-#include "synastria_bridge.h"
 #include <cstdlib>
 #include <cstring>
 #include <new>
@@ -293,12 +292,6 @@ void NetClient::ResetHandler(NETMESSAGE msgId) {
 // VERIFY: 59f00590 auto
 // OFFSET: 0x00631FE0
 int32_t NetClient::ProcessMessage(uint32_t timeReceived, CDataStore* msg, int32_t unused_a4) {
-    synastria_enter_process(this, msg);
-    struct SynLeave {
-        ~SynLeave() { synastria_leave_process(); }
-    } syn_leave;
-    (void)syn_leave;
-
     s_stats[4]++;
 
     uint16_t msgId;
@@ -401,7 +394,6 @@ int32_t NetClient::Connect(const char* address) {
 // VERIFY: f0345188 manual
 // OFFSET: 0x00632460
 int32_t NetClient::HandleData(uint32_t timeReceived, void* data, int32_t size) {
-    synastria_on_handle_data(this, data, size);
     if (this->m_objMgr) {
         NetClient::PushObjMgr(this->m_objMgr);
     }

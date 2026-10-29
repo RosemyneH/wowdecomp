@@ -68,28 +68,6 @@ target_include_directories(WowClient
         ${CMAKE_SOURCE_DIR}
 )
 
-if (NOT SYNASTRIA_DIR)
-    get_filename_component(_wowdecomp_root "${CMAKE_SOURCE_DIR}" REALPATH)
-    get_filename_component(_synastria_sibling "${_wowdecomp_root}/../synastria-sideload" REALPATH)
-    if (EXISTS "${_synastria_sibling}/src/synastria.h")
-        set(SYNASTRIA_DIR "${_synastria_sibling}")
-    elseif (EXISTS "${CMAKE_SOURCE_DIR}/../src/synastria.h")
-        set(SYNASTRIA_DIR "${CMAKE_SOURCE_DIR}/..")
-    endif()
-endif()
-if (SYNASTRIA_DIR)
-    target_sources(WowClient PRIVATE
-        ${SYNASTRIA_DIR}/src/sideload.cpp
-        ${SYNASTRIA_DIR}/src/sym.cpp
-        ${SYNASTRIA_DIR}/src/cache.cpp
-        ${SYNASTRIA_DIR}/src/features.cpp
-        ${SYNASTRIA_DIR}/src/embed_bind.cpp
-        ${SYNASTRIA_DIR}/third_party/lz4/lz4.c
-    )
-    target_include_directories(WowClient PRIVATE ${SYNASTRIA_DIR} ${SYNASTRIA_DIR}/third_party/lz4)
-    target_compile_definitions(WowClient PRIVATE SYNASTRIA_EMBED=1)
-endif()
-
 if (WIN32)
     target_link_options(WowClient PRIVATE "/INCREMENTAL:NO" "/ENTRY:start")
     target_link_libraries(WowClient PRIVATE dbghelp)
