@@ -7,12 +7,20 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-4096-item batches use about eight items per range, capped at 1024 ranges.
-Uniform and heavy 4096-item times did not move with finer ranges. Engine/runtime
-validation that needs a client or other hardware remains blocked below.
+Scheduler policy and the animation helper call chain are recorded. Further
+measurements need a client frame or another machine. That work is in the
+blocked list.
 
 ## Completed iterations
 
+- [x] Trace animation helpers against the parallel roots. `AnimateMT` writes
+  per-model state and animates attachments on the same worker.
+  `FindKey` does not store into shared tracks. Sequence callbacks run in
+  `AdvanceTime` before `ParallelFor`. Ribbon, particle-list, and lighting
+  updates run in `AnimateST` after the join. World skin starts after `Animate`
+  returns and `CM2Scene::Draw` joins it before the world frame returns.
+  No new defect from this static pass. Live attachment trees and teardown
+  remain blocked.
 - [x] Spread large batches to about eight items per range. Two in-process runs
   moved 4096-item skewed medians from about 0.33 ms at 176 ranges to about
   0.24 ms at 512, with no overlap. Cheap 4096 stayed under its serial time.

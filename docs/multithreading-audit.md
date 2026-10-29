@@ -45,9 +45,10 @@ hypotheses as reachable defects. Four dispatch sites currently remain: World.cpp
 (culling), M2Scene.cpp (animation and async skinning), CM2SceneRender.cpp (doodad
 skinning). Terrain and grass initialize the pool but currently fill mapped buffers
 serially. Client teardown/input reentrancy and renderer staging lifetimes require
-further validation. No graphics calls were moved onto workers. Claim size is now
-four ranges per participant; wakeup, completion, and single-batch publication
-are unchanged.
+further validation. No graphics calls were moved onto workers. A batch publishes
+at least sixteen ranges per participant, and about eight items per range when
+that is finer, capped at 1024 ranges. Wakeup, completion, and single-batch
+publication are unchanged.
 
 Validation: Linux Release targets rebuilt and all 15 job/emergency-memory CTests
 passed three repetitions each, including caller and worker terminate-handler code
@@ -58,8 +59,8 @@ passed three repetitions each, including caller and worker terminate-handler cod
 | Location | Inputs and writes | Barrier and remaining validation |
 | --- | --- | --- |
 | `World.cpp:4198`, `CullDoodadRange` | Stable vector of definitions; each index writes its own result. Sphere QueryBuffer (`CWorldOcclusion.cpp:487`) reads clip-buffer/matrices only; sphere FrustumCull (`World.cpp:2174`) reads frustum state. | Synchronous barrier before flags/list mutation. Scene globals must remain immutable during dispatch; no engine runtime race trace yet. |
-| `M2Scene.cpp:2110`, `AnimateModelRange` | Stack batch points to root vector and scene view; roots exclude attached models. AnimateMT/Simple mutate model state and recursively visit children. | Synchronous barrier before AnimateST particles/list/lighting updates. Ownership assumes a proper attachment tree and immutable shared animation data; full helper audit remains open. |
-| `M2Scene.cpp:1985`, `SkinRange` | Global vector of raw model/section pointers; each writes a separate aligned byte interval prepared before Start. | Prepare joins before resizing; Finish joins before consumption. Object lifetime and main-thread mutations across the render overlap still need real-scene validation. |
+| `M2Scene.cpp:2110`, `AnimateModelRange` | Stack batch points to root vector and scene view; roots exclude attached models. `AnimateMT` / `AnimateMTSimple` write that model's bones, tracks, lights, and texture matrices, then recurse through `AnimateAttachmentsMT` on the same worker. Shared `M2Data` tracks are read through const `FindKey` (`M2Model.cpp:2966`); key indices live on the model. | `ParallelFor` returns before `AnimateST` (`M2Model.cpp:3120`) links draw/particle lists, simulates ribbons, and updates cameras. `AdvanceTime` (`M2Scene.cpp:58`) drains `s_sequenceCallbacks` on the caller before that dispatch. Emitter simulation stays in `AnimateParticleST`, after the join. |
+| `M2Scene.cpp:1985`, `SkinRange` | Global vector of raw model/section pointers; each writes a separate aligned byte interval prepared before Start. Duplicate model/section/texcoord keys are skipped. | `M2SkinPrepare` joins, resizes, then `Start`s. The world frame starts that batch in `CWorldSceneRender.cpp:193` and joins it in `CGWorldFrame::OnWorldRender` via `Draw` (`WorldFrame.cpp:1810`, `M2Scene.cpp:2604`) before the frame function returns. The empty-viewport return is before `CWorld::Render`. Bone writes from the next `Animate` wait for this batch because `ParallelFor` joins first. Live teardown during the terrain overlap is still untraced. |
 | `CM2SceneRender.cpp:999`, `FillDoodadSkin` | Stack batch, mapped vertex buffer and immutable indices; instance writes at `n * stride`. Cache reads or per-model transforms. | ParallelFor returns before BufUnlock and drawing; fewer than 8 instances run serially. Backend lock/unlock stay on caller. Valid asset counts and no overlapping model mutation required. |
 
 Terrain `MapRenderChunk.cpp:946` locks at most one vertex and one index buffer,
