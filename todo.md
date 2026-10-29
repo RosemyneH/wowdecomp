@@ -7,11 +7,15 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-Other `m_readList` edits outside `g_queueLock`. `AsyncFileReadLinkStaleObject`
-is one. Client frame measurements stay blocked.
+Post-list and free-list edits that run outside `g_queueLock`. Client frame
+measurements stay blocked.
 
 ## Completed iterations
 
+- [x] Take `g_queueLock` inside `AsyncFileReadLinkStaleObject`. Its two callers,
+  the I/O worker and `AsyncFileReadObject`, already held the lock. The other
+  `m_readList` writes already sit under that lock, and no other file writes
+  the list. `AsyncFile.cpp` typechecks with the Linux client flags.
 - [x] Return from `TextureIncreasePriority` when the texture has no async object,
   and take `g_queueLock` inside `AsyncFileReadLinkObject`. Loaded textures clear
   the async pointer, and model promotion relinked the file queue without the

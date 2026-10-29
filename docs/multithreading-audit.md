@@ -21,6 +21,12 @@ or null dispatches do not join prior work. Nonempty dispatches join prior work;
 shutdown waits, signals termination, and joins all threads. Callback user data and
 all referenced inputs/outputs must survive until that join.
 
+## File queue list edits
+
+Every `m_readList` write in the tree is in `AsyncFile.cpp`. `NetQueuePromoteLocalFiles`, `AsyncFileReadWait`, `AsyncFileReadObject`, and the I/O worker already hold `g_queueLock` around those writes. `AsyncFileReadIsReading` only reads the list, under the same lock. `AsyncFileReadLinkObject` takes the lock itself.
+
+`AsyncFileReadLinkStaleObject` is called from the worker (`AsyncFile.cpp`, frame-limited head) and from `AsyncFileReadObject`, both of which already hold the lock. It now takes the lock too, and it leaves a null `m_queue` alone. The stale list is the frame-limited side queue. No other translation unit writes `m_readList` or `m_staleList`.
+
 ## Texture priority list
 
 `s_asyncLoadList` is not the file queue. `AsyncTextureHandler` and `AsyncTextureStatus` walk it from the poll handler, which runs on the caller. `TextureIncreasePriority` is reached from `TextureGetGxTex`, `CM2Model::LinkToAsyncHeadRecursive` (`M2Model.cpp:1277`, map and world-object promotion), and liquid blob warmup. Those are caller-thread draws and prepares. The queue lock stays on the path that bumps a read already in the file queue. The null-buffer link does not take that lock.

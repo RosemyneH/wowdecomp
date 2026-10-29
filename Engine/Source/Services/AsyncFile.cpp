@@ -397,18 +397,28 @@ void AsyncFileReadLinkObject(CAsyncObject* object, int32_t urgent) {
 // VERIFY: c818c689 manual
 // OFFSET: 0x004BA530
 void AsyncFileReadLinkStaleObject(CAsyncObject* object, int32_t urgent) {
+    // ʕ •ᴥ•ʔ✿ Same recursive lock as the read-list relink. Both current callers already hold it ✿ ʕ •ᴥ•ʔ
+    g_queueLock.Enter();
+
+    if (!object->m_queue) {
+        g_queueLock.Leave();
+        return;
+    }
+
     object->m_link.Unlink();
 
     for (CAsyncObject* other = object->m_queue->m_staleList.Head(); !object->m_queue->m_staleList.IsEnd(other); other = object->m_queue->m_staleList.RawNext(other)) {
         if (object->m_priority <= other->m_priority && (urgent || object->m_priority != other->m_priority)) {
             object->m_queue->m_staleList.LinkNode(object, 2, other);
             object->m_char25 = 1;
+            g_queueLock.Leave();
             return;
         }
     }
 
     object->m_queue->m_staleList.LinkToTail(object);
     object->m_char25 = 1;
+    g_queueLock.Leave();
 }
 
 // VERIFY: 28f905c7 manual
