@@ -7,11 +7,15 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-Callback call sites traced in this pass are recorded. Further frame measurements
-still need a client or another machine. That work stays in the blocked list.
+`sideload.cpp` compiles. The full WowClient link and a live frame run are still
+open. Hardware targets stay in the blocked list.
 
 ## Completed iterations
 
+- [x] Alias `TYPEMASK_PLAYER` to `TYPE_PLAYER`. The sibling sideload calls
+  `ClntObjMgrObjectPtr` with that name, and the client already passes
+  `TYPE_PLAYER` at the same call. `sideload.cpp` compiles with the WowClient
+  flags. The executable was not linked or run.
 - [x] Trace lighting and draw callbacks. Lighting runs from `SetupLighting`
   after `ParallelFor` returns. Draw runs from `CM2SceneRender::DrawCallback`
   during scene draw. Neither is a job worker or an async poll. No lock added.
@@ -184,11 +188,10 @@ still need a client or another machine. That work stays in the blocked list.
 
 - [ ] Live asynchronous skin input/model lifetimes, teardown reentrancy, animation
   attachment/particle ownership, and actual mapped-buffer backend tests require a
-  working integrated client and representative model/map workloads. Current
-  WowClient build fails in pre-existing local sibling integration at
-  `/home/emma/Repos/synastria-sideload/src/sideload.cpp:548`: TYPEMASK_PLAYER undeclared.
-  Its uncommitted CMake integration auto-detects the sibling and has no disable
-  switch. Left user source unchanged; affected engine libraries do build.
+  working integrated client and representative model/map workloads. The previous
+  `TYPEMASK_PLAYER` compile error in the sibling sideload is cleared and that
+  file compiles. The full WowClient link and a live run are still open. Affected
+  engine libraries do build.
 - [ ] Actual startup-fatal/active-resource teardown and production exception
   reachability remain unverified. Isolated exit reproductions do not establish safe
   client resource ordering; do not add a late exit join without that evidence.

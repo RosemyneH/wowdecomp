@@ -201,11 +201,12 @@ passed once outside the sandbox after LeakSanitizer rejected ptrace; TSan passed
 once inside the sandbox. Both exercise serialized lifecycle paths only. GNU
 Linux ARM64 and MinGW Windows x64 isolated lifecycle binaries cross-compiled;
 ARM64 passed once under qemu-aarch64-static using `/usr/aarch64-linux-gnu`.
-No native ARM scheduling claim follows from emulation. Linux WowClient build
-failed in unrelated auto-detected sibling sideload code, at
-`/home/emma/Repos/synastria-sideload/src/sideload.cpp:548` (undeclared TYPEMASK_PLAYER).
-No edits made to that integration. Android SDK here contains platform-tools but
-no NDK; Windows ARM64/MSVC and native target runtimes remain unverified.
+No native ARM scheduling claim follows from emulation. `OBJECT_TYPE` now
+aliases `TYPEMASK_PLAYER` to `TYPE_PLAYER`, the value `ClntObjMgrObjectPtr`
+already takes in `World.cpp`. `sideload.cpp` compiles with the current WowClient
+flags. The full client link and a live run were not repeated. Android SDK here
+contains platform-tools but no NDK; Windows ARM64/MSVC and native target
+runtimes remain unverified.
 
 Windows x64 MinGW lifecycle also passed once under Wine with an isolated temporary
 prefix after the sandbox rejected wineserver's local socket. Wine is not native
