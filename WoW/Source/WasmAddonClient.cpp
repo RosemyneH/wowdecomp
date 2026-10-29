@@ -1580,8 +1580,8 @@ return true
 ClientHostServices s_host;
 WasmAddon::WasmAddonManager s_manager;
 bool s_initialized = false;
-int s_combatBurstDepth = 0;
-std::vector<std::pair<std::string, std::vector<uint8_t>>> s_combatBurst;
+int s_eventBurstDepth = 0;
+std::vector<std::pair<std::string, std::vector<uint8_t>>> s_eventBurst;
 
 void ClientHostServices::ConfirmShow(const WasmAddon::ConfirmRequest& request) {
     std::string name = "addon";
@@ -1622,8 +1622,8 @@ void OnGameEvent(uint32_t, const char* eventName, lua_State* L, int32_t argCount
             default: writer.Nil(); break;
         }
     }
-    if (s_combatBurstDepth && (std::strcmp(eventName, "COMBAT_LOG_EVENT") == 0 || std::strcmp(eventName, "COMBAT_LOG_EVENT_UNFILTERED") == 0)) {
-        s_combatBurst.emplace_back(eventName, writer.Finish());
+    if (s_eventBurstDepth) {
+        s_eventBurst.emplace_back(eventName, writer.Finish());
         return;
     }
     s_manager.DispatchEvent(eventName, writer.Finish());
@@ -1801,18 +1801,27 @@ int32_t CCommand_WasmAddons(const char*, const char*) {
 
 } // namespace
 
-void WasmAddonClient_BeginCombatBurst() {
+void WasmAddonClient_BeginEventBurst() {
     if (!s_initialized) return;
-    s_combatBurstDepth++;
+    s_eventBurstDepth++;
 }
 
-void WasmAddonClient_EndCombatBurst() {
-    if (!s_initialized || s_combatBurstDepth == 0) return;
-    if (--s_combatBurstDepth) return;
-    auto queued = std::move(s_combatBurst);
-    s_combatBurst.clear();
-    std::map<std::string, std::vector<std::vector<uint8_t>>> groups;
-    for (auto& item : queued) groups[std::move(item.first)].push_back(std::move(item.second));
+void WasmAddonClient_EndEventBurst() {
+    if (!s_initialized || s_eventBurstDepth == 0) return;
+    if (--s_eventBurstDepth) return;
+    auto queued = std::move(s_eventBurst);
+    s_eventBurst.clear();
+    std::vector<std::pair<std::string, std::vector<std::vector<uint8_t>>>> groups;
+    for (auto& item : queued) {
+        std::vector<std::vector<uint8_t>>* slot = nullptr;
+        for (auto& group : groups)
+            if (group.first == item.first) { slot = &group.second; break; }
+        if (!slot) {
+            groups.push_back({std::move(item.first), {}});
+            slot = &groups.back().second;
+        }
+        slot->push_back(std::move(item.second));
+    }
     for (auto& [name, payloads] : groups) s_manager.DispatchEventBurst(name, payloads);
 }
 

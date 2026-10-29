@@ -3,6 +3,7 @@
 #include "Engine/Source/FrameScript/FrameScript.h"
 #include "WoW/Source/Ui/AwesomeWotlk.h"
 #include "WoW/Source/Ui/ScriptEvents.h"
+#include "WoW/Source/WasmAddonClient.h"
 #include "WoW/Source/Object/ObjectClient/Unit_C.h"
 #include "WoW/Source/Object/Types.h"
 #include "WoW/Source/ObjectMgrClient/ObjectMgrClient.h"
@@ -330,6 +331,7 @@ void Script_SendUniqueSignal(int32_t signal) {
 // VERIFY: 196fa519 auto
 // OFFSET: 0x00614760
 void Script_SendUniqueSignals() {
+    WasmAddonEventBurst eventBurst;
     uint32_t count = s_uniqueSignals.Count();
 
     for (uint32_t i = 0; i < count; i++) {

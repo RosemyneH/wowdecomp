@@ -11,6 +11,7 @@
 #include "Engine/Source/Os/TimeManager.h"
 #include "Engine/Source/Storm/H/storm.h"
 #include "WoW/Source/Net/NetClient/NetClient.h"
+#include "WoW/Source/WasmAddonClient.h"
 #include "WoW/Source/Object/Container.h"
 #include "WoW/Source/Object/Corpse.h"
 #include "WoW/Source/Object/DynamicObject.h"
@@ -1500,6 +1501,7 @@ static int32_t ObjectUpdateFirstPass(uint32_t index, CDataStore* msg, uint32_t t
 // VERIFY: df5394bc manual
 // OFFSET: 0x004D7100
 static int32_t ObjectUpdateSecondPass(CDataStore* msg, uint32_t time, uint32_t count) {
+    WasmAddonEventBurst eventBurst;
     for (uint32_t i = 0; i < count; i++) {
         uint8_t type;
         msg->Get(type);

@@ -879,10 +879,7 @@ bool CombatLogEntry::MatchesFilter() {
 // VERIFY: c77149c7 manual
 // OFFSET: 0x0074F910
 void SendCombatLogEvents() {
-    struct CombatBurst {
-        CombatBurst() { WasmAddonClient_BeginCombatBurst(); }
-        ~CombatBurst() { WasmAddonClient_EndCombatBurst(); }
-    } combatBurst;
+    WasmAddonEventBurst eventBurst;
     char text[4096];
     bool logging = CGChat::IsChatLogging(1) != 0;
     lua_State* L = FrameScript_GetContext();
