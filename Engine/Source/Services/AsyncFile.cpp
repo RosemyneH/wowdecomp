@@ -189,12 +189,12 @@ void AsyncFileReadDestroyObject(CAsyncObject* object) {
 
     if (object->m_isCurrent) {
         DebugLog("AsyncFileReadDestroyObject()");
+    }
+
+    // ʕ •ᴥ•ʔ✿ The worker clears m_isCurrent under this lock. A naked read races that store ✿ ʕ •ᴥ•ʔ
+    while (object->m_isCurrent) {
         g_queueLock.Leave();
-
-        while (object->m_isCurrent) {
-            OsSleep(1);
-        }
-
+        OsSleep(1);
         g_queueLock.Enter();
     }
 

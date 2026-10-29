@@ -7,11 +7,19 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-Cull helper ownership and the historical async hypotheses that are still
-unconfirmed in current source. Client frame measurements stay blocked.
+Remaining async-file lifetime hypotheses: area purge versus an in-flight
+callback, and skin-profile wait reentry. Client frame measurements stay blocked.
 
 ## Completed iterations
 
+- [x] Trace exterior doodad culling. Workers read frustum planes and the clip
+  buffer. Each index writes its own result. The clip buffer is painted in
+  `UpdateOcclusion` after that bucket's culls return. Model flags and scene
+  lists are written after `ParallelFor`. Interior doodads stay serial.
+- [x] Take the queue lock around every `m_isCurrent` check in
+  `AsyncFileReadDestroyObject`. The worker clears that byte under the same
+  lock. The old spin read it after releasing the lock. `Cancel` still defers
+  a current object to its post callback. No async-worker TSan run.
 - [x] Stop deferred texture destruction from subtracting a staging reservation
   that was never added. `CreateBlpAsync` can queue an object with a null buffer.
   The destructor copied that buffer and size before `Cancel` and now changes
