@@ -118,12 +118,12 @@ fn on_load() -> i32 {
     0
 }
 
-fn on_event(name: &str, args: &[EventArg]) -> i32 {
+fn on_event(name: &str, args: &[EventArg<'_>]) -> i32 {
     match name {
         "CHAT_MSG_WHISPER" => { let _ = awesome::flash_window(); }
         "NAME_PLATE_UNIT_ADDED" | "PLAYER_ENTERING_WORLD" => refresh(),
         "WASM_UI" => {
-            let script = match args.first() { Some(EventArg::Text(text)) => text.as_str(), _ => return 0 };
+            let script = match args.first() { Some(EventArg::Text(text)) => *text, _ => return 0 };
             let handle = match args.get(1) { Some(EventArg::Number(n)) => *n as i32, _ => return 0 };
             if script == "click" { on_click(handle); refresh(); }
         }

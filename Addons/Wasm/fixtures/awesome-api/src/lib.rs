@@ -2,7 +2,7 @@ use wow_addon_sdk::awesome;
 use wow_addon_sdk::*;
 
 fn on_load() -> i32 { 0 }
-fn on_event(_: &str, _: &[EventArg]) -> i32 { 0 }
+fn on_event(_: &str, _: &[EventArg<'_>]) -> i32 { 0 }
 
 wow_addon_v2!(on_load, on_event);
 

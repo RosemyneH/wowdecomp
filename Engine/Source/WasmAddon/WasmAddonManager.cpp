@@ -378,7 +378,8 @@ bool WasmAddonManager::DeliverEvent(Addon& addon, const char* exportName, const 
         return false;
     }
     int64_t ignored = 0;
-    InvokeExport(addon, exportName, {(int64_t)dest, (int64_t)len}, ignored);
+    int64_t argv[2] = {(int64_t)dest, (int64_t)len};
+    InvokeExport(addon, exportName, argv, 2, ignored);
     if (ephemeral && addon.eventFree && addon.info.state == AddonState::Running)
         InvokeExport(addon, "wow_free", {(int64_t)dest, (int64_t)len}, ignored);
     return true;
@@ -496,13 +497,17 @@ bool WasmAddonManager::HasPermission(Addon& addon, Permission perm, HostFn) {
 }
 
 bool WasmAddonManager::InvokeExport(Addon& addon, const char* name, const std::vector<int64_t>& args, int64_t& result) {
+    return InvokeExport(addon, name, args.data(), args.size(), result);
+}
+
+bool WasmAddonManager::InvokeExport(Addon& addon, const char* name, const int64_t* args, size_t nargs, int64_t& result) {
     if (!addon.instance) return false;
     addon.hostCallsInCallback = 0;
     addon.storageBytesInCallback = 0;
     auto start = std::chrono::steady_clock::now();
     std::string error;
     m_callbackDepth++;
-    bool ok = addon.instance->Call(name, args, result, error);
+    bool ok = addon.instance->Call(name, args, nargs, result, error);
     m_callbackDepth--;
     uint64_t us = (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
     addon.info.stats.callbacks++;

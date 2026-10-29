@@ -298,55 +298,193 @@ pub fn inventory() -> Result<Vec<Item>, i32> {
     Ok(items)
 }
 
-/// ʕ •ᴥ•ʔ✿ ABI v1.1 event payloads (WEV1), delivered to `wow_on_event_v2` ✿ ʕ •ᴥ•ʔ
-#[derive(Debug, Clone, PartialEq)]
-pub enum EventArg {
+/// ʕ •ᴥ•ʔ✿ ABI v1.1 event payloads (WEV1). Text borrows the payload for this call ✿ ʕ •ᴥ•ʔ
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum EventArg<'a> {
     Nil,
     Bool(bool),
     Number(f64),
-    Text(String),
-    Truncated(String, u32),
+    Text(&'a str),
+    Truncated(&'a str, u32),
     Redacted,
 }
 
-pub fn decode_event(bytes: &[u8]) -> Option<(String, Vec<EventArg>)> {
+const MAX_STACK_ARGS: usize = 32;
+
+#[derive(Clone, Copy)]
+enum RawArg {
+    Nil,
+    Bool(bool),
+    Number(f64),
+    Text(usize, usize),
+    Truncated(usize, usize, u32),
+    Redacted,
+}
+
+struct RawEvent {
+    name_at: usize,
+    name_len: usize,
+    argc: usize,
+    args: [RawArg; MAX_STACK_ARGS],
+    wide: bool,
+}
+
+fn parse_raw(bytes: &[u8]) -> Option<RawEvent> {
     if bytes.len() < 18 || &bytes[0..4] != b"WEV1" { return None; }
     let name_len = u16::from_le_bytes(bytes[16..18].try_into().ok()?) as usize;
     if 18 + name_len > bytes.len() { return None; }
-    let name = String::from_utf8_lossy(&bytes[18..18 + name_len]).into_owned();
+    let mut ev = RawEvent { name_at: 18, name_len, argc: 0, args: [RawArg::Nil; MAX_STACK_ARGS], wide: false };
     let mut pos = 18 + name_len;
-    let mut args = Vec::new();
     while pos < bytes.len() {
+        if ev.argc >= MAX_STACK_ARGS { ev.wide = true; return Some(ev); }
         let tag = bytes[pos];
         pos += 1;
-        match tag {
-            0 => args.push(EventArg::Nil),
-            1 => { if pos >= bytes.len() { return None; } args.push(EventArg::Bool(bytes[pos] != 0)); pos += 1; }
+        ev.args[ev.argc] = match tag {
+            0 => RawArg::Nil,
+            1 => {
+                if pos >= bytes.len() { return None; }
+                let value = RawArg::Bool(bytes[pos] != 0);
+                pos += 1;
+                value
+            }
             2 => {
                 if pos + 8 > bytes.len() { return None; }
-                args.push(EventArg::Number(f64::from_le_bytes(bytes[pos..pos + 8].try_into().ok()?)));
+                let value = RawArg::Number(f64::from_le_bytes(bytes[pos..pos + 8].try_into().ok()?));
                 pos += 8;
+                value
             }
             3 | 4 => {
                 if pos + 4 > bytes.len() { return None; }
                 let orig = u32::from_le_bytes(bytes[pos..pos + 4].try_into().ok()?) as usize;
                 pos += 4;
-                let stored = if tag == 4 {
+                let (stored, original) = if tag == 4 {
                     if pos + 4 > bytes.len() { return None; }
                     let n = u32::from_le_bytes(bytes[pos..pos + 4].try_into().ok()?) as usize;
                     pos += 4;
-                    n
-                } else { orig };
+                    (n, orig as u32)
+                } else { (orig, 0) };
                 if pos + stored > bytes.len() { return None; }
-                let text = String::from_utf8_lossy(&bytes[pos..pos + stored]).into_owned();
+                let start = pos;
                 pos += stored;
-                args.push(if tag == 4 { EventArg::Truncated(text, orig as u32) } else { EventArg::Text(text) });
+                if tag == 4 { RawArg::Truncated(start, stored, original) } else { RawArg::Text(start, stored) }
             }
-            5 => args.push(EventArg::Redacted),
+            5 => RawArg::Redacted,
             _ => return None,
+        };
+        ev.argc += 1;
+    }
+    Some(ev)
+}
+
+fn text_at(bytes: &[u8], off: usize, len: usize) -> Option<&str> {
+    std::str::from_utf8(bytes.get(off..off + len)?).ok()
+}
+
+fn bind<'a>(bytes: &'a [u8], raw: &RawEvent, args: &mut [EventArg<'a>]) -> Option<(&'a str, usize)> {
+    let name = text_at(bytes, raw.name_at, raw.name_len)?;
+    for i in 0..raw.argc {
+        args[i] = match raw.args[i] {
+            RawArg::Nil => EventArg::Nil,
+            RawArg::Bool(v) => EventArg::Bool(v),
+            RawArg::Number(v) => EventArg::Number(v),
+            RawArg::Text(off, len) => EventArg::Text(text_at(bytes, off, len)?),
+            RawArg::Truncated(off, len, orig) => EventArg::Truncated(text_at(bytes, off, len)?, orig),
+            RawArg::Redacted => EventArg::Redacted,
+        };
+    }
+    Some((name, raw.argc))
+}
+
+fn stash(bytes: &[u8], args: &[RawArg], name_at: usize, name_len: usize, name: &mut String, texts: &mut Vec<String>) {
+    name.push_str(&String::from_utf8_lossy(&bytes[name_at..name_at + name_len]));
+    for arg in args {
+        if let RawArg::Text(off, len) | RawArg::Truncated(off, len, _) = *arg {
+            texts.push(String::from_utf8_lossy(&bytes[off..off + len]).into_owned());
         }
     }
-    Some((name, args))
+}
+
+fn bind_owned<'a>(raw_args: &[RawArg], texts: &'a [String], args: &mut [EventArg<'a>]) -> usize {
+    let mut texts_i = 0usize;
+    for (i, arg) in raw_args.iter().enumerate() {
+        args[i] = match *arg {
+            RawArg::Nil => EventArg::Nil,
+            RawArg::Bool(v) => EventArg::Bool(v),
+            RawArg::Number(v) => EventArg::Number(v),
+            RawArg::Redacted => EventArg::Redacted,
+            RawArg::Text(_, _) => { let view = EventArg::Text(texts[texts_i].as_str()); texts_i += 1; view }
+            RawArg::Truncated(_, _, orig) => { let view = EventArg::Truncated(texts[texts_i].as_str(), orig); texts_i += 1; view }
+        };
+    }
+    raw_args.len()
+}
+
+/// ʕ •ᴥ•ʔ✿ Runs `f` on one WEV1 payload. Valid UTF-8 is borrowed from `bytes` ✿ ʕ •ᴥ•ʔ
+pub fn with_event(bytes: &[u8], f: impl FnOnce(&str, &[EventArg<'_>]) -> i32) -> i32 {
+    let mut view = [EventArg::Nil; MAX_STACK_ARGS];
+    let Some(raw) = parse_raw(bytes) else { return -1; };
+    if !raw.wide {
+        if let Some((name, n)) = bind(bytes, &raw, &mut view) { return f(name, &view[..n]); }
+        let mut name = String::new();
+        let mut texts = Vec::new();
+        stash(bytes, &raw.args[..raw.argc], raw.name_at, raw.name_len, &mut name, &mut texts);
+        let n = bind_owned(&raw.args[..raw.argc], &texts, &mut view);
+        return f(&name, &view[..n]);
+    }
+    let Some(raw) = parse_wide(bytes) else { return -1; };
+    let mut name = String::new();
+    let mut texts = Vec::new();
+    stash(bytes, &raw.args, raw.name_at, raw.name_len, &mut name, &mut texts);
+    let mut wide = vec![EventArg::Nil; raw.args.len()];
+    let n = bind_owned(&raw.args, &texts, &mut wide);
+    f(&name, &wide[..n])
+}
+
+struct WideEvent { name_at: usize, name_len: usize, args: Vec<RawArg> }
+
+fn parse_wide(bytes: &[u8]) -> Option<WideEvent> {
+    if bytes.len() < 18 || &bytes[0..4] != b"WEV1" { return None; }
+    let name_len = u16::from_le_bytes(bytes[16..18].try_into().ok()?) as usize;
+    if 18 + name_len > bytes.len() { return None; }
+    let mut ev = WideEvent { name_at: 18, name_len, args: Vec::new() };
+    let mut pos = 18 + name_len;
+    while pos < bytes.len() {
+        let tag = bytes[pos];
+        pos += 1;
+        ev.args.push(match tag {
+            0 => RawArg::Nil,
+            1 => {
+                if pos >= bytes.len() { return None; }
+                let value = RawArg::Bool(bytes[pos] != 0);
+                pos += 1;
+                value
+            }
+            2 => {
+                if pos + 8 > bytes.len() { return None; }
+                let value = RawArg::Number(f64::from_le_bytes(bytes[pos..pos + 8].try_into().ok()?));
+                pos += 8;
+                value
+            }
+            3 | 4 => {
+                if pos + 4 > bytes.len() { return None; }
+                let orig = u32::from_le_bytes(bytes[pos..pos + 4].try_into().ok()?) as usize;
+                pos += 4;
+                let (stored, original) = if tag == 4 {
+                    if pos + 4 > bytes.len() { return None; }
+                    let n = u32::from_le_bytes(bytes[pos..pos + 4].try_into().ok()?) as usize;
+                    pos += 4;
+                    (n, orig as u32)
+                } else { (orig, 0) };
+                if pos + stored > bytes.len() { return None; }
+                let start = pos;
+                pos += stored;
+                if tag == 4 { RawArg::Truncated(start, stored, original) } else { RawArg::Text(start, stored) }
+            }
+            5 => RawArg::Redacted,
+            _ => return None,
+        });
+    }
+    Some(ev)
 }
 
 /// ʕ •ᴥ•ʔ✿ WEVS is a burst of WEV1 payloads: magic, count, then length-prefixed blobs ✿ ʕ •ᴥ•ʔ
@@ -392,18 +530,12 @@ macro_rules! wow_addon_v2 {
         #[no_mangle]
         pub extern "C" fn wow_on_event_v2(ptr: *const u8, len: u32) -> i32 {
             let bytes = unsafe { core::slice::from_raw_parts(ptr, len as usize) };
-            match $crate::decode_event(bytes) {
-                Some((name, args)) => $on_event(&name, &args),
-                None => -1,
-            }
+            $crate::with_event(bytes, $on_event)
         }
         #[no_mangle]
         pub extern "C" fn wow_on_event_span(ptr: *const u8, len: u32) -> i32 {
             let bytes = unsafe { core::slice::from_raw_parts(ptr, len as usize) };
-            $crate::visit_span(bytes, |one| match $crate::decode_event(one) {
-                Some((name, args)) => $on_event(&name, &args),
-                None => -1,
-            })
+            $crate::visit_span(bytes, |one| $crate::with_event(one, $on_event))
         }
     };
 }
@@ -444,4 +576,59 @@ pub fn model_set(handle: i32, spec: &str) -> i32 {
 /// `hooksecurefunc` on a global. The addon then receives `WASM_HOOK` with that name.
 pub fn hook_bind(name: &str) -> i32 {
     unsafe { raw::hook_bind(name.as_ptr(), name.len() as u32) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn u16(out: &mut Vec<u8>, v: u16) { out.extend_from_slice(&v.to_le_bytes()); }
+    fn u32(out: &mut Vec<u8>, v: u32) { out.extend_from_slice(&v.to_le_bytes()); }
+
+    fn named(name: &[u8]) -> Vec<u8> {
+        let mut out = vec![0u8; 16];
+        out[0..4].copy_from_slice(b"WEV1");
+        out[4] = 2;
+        u16(&mut out, name.len() as u16);
+        out.extend_from_slice(name);
+        out
+    }
+
+    #[test]
+    fn borrows_utf8_text() {
+        let mut bytes = named(b"UNIT_HEALTH");
+        bytes.push(3);
+        u32(&mut bytes, 6);
+        bytes.extend_from_slice(b"player");
+        bytes.push(2);
+        bytes.extend_from_slice(&1.5f64.to_le_bytes());
+        let code = with_event(&bytes, |name, args| {
+            assert_eq!(name, "UNIT_HEALTH");
+            match args[0] {
+                EventArg::Text(text) => {
+                    assert_eq!(text, "player");
+                    let start = text.as_ptr() as usize;
+                    let base = bytes.as_ptr() as usize;
+                    assert!(start >= base && start + text.len() <= base + bytes.len());
+                }
+                _ => panic!("text"),
+            }
+            match args[1] { EventArg::Number(n) => assert_eq!(n, 1.5), _ => panic!("number") }
+            7
+        });
+        assert_eq!(code, 7);
+    }
+
+    #[test]
+    fn replaces_invalid_utf8() {
+        let mut bytes = named(b"X");
+        bytes.push(3);
+        u32(&mut bytes, 1);
+        bytes.push(0xff);
+        let code = with_event(&bytes, |_name, args| {
+            match args[0] { EventArg::Text(text) => assert_eq!(text, "\u{FFFD}"), _ => panic!("text") }
+            0
+        });
+        assert_eq!(code, 0);
+    }
 }

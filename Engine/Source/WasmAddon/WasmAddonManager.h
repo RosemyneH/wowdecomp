@@ -74,6 +74,7 @@ private:
     void MigrateDenyEntries(const Manifest& manifest, const std::string& sha256);
     void SavePermissionStore() const;
     bool InvokeExport(Addon& addon, const char* name, const std::vector<int64_t>& args, int64_t& result);
+    bool InvokeExport(Addon& addon, const char* name, const int64_t* args, size_t nargs, int64_t& result);
     uint64_t Now() const;
     size_t IndexOf(const Addon& addon) const;
     UiHandle* FindUi(Addon& addon, int64_t guest);

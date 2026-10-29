@@ -4,7 +4,7 @@ static ARGC: AtomicI32 = AtomicI32::new(-1);
 static TAG: AtomicI32 = AtomicI32::new(-1);
 static NUM: AtomicI32 = AtomicI32::new(0);
 
-fn tag_of(arg: &EventArg) -> i32 {
+fn tag_of(arg: &EventArg<'_>) -> i32 {
     match arg {
         EventArg::Nil => 0,
         EventArg::Bool(_) => 1,
@@ -21,7 +21,7 @@ fn on_load() -> i32 {
     if a != 0 { a } else { b }
 }
 
-fn on_event(_name: &str, args: &[EventArg]) -> i32 {
+fn on_event(_name: &str, args: &[EventArg<'_>]) -> i32 {
     ARGC.store(args.len() as i32, Ordering::Relaxed);
     if let Some(first) = args.first() {
         TAG.store(tag_of(first), Ordering::Relaxed);

@@ -26,7 +26,7 @@ fn on_load() -> i32 {
     0
 }
 
-fn on_event(name: &str, args: &[EventArg]) -> i32 {
+fn on_event(name: &str, args: &[EventArg<'_>]) -> i32 {
     match name {
         "COMBAT_LOG_EVENT_UNFILTERED" => on_combat(args),
         "WASM_UI" => {
@@ -39,7 +39,7 @@ fn on_event(name: &str, args: &[EventArg]) -> i32 {
     0
 }
 
-fn on_combat(args: &[EventArg]) {
+fn on_combat(args: &[EventArg<'_>]) {
     let started = {
         let Some(window) = slot() else { return };
         if args.iter().any(|arg| matches!(arg, EventArg::Redacted)) {
@@ -65,7 +65,7 @@ fn on_update() -> i32 {
     0
 }
 
-fn view(arg: &EventArg) -> Arg<'_> {
+fn view<'a>(arg: &'a EventArg<'a>) -> Arg<'a> {
     match arg {
         EventArg::Number(value) => Arg::Num(*value),
         EventArg::Bool(value) => Arg::Num(if *value { 1.0 } else { 0.0 }),
@@ -74,7 +74,7 @@ fn view(arg: &EventArg) -> Arg<'_> {
     }
 }
 
-fn number(arg: &EventArg) -> Option<i32> {
+fn number(arg: &EventArg<'_>) -> Option<i32> {
     match arg { EventArg::Number(value) => Some(*value as i32), _ => None }
 }
 

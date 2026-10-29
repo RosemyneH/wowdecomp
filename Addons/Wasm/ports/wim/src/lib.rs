@@ -14,9 +14,9 @@ fn windows() -> &'static mut Vec<Window> {
     unsafe { &mut *std::ptr::addr_of_mut!(WINDOWS) }
 }
 
-fn arg_text(arg: Option<&EventArg>) -> String {
+fn arg_text(arg: Option<&EventArg<'_>>) -> String {
     match arg {
-        Some(EventArg::Text(text) | EventArg::Truncated(text, _)) => text.clone(),
+        Some(EventArg::Text(text) | EventArg::Truncated(text, _)) => text.to_string(),
         _ => String::new(),
     }
 }
@@ -78,7 +78,7 @@ fn on_load() -> i32 {
     0
 }
 
-fn on_whisper(name: &str, args: &[EventArg]) -> i32 {
+fn on_whisper(name: &str, args: &[EventArg<'_>]) -> i32 {
     if matches!(args.first(), Some(EventArg::Redacted)) || matches!(args.get(1), Some(EventArg::Redacted)) {
         let _ = print("Whispers stay hidden until chat.read is granted");
         return 0;
@@ -95,9 +95,9 @@ fn on_whisper(name: &str, args: &[EventArg]) -> i32 {
     }
 }
 
-fn on_ui(args: &[EventArg]) -> i32 {
+fn on_ui(args: &[EventArg<'_>]) -> i32 {
     let script = match args.first() {
-        Some(EventArg::Text(text)) => text.as_str(),
+        Some(EventArg::Text(text)) => *text,
         _ => return 0,
     };
     let handle = match args.get(1) {
@@ -126,7 +126,7 @@ fn on_ui(args: &[EventArg]) -> i32 {
     0
 }
 
-fn on_event(name: &str, args: &[EventArg]) -> i32 {
+fn on_event(name: &str, args: &[EventArg<'_>]) -> i32 {
     match name {
         "CHAT_MSG_WHISPER" | "CHAT_MSG_WHISPER_INFORM" => on_whisper(name, args),
         "WASM_UI" => on_ui(args),

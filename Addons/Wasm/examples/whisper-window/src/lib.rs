@@ -35,7 +35,7 @@ fn remember(line: String) {
     lines.push(line);
 }
 
-fn arg_text(arg: Option<&EventArg>) -> Option<String> {
+fn arg_text(arg: Option<&EventArg<'_>>) -> Option<String> {
     match arg {
         Some(EventArg::Text(text) | EventArg::Truncated(text, _)) => Some(clip(text, 72)),
         Some(EventArg::Redacted) => None,
@@ -77,7 +77,7 @@ fn on_load() -> i32 {
     0
 }
 
-fn on_event(name: &str, args: &[EventArg]) -> i32 {
+fn on_event(name: &str, args: &[EventArg<'_>]) -> i32 {
     if name != "CHAT_MSG_WHISPER" && name != "CHAT_MSG_WHISPER_INFORM" { return 0; }
     let outgoing = name.ends_with("INFORM");
     let message = arg_text(args.first());

@@ -59,7 +59,8 @@ public:
         size_t results = 0;
     };
     struct NamedExport { const char* name; CachedExport slot; };
-    mutable NamedExport hotExports[4] = {
+    mutable NamedExport hotExports[5] = {
+        {"wow_on_event_span", {}},
         {"wow_on_event_v2", {}},
         {"wow_on_event", {}},
         {"wow_alloc", {}},
@@ -106,6 +107,10 @@ public:
     }
 
     bool Call(const char* name, const std::vector<int64_t>& args, int64_t& result, std::string& error) override {
+        return Call(name, args.data(), args.size(), result, error);
+    }
+
+    bool Call(const char* name, const int64_t* args, size_t nargs, int64_t& result, std::string& error) override {
         CachedExport& slot = ExportSlot(name);
         if (!slot.looked) {
             slot.looked = true;
@@ -126,23 +131,29 @@ public:
             error = std::string("missing export: ") + name;
             return false;
         }
-        if (slot.params != args.size()) {
+        if (slot.params != nargs) {
             error = "host arity mismatch calling " + std::string(name);
             return false;
         }
-        std::vector<wasmtime_val_t> vals(args.size());
-        for (size_t i = 0; i < args.size(); i++) { vals[i].kind = WASMTIME_I32; vals[i].of.i32 = (int32_t)args[i]; }
-        std::vector<wasmtime_val_t> results(slot.results);
-        for (auto& r : results) r.kind = WASMTIME_I32;
+        wasmtime_val_t stackVals[8];
+        wasmtime_val_t stackResults[4];
+        std::vector<wasmtime_val_t> heapVals;
+        std::vector<wasmtime_val_t> heapResults;
+        wasmtime_val_t* vals = stackVals;
+        wasmtime_val_t* results = stackResults;
+        if (nargs > 8) { heapVals.resize(nargs); vals = heapVals.data(); }
+        if (slot.results > 4) { heapResults.resize(slot.results); results = heapResults.data(); }
+        for (size_t i = 0; i < nargs; i++) { vals[i].kind = WASMTIME_I32; vals[i].of.i32 = (int32_t)args[i]; }
+        for (size_t i = 0; i < slot.results; i++) results[i].kind = WASMTIME_I32;
         wasmtime_context_set_fuel(Context(), limits.fuelPerCallback);
         wasm_trap_t* trap = nullptr;
-        wasmtime_error_t* err = wasmtime_func_call(Context(), &slot.func, vals.data(), vals.size(), results.data(), results.size(), &trap);
+        wasmtime_error_t* err = wasmtime_func_call(Context(), &slot.func, vals, nargs, results, slot.results, &trap);
         uint64_t remaining = 0;
         if (wasmtime_context_get_fuel(Context(), &remaining) == nullptr)
             lastConsumed = limits.fuelPerCallback >= remaining ? limits.fuelPerCallback - remaining : 0;
         if (err) { error = ErrorText(err); return false; }
         if (trap) { error = TrapText(trap); return false; }
-        result = results.empty() ? 0 : (results[0].kind == WASMTIME_I64 ? results[0].of.i64 : results[0].of.i32);
+        result = slot.results == 0 ? 0 : (results[0].kind == WASMTIME_I64 ? results[0].of.i64 : results[0].of.i32);
         return true;
     }
 };

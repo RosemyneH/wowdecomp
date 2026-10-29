@@ -49,7 +49,7 @@ fn update() -> i32 {
     databars::update()
 }
 
-fn on_event(_: &str, _: &[EventArg]) -> i32 { update() }
+fn on_event(_: &str, _: &[EventArg<'_>]) -> i32 { update() }
 
 #[no_mangle]
 pub extern "C" fn wow_on_update() -> i32 { update() }

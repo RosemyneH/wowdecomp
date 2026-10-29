@@ -12,6 +12,10 @@ public:
     virtual bool WriteMemory(uint32_t ptr, const void* data, uint32_t len) = 0;
     virtual uint64_t MemoryBytes() const = 0;
     virtual bool Call(const char* exportName, const std::vector<int64_t>& args, int64_t& result, std::string& error) = 0;
+    virtual bool Call(const char* exportName, const int64_t* args, size_t nargs, int64_t& result, std::string& error) {
+        std::vector<int64_t> copy(args, args + nargs);
+        return Call(exportName, copy, result, error);
+    }
     virtual bool HasExport(const char* exportName) const = 0;
     virtual uint64_t ConsumedFuel() const = 0;
 };

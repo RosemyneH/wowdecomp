@@ -5,7 +5,7 @@ static REQID: AtomicI32 = AtomicI32::new(0);
 
 fn on_load() -> i32 { subscribe("WASM_CONFIRM_RESULT") }
 
-fn on_event(name: &str, args: &[EventArg]) -> i32 {
+fn on_event(name: &str, args: &[EventArg<'_>]) -> i32 {
     if name == "WASM_CONFIRM_RESULT" {
         if let (Some(EventArg::Number(id)), Some(EventArg::Number(status))) = (args.first(), args.get(1)) {
             REQID.store(*id as i32, Relaxed);

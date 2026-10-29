@@ -57,7 +57,7 @@ fn on_load() -> i32 {
     0
 }
 
-fn on_event(name: &str, _: &[EventArg]) -> i32 {
+fn on_event(name: &str, _: &[EventArg<'_>]) -> i32 {
     if name == "WASM_UI" { UI_EVENT.store(1, Ordering::Relaxed); }
     0
 }

@@ -10,11 +10,10 @@ fn accept(bytes: &[u8]) -> i32 {
     BYTES.fetch_add(bytes.len() as i32, Relaxed);
     match MODE.load(Relaxed) {
         0 => 0,
-        2 => match decode_event(bytes) {
-            Some((_, args)) => args.iter().map(|a| match a { EventArg::Text(s) => s.len() as i32, _ => 1 }).sum::<i32>() & 0,
-            None => -1,
-        },
-        _ => match decode_event(bytes) { Some(_) => 0, None => -1 },
+        2 => with_event(bytes, |_name, args| {
+            args.iter().map(|a| match a { EventArg::Text(s) => s.len() as i32, _ => 1 }).sum::<i32>() & 0
+        }),
+        _ => with_event(bytes, |_name, _args| 0),
     }
 }
 

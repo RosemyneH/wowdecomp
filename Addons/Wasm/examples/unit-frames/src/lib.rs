@@ -167,11 +167,11 @@ fn on_load() -> i32 {
     refresh()
 }
 
-fn on_event(name: &str, args: &[EventArg]) -> i32 {
+fn on_event(name: &str, args: &[EventArg<'_>]) -> i32 {
     if let Some(rest) = name.strip_prefix("UNIT_") {
         if !rest.is_empty() {
             if let Some(EventArg::Text(unit)) = args.first() {
-                if unit != "player" && unit != "target" && !unit.starts_with("party") { return 0; }
+                if *unit != "player" && *unit != "target" && !unit.starts_with("party") { return 0; }
             }
         }
     }
