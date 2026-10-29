@@ -21,6 +21,14 @@ or null dispatches do not join prior work. Nonempty dispatches join prior work;
 shutdown waits, signals termination, and joins all threads. Callback user data and
 all referenced inputs/outputs must survive until that join.
 
+## Texture priority list
+
+`s_asyncLoadList` is not the file queue. `AsyncTextureHandler` and `AsyncTextureStatus` walk it from the poll handler, which runs on the caller. `TextureIncreasePriority` is reached from `TextureGetGxTex`, `CM2Model::LinkToAsyncHeadRecursive` (`M2Model.cpp:1277`, map and world-object promotion), and liquid blob warmup. Those are caller-thread draws and prepares. The queue lock stays on the path that bumps a read already in the file queue. The null-buffer link does not take that lock.
+
+A finished texture clears `m_asyncObject` in `AsyncTextureSuccessCallback`. `LinkToAsyncHead(1)` still visits those textures. The priority function now returns when the object is already gone, instead of reading a null pointer in streaming mode.
+
+`CM2Model::LinkToAsyncHeadRecursive` also calls `AsyncFileReadLinkObject` with no lock held (`M2Model.cpp:1271`). The I/O worker unlinks that same read list under `g_queueLock`. `AsyncFileReadLinkObject` now takes the lock itself and reads `m_queue` under it, so a read that has already been posted is not pulled off the post list. Callers that already hold the lock re-enter it. Linux `SCritSect` is a recursive pthread mutex, and the Windows critical section is recursive too.
+
 ## Blocking texture wait
 
 `TextureGetGxTex` with `wait == 1` calls `AsyncTextureWait` (`Texture.cpp`). Terrain draws, fonts, shadows, and render-target updates use that texture in the same call. A deferred object has a null buffer, so the wait submits it immediately and blocks. Refusing that submit would leave those callers without a GPU texture. The staging counter can therefore pass 4 MiB.

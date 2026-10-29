@@ -370,7 +370,11 @@ CAsyncQueue::~CAsyncQueue() {
 // VERIFY: 69785110 manual
 // OFFSET: 0x004BA3D0
 void AsyncFileReadLinkObject(CAsyncObject* object, int32_t urgent) {
+    // ʕ •ᴥ•ʔ✿ Some callers already hold this lock. SCritSect is recursive ✿ ʕ •ᴥ•ʔ
+    g_queueLock.Enter();
+
     if (!object->m_queue) {
+        g_queueLock.Leave();
         return;
     }
 
@@ -380,12 +384,14 @@ void AsyncFileReadLinkObject(CAsyncObject* object, int32_t urgent) {
         if (object->m_priority <= other->m_priority && (urgent || object->m_priority != other->m_priority)) {
             object->m_queue->m_readList.LinkNode(object, 2, other);
             object->m_char25 = 0;
+            g_queueLock.Leave();
             return;
         }
     }
 
     object->m_queue->m_readList.LinkToTail(object);
     object->m_char25 = 0;
+    g_queueLock.Leave();
 }
 
 // VERIFY: c818c689 manual

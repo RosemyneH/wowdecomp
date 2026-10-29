@@ -1281,17 +1281,22 @@ void TextureIncreasePriority(CTexture* texture) {
         return;
     }
 
-    if (texture->m_asyncObject->m_buffer) {
+    CAsyncObject* object = texture->m_asyncObject;
+
+    if (!object) {
+        return;
+    }
+
+    if (object->m_buffer) {
         AsyncFile::EnterQueueLock();
-        CAsyncObject* object = texture->m_asyncObject;
 
         if (!object->m_isCurrent && !object->m_isRead && !object->m_isProcessed) {
-            AsyncFileReadIncreasePriority(texture->m_asyncObject);
+            AsyncFileReadIncreasePriority(object);
         }
 
         AsyncFile::LeaveQueueLock();
     } else {
-        s_asyncLoadList.LinkToHead(texture->m_asyncObject);
+        s_asyncLoadList.LinkToHead(object);
     }
 }
 

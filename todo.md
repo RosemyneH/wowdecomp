@@ -7,12 +7,16 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-`TextureIncreasePriority` moves an object with a null buffer onto `s_asyncLoadList`
-without the queue lock. Confirm every caller is on the thread that owns that
-list. Client frame measurements stay blocked.
+Other `m_readList` edits outside `g_queueLock`. `AsyncFileReadLinkStaleObject`
+is one. Client frame measurements stay blocked.
 
 ## Completed iterations
 
+- [x] Return from `TextureIncreasePriority` when the texture has no async object,
+  and take `g_queueLock` inside `AsyncFileReadLinkObject`. Loaded textures clear
+  the async pointer, and model promotion relinked the file queue without the
+  lock the worker holds. `Texture.cpp` and `AsyncFile.cpp` typecheck with the
+  Linux client flags.
 - [x] Keep a staging counter past 4 MiB from looking like free budget. Blocking
   `TextureGetGxTex` waits still submit a deferred texture, because draw callers
   use the result immediately. `TextureStagingRemaining` returns zero once the
