@@ -72,7 +72,6 @@ class CGSpellBook {
     static void UpdateSelection();
     static void UpdateUsablePower();
     static void UpdateSpells(int32_t a1, int32_t a2, int32_t a3);
-    static void RefileSpells();
     static void UpdateUsable();
     static void CastSpell(int32_t spellId, int32_t petSpell, WOWGUID target);
     static void InitializeGame();
