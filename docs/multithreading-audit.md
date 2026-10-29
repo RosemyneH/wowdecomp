@@ -208,7 +208,11 @@ linked `bin/Linux/WowClient64`. `-help` then exited 2, the missing-archive
 `StormExit` path. Before `Pool` joined leftover workers, that same path aborted
 in the pool destructor because a joinable `std::thread` calls `std::terminate`
 during `exit`. One `job_lifecycle_test` run passed after that destructor
-change. This is not a world frame. Android SDK here
+change. This is not a world frame. A 15-second run from `test/play-335`,
+fed by `~/Games/client` through `Tools/setup-linux-test-client.sh --vanilla`,
+stayed up (timeout exit 124) after opening the enUS patch, base, locale, and
+speech archives and printing `vulkan memory: rebar=on`. No login and no frame
+times. Android SDK here
 contains platform-tools but no NDK; Windows ARM64/MSVC and native target
 runtimes remain unverified.
 

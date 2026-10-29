@@ -7,11 +7,16 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-WowClient links and `-help` exits 2 on this machine because the data archives are
-missing. A world frame still needs that data. Hardware targets stay blocked.
+The client stays up past MPQ open and Vulkan memory setup. A logged-in world
+frame, and the FPS numbers that need it, are still blocked. Hardware targets
+stay blocked.
 
 ## Completed iterations
 
+- [x] Run `WowClient64` from `test/play-335` for 15 seconds. The vanilla scope
+  points at `~/Games/client`. Every listed patch, base, locale, and speech
+  archive opened, then the log printed `vulkan memory: rebar=on`. The process
+  was still alive at the timeout. No login and no frame sample.
 - [x] Join leftover job workers from `Pool::~Pool`. `-help` reached `StormExit`
   from archive open failure and `exit` destroyed a pool whose `std::thread`
   objects were still joinable, which called `std::terminate`. After the join,
@@ -193,8 +198,9 @@ missing. A world frame still needs that data. Hardware targets stay blocked.
 - [ ] Live asynchronous skin input/model lifetimes, teardown reentrancy, animation
   attachment/particle ownership, and actual mapped-buffer backend tests require a
   working integrated client and representative model/map workloads. WowClient now
-  links. `-help` exits 2 because the MPQ archives are not available, so there is
-  still no world frame.
+  links. `-help` without a Data directory exits 2. With `test/play-335` pointed at
+  `~/Games/client`, a 15-second run opens the archives and reaches Vulkan memory
+  setup, then stays up. There is still no logged-in world frame.
 - [ ] Actual startup-fatal/active-resource teardown and production exception
   reachability remain unverified. Isolated exit reproductions do not establish safe
   client resource ordering; do not add a late exit join without that evidence.
