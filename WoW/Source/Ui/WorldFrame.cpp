@@ -3,6 +3,7 @@
 #include <cstring>
 #include <typeinfo>
 #include "Engine/Source/Base/OsCrt.h"
+#include "Engine/Source/Base/Profiler.h"
 #include "Engine/Source/Base/Coordinate.h"
 #include "Engine/Source/Base/Status.h"
 #include "Engine/Source/ConsoleBase/ConsoleVar.h"
@@ -1786,6 +1787,7 @@ void CGWorldFrame::OnWorldRender() {
         PerfZone frame(g_perf.z_frame_clocks);
         CWorld::Render(this->m_camera->m_position, this->m_elapsedSec);
     }
+    Profiler::Scope after(Profiler::WorldAfter);
     PerfLogTick();
     CMap::RenderFootprints();
     PostAnimateVisibleUnits(this);
@@ -2022,6 +2024,7 @@ void CGWorldFrame::OnLayerUpdate(float elapsedSec) {
 // VERIFY: b7190175 manual
 // OFFSET: 0x004FA5F0
 void CGWorldFrame::OnWorldUpdate() {
+    Profiler::Scope profile(Profiler::WorldUpdate);
     float elapsedSec = this->m_elapsedSec;
     CGPlayer_C* player = static_cast<CGPlayer_C*>(ClntObjMgrObjectPtr(ClntObjMgrGetActivePlayer(), TYPE_PLAYER, __FILE__, __LINE__));
 

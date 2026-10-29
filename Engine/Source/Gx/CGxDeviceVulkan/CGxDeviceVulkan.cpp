@@ -1345,6 +1345,7 @@ void CGxDeviceVulkan::IEnsureFrameImage() {
 }
 
 void CGxDeviceVulkan::ScenePresent() {
+    Profiler::Scope profile(Profiler::Present);
     if (this->m_context) {
         int32_t scrShotClick = this->m_scrShotClick;
 

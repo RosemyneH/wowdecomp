@@ -3894,10 +3894,62 @@ void CWorldScene::CullDoodads(CSortEntry* entry, uint16_t fadeLevel, int32_t reu
 
 // VERIFY: 1d148ad8 manual
 // OFFSET: 0x007989C0
+static void UnlinkTerrainChunks() {
+    for (uint32_t pass = 0; pass < 4; pass++) {
+        for (uint32_t layers = 1; layers <= 4; layers++) {
+            TSExplicitList<CMapRenderChunk, offsetof(CMapRenderChunk, m_renderChunkLink)>& list = CWorldScene::sortTable.m_renderChunkList[4 * layers + pass];
+            CMapRenderChunk* renderChunk = list.Head();
+
+            while (!list.IsEnd(renderChunk)) {
+                CMapRenderChunk* next = list.RawNext(renderChunk);
+                renderChunk->m_renderChunkLink.Unlink();
+                CMap::s_mapRenderChunkUpdateList.LinkToTail(renderChunk);
+                renderChunk = next;
+            }
+        }
+    }
+}
+
 void CWorldScene::RenderChunksSinglePass() {
     TSExplicitList<CMapRenderChunk, offsetof(CMapRenderChunk, m_renderChunkLink)> singlePassList;
+    int32_t deferFlush = g_theGxDevicePtr->TerrainBindless()
+        && CMapRenderChunk::s_renderLayersFunc == CMapRenderChunk::RenderMultiPassAlpha;
+
+    if (deferFlush && (CWorld::enables & Enable_Chunks) && !(CWorld::enables & Enable_ShowNormals)) {
+        static std::vector<CMapRenderChunk*> chunks;
+        chunks.clear();
+        int32_t shader = 0;
+
+        for (uint32_t pass = 0; pass < 4 && !shader; pass++) {
+            CMapRenderChunk::SetShaders(pass == 2 || pass == 3, pass == 1 || pass == 3);
+
+            for (uint32_t layers = 1; layers <= 4; layers++) {
+                if (CMapRenderChunk::s_currentShaderX[layers - 1]) {
+                    shader = 1;
+                    break;
+                }
+
+                TSExplicitList<CMapRenderChunk, offsetof(CMapRenderChunk, m_renderChunkLink)>& list = CWorldScene::sortTable.m_renderChunkList[4 * layers + pass];
+                CMapRenderChunk* renderChunk = list.Head();
+
+                while (!list.IsEnd(renderChunk)) {
+                    chunks.push_back(renderChunk);
+                    renderChunk = list.RawNext(renderChunk);
+                }
+            }
+        }
+
+        if (!shader && CMapRenderChunk::ReuseQueuedTerrain(chunks.data(), static_cast<uint32_t>(chunks.size()))) {
+            UnlinkTerrainChunks();
+            CMapRenderChunk::FlushMultiPass();
+            g_theGxDevicePtr->RsSet(GxRs_VertexShader, static_cast<void*>(nullptr));
+            g_theGxDevicePtr->RsSet(GxRs_PixelShader, static_cast<void*>(nullptr));
+            return;
+        }
+    }
+
     CMapRenderChunk::BeginQueuedTerrain();
-    int32_t deferFlush = 0;
+    deferFlush = 0;
 
     for (uint32_t pass = 0; pass < 4; pass++) {
         switch (pass) {

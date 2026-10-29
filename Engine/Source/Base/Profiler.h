@@ -13,8 +13,16 @@ enum Id : uint32_t {
     M2Draw,
     GxDraw,
     JobJoin,
+    Idle,
+    WorldUpdate,
+    WorldAfter,
+    Ui,
+    Present,
     Count
 };
+
+void BeginFrame();
+void EndFrame();
 
 struct ZoneLine {
     const char* name;

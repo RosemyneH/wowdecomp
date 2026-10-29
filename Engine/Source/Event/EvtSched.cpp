@@ -1,6 +1,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include "Engine/Source/Base/Profiler.h"
 #include "Engine/Source/Base/Prop.h"
 #include "Engine/Source/Event/EvtContext.h"
 #include "Engine/Source/Event/EvtInput.h"
@@ -210,12 +211,17 @@ void EventForceIdleProcessing() {
     float elapsedSec = static_cast<float>(static_cast<int32_t>(currTime - context->m_schedLastIdle)) * 0.001f;
     context->m_schedLastIdle = currTime;
 
+    Profiler::BeginFrame();
     IEvtDispatchUpdate(context, currTime, elapsedSec);
     IEvtTimerDispatch(context);
     SynthesizePoll(context);
     IEvtQueueDispatchAll(context);
-    SynthesizeIdle(context, currTime, elapsedSec);
+    {
+        Profiler::Scope idle(Profiler::Idle);
+        SynthesizeIdle(context, currTime, elapsedSec);
+    }
     SynthesizePaint(context);
+    Profiler::EndFrame();
 }
 
 // VERIFY: 0a77dcc6 manual
@@ -615,6 +621,7 @@ int32_t SchedulerThreadProcProcess(uint32_t hThread, int32_t* watchdogStarted) {
         s_lastClocks = clocks;
         context->m_schedLastIdle = currTime;
 
+        Profiler::BeginFrame();
         IEvtDispatchUpdate(context, currTime, elapsedSec);
         IEvtTimerDispatch(context);
 
@@ -630,8 +637,12 @@ int32_t SchedulerThreadProcProcess(uint32_t hThread, int32_t* watchdogStarted) {
 
         SynthesizePoll(context);
         IEvtQueueDispatchAll(context);
-        SynthesizeIdle(context, currTime, elapsedSec);
+        {
+            Profiler::Scope idle(Profiler::Idle);
+            SynthesizeIdle(context, currTime, elapsedSec);
+        }
         SynthesizePaint(context);
+        Profiler::EndFrame();
     }
 
     if (hThread == Event::s_mainThread) {

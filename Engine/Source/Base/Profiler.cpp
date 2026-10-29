@@ -62,17 +62,23 @@ const char* const kNames[Profiler::Count] = {
     "M2.Draw",
     "Gx.Draw",
     "Job.Join",
+    "Idle",
+    "World.Update",
+    "World.After",
+    "Ui",
+    "Present",
 };
 
 static_assert(sizeof(ZoneAccum) == 24, "profile zone");
 static_assert(sizeof(FrameRecord) == 16 + 24 * Profiler::Count, "profile frame");
-static_assert(offsetof(SharedProfile, frames) == 264, "profile frames");
+static_assert(offsetof(SharedProfile, frames) == 40 + kNameBytes * Profiler::Count, "profile frames");
 
 SharedProfile* g_shm = nullptr;
 ZoneAccum g_zones[Profiler::Count];
 FrameRecord g_history[kFrames];
 OpenScope g_stack[16];
 uint32_t g_depth = 0;
+uint32_t g_frameDepth = 0;
 uint64_t g_frameStart = 0;
 uint32_t g_frameSerial = 0;
 int32_t g_ready = 0;
@@ -156,6 +162,32 @@ void OpenShm() {
 
 namespace Profiler {
 
+void BeginFrame() {
+    if (!g_ready) {
+        OpenShm();
+        g_ready = 1;
+    }
+
+    if (!Enabled()) {
+        return;
+    }
+
+    if (g_frameDepth++ == 0) {
+        memset(g_zones, 0, sizeof(g_zones));
+        g_frameStart = OsGetAsyncTimeClocks();
+    }
+}
+
+void EndFrame() {
+    if (!Enabled() || !g_frameDepth) {
+        return;
+    }
+
+    if (--g_frameDepth == 0) {
+        Publish();
+    }
+}
+
 int32_t Summarize(uint32_t frameCount, Summary& out) {
     memset(&out, 0, sizeof(out));
 
@@ -215,11 +247,6 @@ Scope::Scope(uint32_t zone) : id(zone), start(0), child(0) {
         return;
     }
 
-    if (g_depth == 0 && zone == WorldRender) {
-        memset(g_zones, 0, sizeof(g_zones));
-        g_frameStart = OsGetAsyncTimeClocks();
-    }
-
     start = OsGetAsyncTimeClocks();
     g_stack[g_depth].id = id;
     g_stack[g_depth].start = start;
@@ -241,8 +268,6 @@ Scope::~Scope() {
 
     if (g_depth) {
         g_stack[g_depth - 1].child += inclusive;
-    } else if (id == WorldRender) {
-        Publish();
     }
 }
 

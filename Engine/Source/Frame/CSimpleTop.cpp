@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstring>
 #include "Engine/Source/Base/Coordinate.h"
+#include "Engine/Source/Base/Profiler.h"
 #include "Engine/Source/Base/Handle.h"
 #include "Engine/Source/BLPFile/Types.h"
 #include "Engine/Source/Event/CCharEvent.h"
@@ -893,6 +894,7 @@ void CSimpleTop::OnLayerUpdate(float elapsedSec) {
 // VERIFY: 587fb7f2 auto
 // OFFSET: 0x00495410
 void CSimpleTop::OnLayerRender() {
+    Profiler::Scope profile(Profiler::Ui);
     C2Vector offset;
     CameraSetupScreenProjection(this->m_rect, offset, 0.0f, 0);
 
