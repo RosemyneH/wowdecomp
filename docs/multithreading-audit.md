@@ -21,6 +21,10 @@ or null dispatches do not join prior work. Nonempty dispatches join prior work;
 shutdown waits, signals termination, and joins all threads. Callback user data and
 all referenced inputs/outputs must survive until that join.
 
+## Shared model load callback
+
+`CM2Shared::SkinProfileLoadedCallback`, `LoadSucceededCallback`, and `LoadFailedCallback` all receive the shared object. `LowPrioritySequenceLoadedCallback` receives a `CM2SequenceLoad` and then uses that shared object. Those callbacks run inside the poll lock. `~CM2Shared` and `~CM2SequenceLoad` now take the same lock before they cancel the read or free the object, so a main-thread release waits until the callback returns. The queue lock is taken only after the poll lock, matching `Cancel` and `AsyncFileReadDestroyObject`.
+
 ## Area callback and purge
 
 `CMapArea::AsyncCallback` runs from `AsyncFileReadPollHandler`, which a scheduler thread can enter. The callback uses the area and then clears `m_asyncObject`. `CMap::PreUpdateAreas` used to read `m_isCurrent` and purge that area with no shared lock. `PreUpdateAreas` now takes the poll lock, reads `m_isCurrent` under the queue lock, and purges only when the read is not in flight. `CMapArea::Purge` takes the poll lock before `Cancel`, so `PurgeMaps` waits out a callback too. The poll lock is released before chunk teardown.

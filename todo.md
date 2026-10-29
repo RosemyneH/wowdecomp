@@ -7,12 +7,15 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-`CM2Shared::SkinProfileLoadedCallback` runs on the scheduler thread inside the
-poll lock. Find any main-thread path that frees that shared object without the
-same lock. Client frame measurements stay blocked.
+Map object and map-object group load callbacks. Their post handlers free or
+use the object from a scheduler thread. Check the main-thread destroy path
+for the poll lock. Client frame measurements stay blocked.
 
 ## Completed iterations
 
+- [x] Take the poll lock in `~CM2Shared` and `~CM2SequenceLoad`. Skin, model,
+  and low-priority sequence callbacks use those objects on a scheduler thread.
+  `M2Shared.cpp` typechecks with the Linux client flags.
 - [x] Take the poll lock around an out-of-range area purge. The load callback
   runs on a scheduler thread and still uses the area. `m_isCurrent` is read
   under the queue lock. `CMapArea::Purge` takes the poll lock before `Cancel`.

@@ -1894,11 +1894,14 @@ CM2SequenceLoad::CM2SequenceLoad() {
 // VERIFY: c0e38fed manual
 // OFFSET: 0x0083D370
 CM2SequenceLoad::~CM2SequenceLoad() {
+    AsyncFile::EnterPollLock();
     this->m_playbacks.Clear();
 
     if (this->m_asyncObject) {
         AsyncFileReadDestroyObject(this->m_asyncObject);
     }
+
+    AsyncFile::LeavePollLock();
 }
 
 // VERIFY: bacb8d39 manual
@@ -1962,6 +1965,8 @@ void CM2Shared::CancelAllDeferredSequences() {
 // VERIFY: 7f65a462 manual
 // OFFSET: 0x0083D5B0
 CM2Shared::~CM2Shared() {
+    // ʕ •ᴥ•ʔ✿ Skin and model load callbacks use this object under the poll lock ✿ ʕ •ᴥ•ʔ
+    AsyncFile::EnterPollLock();
     this->CancelAllDeferredSequences();
 
     int32_t pending = 0;
@@ -2045,6 +2050,8 @@ CM2Shared::~CM2Shared() {
     if (!pending) {
         SIMD::FreeA16(this->m_data);
     }
+
+    AsyncFile::LeavePollLock();
 }
 
 // VERIFY: aeff737a manual
