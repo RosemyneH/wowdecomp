@@ -21,6 +21,12 @@ or null dispatches do not join prior work. Nonempty dispatches join prior work;
 shutdown waits, signals termination, and joins all threads. Callback user data and
 all referenced inputs/outputs must survive until that join.
 
+## Wait-all and the texture budget
+
+`AsyncFileReadWaitAll` is the non-streaming load barrier. `CMap::PrepareUpdate` and `CMap::Preload` call it between prepare phases (`Map.cpp:2329`, `Map.cpp:2549`). `CGGameUI` calls it after cinematic and teleport preloads when the client is not streaming (`GameUI.cpp:5593`). The only poll handler is `AsyncTextureHandler`, which submits deferred textures that fit in the 4 MiB staging budget.
+
+The old loop polled only while a file read was already visible. A deferred texture that fit the budget, with an empty file queue, never started. The loop now polls once up front. Textures that fit become file reads and are joined. Textures that still do not fit stay on `s_asyncTextureList`, because the wait stops when no file read is visible. That is the budget contract. Forcing those objects through would wrap or ignore the 4 MiB cap.
+
 ## Area purge and wait reentry
 
 `CMap::PreUpdateAreas` (`Map.cpp:2027`) purges an out-of-range area when its async object is missing or no longer current. A finished read clears `m_isCurrent` before the post callback (`AsyncFile.cpp:464`). `CMapArea::Purge` then `Cancel`s. A current read returns 0, nulls `m_fileBuffer`, and frees that buffer from `FreeAsyncObject`. Any other state returns 1, unlinks the object, and the area destructor frees `m_fileBuffer` (`MapArea.cpp:606`). Map update and the poll handler share the caller thread, so purge does not run in the gap between the poll's unlock and its callback. The poll copies `m_userPostloadCallback` and `m_userArg` before that unlock (`AsyncFile.cpp`). A later `Cancel` can recycle the object without changing the callback this dequeue already took. The argument's lifetime is still the caller's: a second thread that cancels and frees that argument before the call returns is not closed here.

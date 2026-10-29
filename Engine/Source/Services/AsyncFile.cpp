@@ -658,8 +658,13 @@ void AsyncFileReadWaitAll() {
 
     s_progressCount = total;
 
-    while (AsyncFileReadIsReading()) {
+    // ʕ •ᴥ•ʔ✿ Poll once while idle so a deferred texture that fits the budget can enter the file queue ✿ ʕ •ᴥ•ʔ
+    while (true) {
         AsyncFileReadPollHandler(nullptr, nullptr);
+
+        if (!AsyncFileReadIsReading()) {
+            break;
+        }
 
         if (s_asyncProgressCallback) {
             float progress = 1.0f;

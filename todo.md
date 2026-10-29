@@ -7,13 +7,16 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-`AsyncFileReadWaitAll` returns without polling when no file read is queued, so
-deferred texture objects on `s_asyncTextureList` stay deferred. Decide from the
-callers whether that is the budget contract. Client frame measurements stay
-blocked.
+`AsyncTextureWait` submits a texture with a null buffer without checking the 4 MiB
+staging budget. Confirm that the blocking `TextureGetGxTex` callers need that
+bypass. Client frame measurements stay blocked.
 
 ## Completed iterations
 
+- [x] Poll once at the start of `AsyncFileReadWaitAll`. Non-streaming map and
+  game-UI load barriers were returning while deferred textures that fit the
+  budget were still queued. Objects that still do not fit stay deferred.
+  `AsyncFile.cpp` typechecks with the Linux client flags. No live load.
 - [x] Copy the post callback and its argument under the queue lock before the
   poll invokes them. `Cancel` can recycle the object after the unlock. The
   copied argument is still the caller's lifetime. `AsyncFile.cpp` typechecks
