@@ -1521,6 +1521,8 @@ void CMapObjGroup::FreeLiquidVB() {
 // VERIFY: 200c714f manual
 // OFFSET: 0x007CBE80
 void CMapObjGroup::Clear() {
+    // ʕ •ᴥ•ʔ✿ Group postload runs under the poll lock and then calls Create ✿ ʕ •ᴥ•ʔ
+    AsyncFile::EnterPollLock();
     int32_t freeFile = 1;
 
     if (this->m_asyncObjPtr) {
@@ -1555,6 +1557,7 @@ void CMapObjGroup::Clear() {
     }
 
     this->m_unkLoadedFlag &= ~1u;
+    AsyncFile::LeavePollLock();
 }
 
 // VERIFY: ed59eece manual

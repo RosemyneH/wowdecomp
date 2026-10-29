@@ -7,12 +7,16 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-Map object and map-object group load callbacks. Their post handlers free or
-use the object from a scheduler thread. Check the main-thread destroy path
-for the poll lock. Client frame measurements stay blocked.
+Detail doodad `ModelLoadedCallback` is a model callback, not an async-file post
+handler. Client frame measurements stay blocked. The async-file post callbacks
+found in this pass are covered.
 
 ## Completed iterations
 
+- [x] Take the poll lock in `CMapObj::Clear` and `CMapObjGroup::Clear`. Their
+  post callbacks call `Load` and `Create` on a scheduler thread. Teardown now
+  waits for that call before releasing the file buffer. `MapObj.cpp` and
+  `MapObjGroup.cpp` typecheck with the Linux client flags.
 - [x] Take the poll lock in `~CM2Shared` and `~CM2SequenceLoad`. Skin, model,
   and low-priority sequence callbacks use those objects on a scheduler thread.
   `M2Shared.cpp` typechecks with the Linux client flags.

@@ -1856,6 +1856,8 @@ void CMapObj::Init() {
 // VERIFY: b756cecb manual
 // OFFSET: 0x007AE3B0
 void CMapObj::Clear() {
+    // ʕ •ᴥ•ʔ✿ Postload runs under the poll lock and then calls Load on this object ✿ ʕ •ᴥ•ʔ
+    AsyncFile::EnterPollLock();
     int32_t freeData = 1;
 
     if (this->m_asyncObject) {
@@ -1889,6 +1891,7 @@ void CMapObj::Clear() {
     }
 
     this->m_wmoFileSize = 0;
+    AsyncFile::LeavePollLock();
 }
 
 // VERIFY: c6f5dc77 manual

@@ -21,6 +21,10 @@ or null dispatches do not join prior work. Nonempty dispatches join prior work;
 shutdown waits, signals termination, and joins all threads. Callback user data and
 all referenced inputs/outputs must survive until that join.
 
+## Map object load callbacks
+
+`CMapObj::PostloadCallback` and `CMapObjGroup::AsyncPostloadCallback` run inside the poll lock. Each clears its async pointer and then calls `Load` or `Create` on the object. `CMapObj::Clear` and `CMapObjGroup::Clear` are the main-thread teardown paths. Both now take the poll lock before `Cancel` and hold it until the file buffer is released, so teardown waits until that callback returns. Group clear is also reached from map-object clear, and the lock is recursive.
+
 ## Shared model load callback
 
 `CM2Shared::SkinProfileLoadedCallback`, `LoadSucceededCallback`, and `LoadFailedCallback` all receive the shared object. `LowPrioritySequenceLoadedCallback` receives a `CM2SequenceLoad` and then uses that shared object. Those callbacks run inside the poll lock. `~CM2Shared` and `~CM2SequenceLoad` now take the same lock before they cancel the read or free the object, so a main-thread release waits until the callback returns. The queue lock is taken only after the poll lock, matching `Cancel` and `AsyncFileReadDestroyObject`.
