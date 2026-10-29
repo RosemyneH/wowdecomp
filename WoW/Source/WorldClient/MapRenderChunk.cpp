@@ -1000,23 +1000,10 @@ void CMapRenderChunk::UseStreamingBufs() {
 
 // VERIFY: fdc9dc29 manual
 // OFFSET: 0x007D04A0
-static int32_t s_plainSun = 0;
-static int32_t s_batchSunOnly = 1;
-static int32_t s_freshBatch = 0;
-
-void CMapRenderChunk::BeginQueuedTerrain() {
-    s_plainSun = 0;
-    s_batchSunOnly = 1;
-    s_freshBatch = 1;
-}
-
 void CMapRenderChunk::RenderSetup(int32_t a2) {
     FlushOwnedFills();
     this->m_lastUpdateTime = 0.0f;
     this->AllocLayerTextures();
-
-    int32_t queued = a2 && g_theGxDevicePtr->TerrainBindless() && !CMap::enableTerrainShaderVertex
-        && CMapRenderChunk::s_renderLayersFunc == CMapRenderChunk::RenderMultiPassAlpha;
 
     if (!a2 || !CMap::enableTerrainShaderVertex) {
         C44Matrix world;
@@ -1031,20 +1018,8 @@ void CMapRenderChunk::RenderSetup(int32_t a2) {
             World::s_m2Scene->SelectLights(&lighting);
         }
         this->SelectLights(&lighting);
-        // ʕ •ᴥ•ʔ✿ A chunk with only the sun already matches the lights pushed for the previous one ✿ ʕ •ᴥ•ʔ
-        if (lighting.m_lightCount != 0) {
-            s_batchSunOnly = 0;
-        }
-
-        if (!(queued && s_plainSun && lighting.m_lightCount == 0)) {
-            lighting.SetupGxLights(&CWorldScene::s_activeWorldView);
-            lighting.SetupGxFog();
-            s_plainSun = lighting.m_lightCount == 0;
-        }
-    }
-
-    if (queued) {
-        return;
+        lighting.SetupGxLights(&CWorldScene::s_activeWorldView);
+        lighting.SetupGxFog();
     }
 
     if (this->m_chunkBuf) {
@@ -2562,7 +2537,6 @@ void CMapRenderChunk::RenderMultiPassAdditive(CMapRenderChunk* renderChunk) {
 
 struct TerrainCapture {
     CMapRenderChunk* chunk;
-    C3Vector place;
     C44Matrix world;
     C44Matrix tex0;
     C44Matrix tex1;
@@ -2574,17 +2548,12 @@ struct TerrainCapture {
     float fogEnd;
     uint32_t fogColor;
     int32_t fog;
-    uint32_t layers;
     uint32_t indexCount;
     uint32_t firstIndex;
     int32_t baseVertex;
 };
 
 static std::vector<TerrainCapture> s_terrainBatch;
-static std::vector<TerrainCapture> s_heldBatch;
-static C3Vector s_heldCam;
-static uint32_t s_heldAge = 0;
-static int32_t s_heldSun = 0;
 
 namespace {
 
@@ -3078,7 +3047,6 @@ void CMapRenderChunk::QueueMultiPass(CMapRenderChunk* chunk) {
     TerrainCapture cap = {};
     CGxMatrixStack& world = g_theGxDevicePtr->m_xforms[GxXform_World];
     cap.chunk = chunk;
-    cap.place = chunk->m_vec1;
     cap.world = world.m_mtx[world.m_level];
     C3Vector offset = CWorldScene::s_activeWorldView - chunk->m_vec1;
     CMapRenderChunk::ComputeTexMatrices(cap.tex0, cap.tex1, offset, -CMapChunk::s_geoToTex);
@@ -3087,67 +3055,10 @@ void CMapRenderChunk::QueueMultiPass(CMapRenderChunk* chunk) {
     cap.fogEnd = g_theGxDevicePtr->m_appRenderStates[GxRs_FogEnd].m_value.m_data.f[0];
     cap.fogColor = g_theGxDevicePtr->m_appRenderStates[GxRs_FogColor].m_value.m_data.u[0];
     cap.fog = g_theGxDevicePtr->m_appRenderStates[GxRs_Fog].m_value.m_data.i[0];
-    cap.layers = chunk->m_layersCount;
     cap.indexCount = chunk->m_batch.m_count;
     cap.firstIndex = index->m_index / 2 + chunk->m_batch.m_start;
     cap.baseVertex = static_cast<int32_t>(vertex->m_index / vertex->m_itemSize);
     s_terrainBatch.push_back(cap);
-}
-
-int32_t CMapRenderChunk::ReuseQueuedTerrain(CMapRenderChunk** chunks, uint32_t count) {
-    if (!s_heldSun || !chunks || !count || s_heldBatch.size() != count || s_heldAge >= 30) {
-        return 0;
-    }
-
-    C3Vector cam = CWorldScene::s_activeWorldView;
-    float dx = cam.x - s_heldCam.x;
-    float dy = cam.y - s_heldCam.y;
-    float dz = cam.z - s_heldCam.z;
-
-    // ʕ •ᴥ•ʔ✿ A yard of travel is enough for a lamp to start mattering. Past that, rebuild ✿ ʕ •ᴥ•ʔ
-    if (dx * dx + dy * dy + dz * dz > 1.0f) {
-        return 0;
-    }
-
-    for (uint32_t i = 0; i < count; ++i) {
-        const TerrainCapture& cap = s_heldBatch[i];
-        CMapRenderChunk* chunk = chunks[i];
-        CGxBuf* vertex = chunk && chunk->m_chunkBuf ? chunk->m_chunkBuf->m_vertexBuf : nullptr;
-
-        if (!chunk || cap.chunk != chunk || cap.layers != chunk->m_layersCount || chunk->m_vec1.x != cap.place.x || chunk->m_vec1.y != cap.place.y || chunk->m_vec1.z != cap.place.z || !vertex || !vertex->m_itemSize || static_cast<int32_t>(vertex->m_index / vertex->m_itemSize) != cap.baseVertex) {
-            return 0;
-        }
-    }
-
-    s_terrainBatch.swap(s_heldBatch);
-    s_heldAge++;
-    s_freshBatch = 0;
-
-    float fogStart = g_theGxDevicePtr->m_appRenderStates[GxRs_FogStart].m_value.m_data.f[0];
-    float fogEnd = g_theGxDevicePtr->m_appRenderStates[GxRs_FogEnd].m_value.m_data.f[0];
-    uint32_t fogColor = g_theGxDevicePtr->m_appRenderStates[GxRs_FogColor].m_value.m_data.u[0];
-    int32_t fog = g_theGxDevicePtr->m_appRenderStates[GxRs_Fog].m_value.m_data.i[0];
-
-    for (TerrainCapture& cap : s_terrainBatch) {
-        C3Vector translation = cap.chunk->m_vec1 - cam;
-        cap.world.d0 = translation.x;
-        cap.world.d1 = translation.y;
-        cap.world.d2 = translation.z;
-        C3Vector offset = cam - cap.chunk->m_vec1;
-        C44Matrix tex0;
-        C44Matrix tex1;
-        CMapRenderChunk::ComputeTexMatrices(tex0, tex1, offset, -CMapChunk::s_geoToTex);
-        cap.tex0 = tex0;
-        cap.tex1 = tex1;
-        cap.fogStart = fogStart;
-        cap.fogEnd = fogEnd;
-        cap.fogColor = fogColor;
-        cap.fog = fog;
-    }
-
-    s_plainSun = 1;
-    s_batchSunOnly = 1;
-    return 1;
 }
 
 void CMapRenderChunk::FlushMultiPass() {
@@ -3335,19 +3246,6 @@ void CMapRenderChunk::FlushMultiPass() {
         g_theGxDevicePtr->RsSet(GxRs_Texture0, TextureGetGxTex(CWorld::shadowModTexture, 1, nullptr));
         g_theGxDevicePtr->RsSet(GxRs_Texture1, TextureGetGxTex(cap.chunk->m_shadowTexture, 1, nullptr));
         g_theGxDevicePtr->Draw(&cap.chunk->m_batch, 1);
-    }
-
-    if (s_batchSunOnly && !s_terrainBatch.empty()) {
-        if (s_freshBatch) {
-            s_heldCam = CWorldScene::s_activeWorldView;
-            s_heldAge = 0;
-        }
-
-        s_heldSun = 1;
-        s_heldBatch.swap(s_terrainBatch);
-    } else {
-        s_heldSun = 0;
-        s_heldBatch.clear();
     }
 
     s_terrainBatch.clear();
