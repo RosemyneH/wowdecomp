@@ -136,7 +136,7 @@ start_client() {
         exit 1
     fi
     stop_client
-    "$ROOT/Tools/stage-profile-addon.sh" "$PLAY"
+    bash "$ROOT/Tools/stage-profile-addon.sh" "$PLAY"
     # -- ʕ •ᴥ•ʔ✿ A hardlink is the build output. The linker truncates it and the live client jumps to null. ✿ ʕ •ᴥ•ʔ
     cp -f "$BIN" "$PLAY/WowClient64.release"
     ensure_awesome_cvars

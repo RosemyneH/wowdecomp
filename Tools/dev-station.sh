@@ -319,7 +319,7 @@ launch_client() {
 }
 
 stage_profile_addon() {
-    "$ROOT/Tools/stage-profile-addon.sh" "$PLAY_DIR"
+    bash "$ROOT/Tools/stage-profile-addon.sh" "$PLAY_DIR"
 }
 
 # ʕ •ᴥ•ʔ✿ realmList is not written back on exit. A new Config.wtf otherwise keeps the Blizzard login host. ✿ ʕ •ᴥ•ʔ
