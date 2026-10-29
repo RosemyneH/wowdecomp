@@ -36,6 +36,15 @@ class CGInputControl {
     static int32_t __stdcall CanControl(CGUnit_C* unit);
     static int32_t __stdcall CanMove(CGUnit_C* unit);
     static int32_t __stdcall CanTurn(CGUnit_C* unit);
+    static int32_t JuggernautActive(CGUnit_C* unit);
+    static int32_t JuggernautHalted();
+    static void JuggernautHit();
+    static void JuggernautArm(uint32_t id, float angle, float speed, float rise);
+    static void JuggernautDisarm();
+    static uint32_t JuggernautEventId();
+    static float JuggernautAngle();
+    static float JuggernautSpeed();
+    static float JuggernautRise();
     static void Destroy();
     static CGInputControl* GetActive();
     static float GetUIVehiclePower();

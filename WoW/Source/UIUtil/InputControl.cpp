@@ -479,9 +479,64 @@ int32_t __stdcall CGInputControl::CanTurn(CGUnit_C* unit) {
     return CGInputControl::CanControl(unit) && !(unit->m_unit->m_unitFieldFlags & 0x40000) && !unit->IsVehiclePreventingTurning();
 }
 
+static bool g_juggernautStopped = false;
+static uint32_t g_juggernautEvent = 0x3C5;
+static float g_juggernautAngle = 0.0f;
+static float g_juggernautSpeed = 6.0f;
+static float g_juggernautRise = 13.0f;
+
+int32_t CGInputControl::JuggernautActive(CGUnit_C* unit) {
+    if (!unit || !unit->HasAuraBySpellId(80557)) {
+        g_juggernautStopped = false;
+        return 0;
+    }
+    return 1;
+}
+
+int32_t CGInputControl::JuggernautHalted() {
+    return g_juggernautStopped;
+}
+
+void CGInputControl::JuggernautHit() {
+    g_juggernautStopped = true;
+}
+
+void CGInputControl::JuggernautArm(uint32_t id, float angle, float speed, float rise) {
+    g_juggernautEvent = id ? id : 0x3C5;
+    g_juggernautAngle = angle;
+    g_juggernautSpeed = speed;
+    g_juggernautRise = rise;
+}
+
+void CGInputControl::JuggernautDisarm() {
+    g_juggernautEvent = 0x3C5;
+    g_juggernautAngle = 0.0f;
+    g_juggernautSpeed = 6.0f;
+    g_juggernautRise = 13.0f;
+}
+
+uint32_t CGInputControl::JuggernautEventId() {
+    return g_juggernautEvent;
+}
+
+float CGInputControl::JuggernautAngle() {
+    return g_juggernautAngle;
+}
+
+float CGInputControl::JuggernautSpeed() {
+    return g_juggernautSpeed;
+}
+
+float CGInputControl::JuggernautRise() {
+    return g_juggernautRise;
+}
+
 // VERIFY: feb80d65 manual
 // OFFSET: 0x005FA110
 int32_t CGInputControl::CanSyncFreeLookFacing(CGUnit_C* unit) const {
+    if (CGInputControl::JuggernautActive(unit)) {
+        return 0;
+    }
     return CGInputControl::CanControl(unit) && !(unit->m_unit->m_unitFieldFlags & 0x40000) && !unit->IsVehiclePreventingTurning() && (this->m_flags & INPUT_PLAYER_LOOK_MASK) && !unit->GetClientStandState();
 }
 
@@ -717,6 +772,11 @@ void CGInputControl::OnMouseMoveRel(const CMouseEvent& evt) {
 // OFFSET: 0x005FB260
 void CGInputControl::CameraTurnPlayer(uint32_t time, float facing) {
     if (!this->CameraCanTurnPlayer()) {
+        return;
+    }
+
+    CGUnit_C* locked = static_cast<CGUnit_C*>(ClntObjMgrObjectPtr(CGUnit_C::s_activeMover, TYPE_UNIT, __FILE__, __LINE__));
+    if (CGInputControl::JuggernautActive(locked)) {
         return;
     }
 
@@ -1071,8 +1131,17 @@ void CGInputControl::AscendDescendPlayer(uint32_t time, CGUnit_C* unit) {
 // OFFSET: 0x005FAE70
 void CGInputControl::MovePlayer(uint32_t time, CGUnit_C* unit) {
     int32_t direction = 0;
+    int32_t juggernaut = CGInputControl::JuggernautActive(unit);
 
-    if ((unit->m_unit->m_unitFieldFlags2 & 0x40) || unit->IsVehicleCurrentlyUnstoppable()) {
+    if (juggernaut && CGInputControl::JuggernautHalted()) {
+        if (this->m_flags & INPUT_MOVE_PLAYER_SENT) {
+            unit->OnMoveStopLocal(time);
+            this->m_flags &= ~INPUT_MOVE_PLAYER_SENT;
+        }
+        return;
+    }
+
+    if (juggernaut || (unit->m_unit->m_unitFieldFlags2 & 0x40) || unit->IsVehicleCurrentlyUnstoppable()) {
         direction = 1;
     } else {
         uint32_t flags = this->m_flags;
@@ -1132,6 +1201,14 @@ void CGInputControl::MovePlayer(uint32_t time, CGUnit_C* unit) {
 // VERIFY: 02452f4c manual
 // OFFSET: 0x005FAFB0
 void CGInputControl::StrafePlayer(uint32_t time, CGUnit_C* unit) {
+    if (CGInputControl::JuggernautActive(unit)) {
+        if (this->m_flags & INPUT_STRAFE_PLAYER_SENT) {
+            unit->OnStrafeStopLocal(time);
+            this->m_flags &= ~INPUT_STRAFE_PLAYER_SENT;
+        }
+        return;
+    }
+
     uint32_t flags = this->m_flags;
     int32_t direction = (flags & INPUT_STRAFE_PLAYER_LEFT_KEY) != 0;
 
@@ -1180,6 +1257,14 @@ void CGInputControl::StrafePlayer(uint32_t time, CGUnit_C* unit) {
 // VERIFY: f065952b manual
 // OFFSET: 0x005FB0B0
 void CGInputControl::TurnPlayer(uint32_t time, CGUnit_C* unit) {
+    if (CGInputControl::JuggernautActive(unit)) {
+        if (this->m_flags & INPUT_TURN_PLAYER_SENT) {
+            unit->OnTurnStopLocal(time);
+            this->m_flags &= ~INPUT_TURN_PLAYER_SENT;
+        }
+        return;
+    }
+
     uint32_t flags = this->m_flags;
     int32_t direction = (flags & INPUT_TURN_PLAYER_LEFT_KEY) != 0;
 

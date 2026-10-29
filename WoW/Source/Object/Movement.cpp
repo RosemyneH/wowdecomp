@@ -3971,6 +3971,31 @@ uint32_t CMovement_C::TraceSurface(uint32_t time, uint32_t elapsed, float distan
                 uint32_t wasStepping = this->m_flags & MOVEMENTFLAG_SPLINE_ELEVATION;
 
                 if (!this->AttemptStepUp(dir2D, normal)) {
+                    if (this->IsOnSpline()) {
+                        this->OnSplineStop(time);
+                    }
+                    if (this->m_unit->HasAuraBySpellId(80557) && !CGInputControl::JuggernautHalted()) {
+                        CGInputControl::JuggernautHit();
+                        uint32_t eventId = CGInputControl::JuggernautEventId();
+                        if (eventId == 0x3C4) {
+                            eventId = 0x3C5;
+                        }
+                        float angle = CGInputControl::JuggernautAngle();
+                        float speed = CGInputControl::JuggernautSpeed();
+                        float rise = CGInputControl::JuggernautRise();
+                        CDataStore msg;
+                        msg.Put(static_cast<uint32_t>(0x4B8));
+                        msg.Put(static_cast<uint8_t>(0x1B));
+                        msg.Put(static_cast<uint8_t>(0x05));
+                        msg.Put(eventId);
+                        msg.Put(angle);
+                        msg.Put(speed);
+                        msg.Put(rise);
+                        msg.Finalize();
+                        ClientServices::Send2(&msg);
+                        float facing = this->m_unit->GetFacing() + angle;
+                        this->OnLaunchLocal(time, 0, C2Vector(sinf(facing), cosf(facing)), speed, -rise);
+                    }
                     return elapsed;
                 }
 

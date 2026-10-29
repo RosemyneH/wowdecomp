@@ -547,9 +547,13 @@ int32_t VkContext::CreateSwapchain(uint32_t width, uint32_t height, int32_t vsyn
         info.presentMode = presentMode;
         info.minImageCount = imageCount;
 
-        if (vkCreateSwapchainKHR(this->m_device, &info, nullptr, &swapchain) == VK_SUCCESS) {
+        VkResult created = vkCreateSwapchainKHR(this->m_device, &info, nullptr, &swapchain);
+
+        if (created == VK_SUCCESS) {
             break;
         }
+
+        std::fprintf(stderr, "vulkan swapchain: %ux%u format=%d mode=%d images=%u failed %d\n", extent.width, extent.height, info.imageFormat, presentMode, imageCount, created);
 
         swapchain = VK_NULL_HANDLE;
     }

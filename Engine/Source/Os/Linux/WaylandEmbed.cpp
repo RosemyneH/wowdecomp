@@ -9,6 +9,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <ctime>
+#include <dirent.h>
+#include <algorithm>
 #include <signal.h>
 #include <spawn.h>
 #include <sys/mman.h>
@@ -21,6 +23,7 @@
 #include <xkbcommon/xkbcommon.h>
 
 extern "C" {
+#include "protocol/xdg-decoration-server.h"
 #include "protocol/xdg-shell-server.h"
 }
 
@@ -28,9 +31,12 @@ extern char** environ;
 
 namespace {
 
-constexpr int32_t kMaxEdge = 1280;
+constexpr int32_t kMaxEdge = 2560;
+constexpr int32_t kOutputW = 2560;
+constexpr int32_t kOutputH = 1600;
 
 struct Host;
+struct XdgRole;
 
 struct Surface {
     wl_resource* resource = nullptr;
@@ -40,6 +46,10 @@ struct Surface {
     int32_t y = 0;
     int32_t width = 0;
     int32_t height = 0;
+    int32_t geoX = 0;
+    int32_t geoY = 0;
+    int32_t geoW = 0;
+    int32_t geoH = 0;
     std::vector<uint8_t> pixels;
     bool mapped = false;
     Host* host = nullptr;
@@ -71,6 +81,8 @@ struct Host {
     int32_t width = 0;
     int32_t height = 0;
     int32_t stride = 0;
+    int32_t cropX = 0;
+    int32_t cropY = 0;
     uint32_t serial = 1;
     uint32_t stamp = 1;
     bool focused = false;
@@ -82,6 +94,7 @@ struct Host {
     wl_resource* wm = nullptr;
     std::vector<ClientState*> clients;
     std::vector<Surface*> surfaces;
+    std::vector<XdgRole*> roles;
 };
 
 std::vector<Host*> g_hosts;
@@ -196,10 +209,30 @@ void Publish(Host* host) {
         }
     }
     if (!best) return;
-    host->width = best->width;
-    host->height = best->height;
-    host->stride = best->width * 4;
-    host->frame = best->pixels;
+    // ʕ •ᴥ•ʔ✿ Clients that draw their own shadow name the real window inside the buffer ✿ ʕ •ᴥ•ʔ
+    int32_t x = 0;
+    int32_t y = 0;
+    int32_t w = best->width;
+    int32_t h = best->height;
+    if (best->geoW > 0 && best->geoH > 0 && best->geoX >= 0 && best->geoY >= 0 && best->geoX + best->geoW <= best->width && best->geoY + best->geoH <= best->height) {
+        x = best->geoX;
+        y = best->geoY;
+        w = best->geoW;
+        h = best->geoH;
+    }
+    host->width = w;
+    host->height = h;
+    host->stride = w * 4;
+    host->cropX = x;
+    host->cropY = y;
+    if (x == 0 && y == 0 && w == best->width && h == best->height) {
+        host->frame = best->pixels;
+    } else {
+        host->frame.resize((size_t)w * (size_t)h * 4);
+        for (int32_t row = 0; row < h; row++) {
+            std::memcpy(host->frame.data() + (size_t)row * (size_t)w * 4, best->pixels.data() + ((size_t)(y + row) * (size_t)best->width + (size_t)x) * 4, (size_t)w * 4);
+        }
+    }
     host->stamp++;
 }
 
@@ -272,8 +305,9 @@ void BindOutput(wl_client* client, void* data, uint32_t version, uint32_t id) {
     wl_resource* output = wl_resource_create(client, &wl_output_interface, version < 2 ? version : 2, id);
     if (!output) return;
     wl_resource_set_implementation(output, &kOutputImpl, host, nullptr);
-    wl_output_send_geometry(output, 0, 0, host->reqW, host->reqH, WL_OUTPUT_SUBPIXEL_UNKNOWN, "wowdecomp", "frame", WL_OUTPUT_TRANSFORM_NORMAL);
-    wl_output_send_mode(output, WL_OUTPUT_MODE_CURRENT | WL_OUTPUT_MODE_PREFERRED, host->reqW, host->reqH, 60000);
+    // ʕ •ᴥ•ʔ✿ Clients cap their window at the output, so report room for the largest frame ✿ ʕ •ᴥ•ʔ
+    wl_output_send_geometry(output, 0, 0, kOutputW, kOutputH, WL_OUTPUT_SUBPIXEL_UNKNOWN, "wowdecomp", "frame", WL_OUTPUT_TRANSFORM_NORMAL);
+    wl_output_send_mode(output, WL_OUTPUT_MODE_CURRENT | WL_OUTPUT_MODE_PREFERRED, kOutputW, kOutputH, 60000);
     if (version >= 2) {
         wl_output_send_scale(output, 1);
         wl_output_send_done(output);
@@ -462,7 +496,15 @@ void XdgGetToplevel(wl_client* client, wl_resource* resource, uint32_t id) {
 }
 
 void XdgGetPopup(wl_client*, wl_resource*, uint32_t, wl_resource*, wl_resource*) {}
-void XdgGeometry(wl_client*, wl_resource*, int32_t, int32_t, int32_t, int32_t) {}
+void XdgGeometry(wl_client*, wl_resource* resource, int32_t x, int32_t y, int32_t width, int32_t height) {
+    auto* role = static_cast<XdgRole*>(wl_resource_get_user_data(resource));
+    Surface* surface = role && role->surface ? SurfaceOf(role->surface) : nullptr;
+    if (!surface) return;
+    surface->geoX = x;
+    surface->geoY = y;
+    surface->geoW = width;
+    surface->geoH = height;
+}
 void XdgAck(wl_client*, wl_resource*, uint32_t) {}
 
 const struct xdg_surface_interface kXdgSurfaceImpl = { XdgDestroy, XdgGetToplevel, XdgGetPopup, XdgGeometry, XdgAck };
@@ -477,8 +519,19 @@ void XdgGetSurface(wl_client* client, wl_resource* resource, uint32_t id, wl_res
         delete role;
         return;
     }
+    if (host) host->roles.push_back(role);
     wl_resource_set_implementation(role->xdg, &kXdgSurfaceImpl, role, [](wl_resource* res) {
-        delete static_cast<XdgRole*>(wl_resource_get_user_data(res));
+        auto* gone = static_cast<XdgRole*>(wl_resource_get_user_data(res));
+        if (gone && gone->host) {
+            auto& list = gone->host->roles;
+            for (auto it = list.begin(); it != list.end(); ++it) {
+                if (*it == gone) {
+                    list.erase(it);
+                    break;
+                }
+            }
+        }
+        delete gone;
     });
 }
 
@@ -491,6 +544,32 @@ void BindWm(wl_client* client, void* data, uint32_t version, uint32_t id) {
     if (!wm) return;
     host->wm = wm;
     wl_resource_set_implementation(wm, &kWmImpl, host, nullptr);
+}
+
+void DecorationDestroy(wl_client*, wl_resource* resource) { wl_resource_destroy(resource); }
+
+void DecorationSendServer(wl_resource* resource) {
+    zxdg_toplevel_decoration_v1_send_configure(resource, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+}
+
+void DecorationSetMode(wl_client*, wl_resource* resource, uint32_t) { DecorationSendServer(resource); }
+void DecorationUnsetMode(wl_client*, wl_resource* resource) { DecorationSendServer(resource); }
+
+const struct zxdg_toplevel_decoration_v1_interface kDecorationImpl = { DecorationDestroy, DecorationSetMode, DecorationUnsetMode };
+
+// ʕ •ᴥ•ʔ✿ The game frame is the title bar, so clients are told not to draw their own ✿ ʕ •ᴥ•ʔ
+void DecorationGet(wl_client* client, wl_resource* resource, uint32_t id, wl_resource*) {
+    wl_resource* decoration = wl_resource_create(client, &zxdg_toplevel_decoration_v1_interface, wl_resource_get_version(resource), id);
+    if (!decoration) return;
+    wl_resource_set_implementation(decoration, &kDecorationImpl, nullptr, nullptr);
+    DecorationSendServer(decoration);
+}
+
+const struct zxdg_decoration_manager_v1_interface kDecorationManagerImpl = { DecorationDestroy, DecorationGet };
+
+void BindDecoration(wl_client* client, void* data, uint32_t version, uint32_t id) {
+    wl_resource* manager = wl_resource_create(client, &zxdg_decoration_manager_v1_interface, version > 1 ? 1 : version, id);
+    if (manager) wl_resource_set_implementation(manager, &kDecorationManagerImpl, data, nullptr);
 }
 
 void ClientGone(wl_listener* listener, void*) {
@@ -527,6 +606,95 @@ int32_t EvdevForSym(Host* host, uint32_t sym) {
         if (count > 0 && syms && syms[0] == sym) return (int32_t)code;
     }
     return 0;
+}
+
+std::string FindOnPath(const std::string& name) {
+    const char* path = getenv("PATH");
+    std::string dirs = path && path[0] ? path : "/usr/local/bin:/usr/bin:/bin";
+    size_t start = 0;
+    while (start <= dirs.size()) {
+        size_t end = dirs.find(':', start);
+        if (end == std::string::npos) end = dirs.size();
+        std::string dir = dirs.substr(start, end - start);
+        if (!dir.empty()) {
+            std::string full = dir + "/" + name;
+            if (access(full.c_str(), X_OK) == 0) return full;
+        }
+        start = end + 1;
+    }
+    return name;
+}
+
+// ʕ •ᴥ•ʔ✿ Desktop Exec lines carry %f/%u style codes for the launcher to fill. Nothing is passed, so drop them ✿ ʕ •ᴥ•ʔ
+std::string StripFieldCodes(const std::string& exec) {
+    std::string out;
+    for (size_t i = 0; i < exec.size(); i++) {
+        if (exec[i] != '%' || i + 1 >= exec.size()) {
+            out += exec[i];
+            continue;
+        }
+        char code = exec[++i];
+        if (code == '%') out += '%';
+    }
+    while (!out.empty() && out.back() == ' ') out.pop_back();
+    return out;
+}
+
+void ScanDesktopDir(const std::string& dir, const std::string& prefix, std::vector<WaylandApp>& apps, std::vector<std::string>& seen) {
+    DIR* handle = opendir(dir.c_str());
+    if (!handle) return;
+    while (dirent* entry = readdir(handle)) {
+        std::string file = entry->d_name;
+        if (file == "." || file == "..") continue;
+        std::string path = dir + "/" + file;
+        struct stat info {};
+        if (stat(path.c_str(), &info) != 0) continue;
+        if (S_ISDIR(info.st_mode)) {
+            ScanDesktopDir(path, prefix + file + "-", apps, seen);
+            continue;
+        }
+        if (file.size() < 9 || file.compare(file.size() - 8, 8, ".desktop") != 0) continue;
+        std::string id = prefix + file;
+        if (std::find(seen.begin(), seen.end(), id) != seen.end()) continue;
+        seen.push_back(id);
+        FILE* in = std::fopen(path.c_str(), "r");
+        if (!in) continue;
+        WaylandApp app;
+        app.id = id;
+        bool main = false;
+        bool hidden = false;
+        bool terminal = false;
+        bool application = false;
+        char line[2048];
+        while (std::fgets(line, sizeof(line), in)) {
+            std::string text = line;
+            while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) text.pop_back();
+            if (!text.empty() && text[0] == '[') {
+                main = text == "[Desktop Entry]";
+                continue;
+            }
+            if (!main) continue;
+            size_t eq = text.find('=');
+            if (eq == std::string::npos) continue;
+            std::string key = text.substr(0, eq);
+            std::string value = text.substr(eq + 1);
+            if (key == "Name") app.name = value;
+            else if (key == "Comment") app.comment = value;
+            else if (key == "Exec") app.exec = StripFieldCodes(value);
+            else if (key == "Type") application = value == "Application";
+            else if (key == "NoDisplay" || key == "Hidden") hidden = hidden || value == "true";
+            else if (key == "Terminal") terminal = value == "true";
+        }
+        std::fclose(in);
+        if (hidden || !application || app.name.empty() || app.exec.empty()) continue;
+        if (terminal) {
+            std::string kitty = FindOnPath("kitty");
+            if (kitty == "kitty") continue;
+            app.exec = kitty + " " + app.exec;
+        }
+        apps.push_back(app);
+    }
+    closedir(handle);
 }
 
 bool SplitApp(const std::string& text, std::vector<std::string>& args) {
@@ -574,6 +742,16 @@ bool Spawn(Host* host, const std::vector<std::string>& args, char* error, uint32
         }
     }
     if (!replaced) envStore.push_back(display);
+    // ʕ •ᴥ•ʔ✿ This compositor only takes wl_shm. Mesa wants dmabuf unless told to copy, and RADV refuses to import the shm pages ✿ ʕ •ᴥ•ʔ
+    bool wsi = false;
+    for (std::string& entry : envStore) {
+        if (entry.rfind("MESA_VK_WSI_DEBUG=", 0) == 0) {
+            if (entry.find("sw") == std::string::npos) entry += entry.size() > 18 ? ",sw" : "sw";
+            if (entry.find("noshm") == std::string::npos) entry += ",noshm";
+            wsi = true;
+        }
+    }
+    if (!wsi) envStore.push_back("MESA_VK_WSI_DEBUG=sw,noshm");
     std::vector<char*> envp;
     for (std::string& entry : envStore) envp.push_back(entry.data());
     envp.push_back(nullptr);
@@ -637,10 +815,7 @@ bool Launch(Host* host, const char* spec, char* error, uint32_t errorLen) {
             Note(error, errorLen, "missing application");
             return false;
         }
-        if (args[0].find('/') == std::string::npos) {
-            std::string path = std::string("/usr/bin/") + args[0];
-            if (access(path.c_str(), X_OK) == 0) args[0] = path;
-        }
+        if (args[0].find('/') == std::string::npos) args[0] = FindOnPath(args[0]);
         if (access(args[0].c_str(), X_OK) != 0) {
             Note(error, errorLen, "application is not executable");
             return false;
@@ -667,13 +842,40 @@ void KeyToClients(Host* host, uint32_t keysym, int32_t down) {
         if (!state->keyboard) continue;
         uint32_t serial = NextSerial(host);
         wl_keyboard_send_modifiers(state->keyboard, serial, depressed, latched, locked, group);
-        wl_keyboard_send_key(state->keyboard, serial, NowMs(), (uint32_t)code, down ? WL_KEYBOARD_KEY_STATE_PRESSED : WL_KEYBOARD_KEY_STATE_RELEASED);
+        // ʕ •ᴥ•ʔ✿ wl_keyboard.key takes the evdev code, which sits 8 below the XKB keycode ✿ ʕ •ᴥ•ʔ
+        wl_keyboard_send_key(state->keyboard, serial, NowMs(), (uint32_t)code - 8, down ? WL_KEYBOARD_KEY_STATE_PRESSED : WL_KEYBOARD_KEY_STATE_RELEASED);
     }
 }
 
 }  // namespace
 
 int32_t WaylandEmbedAvailable() { return 1; }
+
+const std::vector<WaylandApp>& WaylandEmbedApps(int32_t rescan) {
+    static std::vector<WaylandApp> apps;
+    static bool scanned = false;
+    if (scanned && !rescan) return apps;
+    scanned = true;
+    apps.clear();
+    std::vector<std::string> seen;
+    // ʕ •ᴥ•ʔ✿ XDG order: the user's data home shadows the system dirs, first id wins ✿ ʕ •ᴥ•ʔ
+    std::vector<std::string> roots;
+    const char* home = getenv("XDG_DATA_HOME");
+    if (home && home[0]) roots.push_back(home);
+    else if (const char* user = getenv("HOME")) roots.push_back(std::string(user) + "/.local/share");
+    const char* dirs = getenv("XDG_DATA_DIRS");
+    std::string list = dirs && dirs[0] ? dirs : "/usr/local/share:/usr/share";
+    size_t start = 0;
+    while (start <= list.size()) {
+        size_t end = list.find(':', start);
+        if (end == std::string::npos) end = list.size();
+        if (end > start) roots.push_back(list.substr(start, end - start));
+        start = end + 1;
+    }
+    for (const std::string& root : roots) ScanDesktopDir(root + "/applications", "", apps, seen);
+    std::sort(apps.begin(), apps.end(), [](const WaylandApp& a, const WaylandApp& b) { return a.name < b.name; });
+    return apps;
+}
 
 int32_t WaylandEmbedOpen(const char* spec, int32_t width, int32_t height, char* error, uint32_t errorLen) {
     if (!getenv("XDG_RUNTIME_DIR")) {
@@ -719,6 +921,7 @@ int32_t WaylandEmbedOpen(const char* spec, int32_t width, int32_t height, char* 
     wl_global_create(host->display, &wl_seat_interface, 7, host, BindSeat);
     wl_global_create(host->display, &wl_subcompositor_interface, 1, host, BindSubcompositor);
     wl_global_create(host->display, &xdg_wm_base_interface, 3, host, BindWm);
+    wl_global_create(host->display, &zxdg_decoration_manager_v1_interface, 1, host, BindDecoration);
     host->created.self = host;
     host->created.listener.notify = ClientCreated;
     wl_display_add_client_created_listener(host->display, &host->created.listener);
@@ -803,8 +1006,8 @@ void WaylandEmbedPointer(int32_t id, int32_t x, int32_t y, int32_t button, int32
     if (!host) return;
     for (ClientState* state : host->clients) {
         if (!state->pointer || !state->toplevelSurface) continue;
-        wl_fixed_t fx = wl_fixed_from_int(x);
-        wl_fixed_t fy = wl_fixed_from_int(y);
+        wl_fixed_t fx = wl_fixed_from_int(x + host->cropX);
+        wl_fixed_t fy = wl_fixed_from_int(y + host->cropY);
         if (state->entered != SurfaceOf(state->toplevelSurface)) {
             wl_pointer_send_enter(state->pointer, NextSerial(host), state->toplevelSurface, fx, fy);
             state->entered = SurfaceOf(state->toplevelSurface);
@@ -816,6 +1019,19 @@ void WaylandEmbedPointer(int32_t id, int32_t x, int32_t y, int32_t button, int32
         }
         SendPointerFrame(state);
     }
+}
+
+void WaylandEmbedResize(int32_t id, int32_t width, int32_t height) {
+    Host* host = FindHost(id);
+    if (!host) return;
+    if (width < 160) width = 160;
+    if (height < 120) height = 120;
+    if (width > kMaxEdge) width = kMaxEdge;
+    if (height > kMaxEdge) height = kMaxEdge;
+    if (width == host->reqW && height == host->reqH) return;
+    host->reqW = width;
+    host->reqH = height;
+    for (XdgRole* role : host->roles) Configure(role);
 }
 
 void WaylandEmbedClearFocus() {

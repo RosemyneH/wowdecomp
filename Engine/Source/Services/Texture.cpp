@@ -1324,6 +1324,9 @@ CGxTex* TextureGetGxTex(CTexture* texture, int32_t wait, CStatus* status) {
         return nullptr;
     }
 
+    // ʕ •ᴥ•ʔ✿ Any scheduler thread can run the success callback, which clears m_asyncObject before this rereads it ✿ ʕ •ᴥ•ʔ
+    StagingLock lock;
+
     if (texture->m_flags & 4) {
         if (texture->m_asyncObject) {
             if (wait != 1 && (wait != 2 || texture->m_asyncObject->m_char24)) {
@@ -1353,6 +1356,11 @@ CGxTex* TextureGetGxTex(CTexture* texture, int32_t wait, CStatus* status) {
     }
 
     if (!texture->m_gxTex) {
+        // ʕ •ᴥ•ʔ✿ A procedural texture whose GX create failed has no async object to wait on ✿ ʕ •ᴥ•ʔ
+        if (!texture->m_asyncObject) {
+            return nullptr;
+        }
+
         if (wait != 1 && (wait != 2 || texture->m_asyncObject->m_char24)) {
             return nullptr;
         }

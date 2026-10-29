@@ -1,11 +1,11 @@
 #include "CGlueMgr.h"
+#include "synastria_bridge.h"
 #include <cmath>
 #include <cstdarg>
 #include <cstdlib>
 #include <cstring>
 #include <new>
 #include "Engine/Source/Base/CDataStore.h"
-#include "Engine/Source/Base/CmdLine.h"
 #include "Engine/Source/Base/Coordinate.h"
 #include "Engine/Source/BlizzardCore/SFile2-Core.h"
 #include "Engine/Source/BlizzardCore/Source/Packages/Streaming/Streaming.h"
@@ -1092,277 +1092,116 @@ void CGlueMgr::Initialize() {
 }
 
 // -- ʕ •ᴥ•ʔ✿ WOWDECOMP_AUTOLOGIN=user:pass[:character] presses login without a keyboard ✿ ʕ •ᴥ•ʔ
-static bool AutoLoginGlueScreen(const char* screen) {
-    return !SStrCmpI(CGlueMgr::m_currentScreen, screen, STORM_MAX_STR);
-}
-
-static void AutoLoginTrimSpec(char* spec) {
-    size_t len = SStrLen(spec);
-
-    while (len > 0 && (spec[len - 1] == '\r' || spec[len - 1] == '\n' || spec[len - 1] == ' ' || spec[len - 1] == '\t')) {
-        spec[len - 1] = '\0';
-        len--;
-    }
-
-    size_t start = 0;
-
-    while (spec[start] == ' ' || spec[start] == '\t') {
-        start++;
-    }
-
-    if (start > 0) {
-        SStrCopy(spec, spec + start, STORM_MAX_STR);
-    }
-}
-
-static const char* AutoLoginSpec() {
-    static char specBuf[128];
-    static int32_t resolved = 0;
-
-    if (!resolved) {
-        resolved = 1;
-        const char* spec = std::getenv("WOWDECOMP_AUTOLOGIN");
-
-        if (!spec || !spec[0]) {
-            spec = CmdLineGetString(CMD_AUTOLOGIN);
-        }
-
-        if (spec && spec[0]) {
-            SStrCopy(specBuf, spec, sizeof(specBuf));
-            AutoLoginTrimSpec(specBuf);
-        } else if (OsFileExists("wowdecomp-autologin.txt")) {
-            HOSFILE file = OsCreateFile("wowdecomp-autologin.txt", OS_GENERIC_READ, 0, OS_OPEN_EXISTING, OS_FILE_ATTRIBUTE_NORMAL, OS_FILE_TYPE_ANY);
-
-            if (file != OS_INVALID_FILE) {
-                uint32_t read = 0;
-
-                if (OsReadFile(file, specBuf, sizeof(specBuf) - 1, &read) && read > 0) {
-                    specBuf[read] = '\0';
-                    AutoLoginTrimSpec(specBuf);
-                } else {
-                    specBuf[0] = '\0';
-                }
-
-                OsCloseFile(file);
-            }
-        } else {
-            specBuf[0] = '\0';
-        }
-    }
-
-    return specBuf[0] ? specBuf : nullptr;
-}
-
-static void AutoLoginPrepareGlue() {
-    CGlueMgr::m_scandllOkayToLogIn = 1;
-    CGlueMgr::m_acceptedTOS = 1;
-    CGlueMgr::m_acceptedEULA = 1;
-    CGlueMgr::m_acceptedScanning = 1;
-    CGlueMgr::m_acceptedContest = 1;
-    CGlueMgr::m_acceptedTerminationWithoutNotice = 1;
-
-    if (CGlueMgr::m_idleState == IDLE_14) {
-        CGlueMgr::m_idleState = IDLE_NONE;
-        CGlueMgr::m_showedDisconnect = 0;
-    }
-}
-
-static bool AutoLoginParseCredentials(const char* spec, char* user, size_t userBytes, char* pass, size_t passBytes, char* wantName, size_t wantNameBytes) {
-    const char* colon = strchr(spec, ':');
-
-    if (!colon || colon == spec) {
-        return false;
-    }
-
-    size_t userLen = static_cast<size_t>(colon - spec);
-
-    if (!userLen || userLen >= userBytes) {
-        return false;
-    }
-
-    memcpy(user, spec, userLen);
-    user[userLen] = '\0';
-    const char* name = strchr(colon + 1, ':');
-
-    if (name) {
-        size_t passLen = static_cast<size_t>(name - (colon + 1));
-
-        if (!passLen || passLen >= passBytes) {
-            return false;
-        }
-
-        memcpy(pass, colon + 1, passLen);
-        pass[passLen] = '\0';
-        SStrCopy(wantName, name + 1, wantNameBytes);
-    } else {
-        SStrCopy(pass, colon + 1, passBytes);
-        wantName[0] = '\0';
-    }
-
-    return true;
-}
-
-static REALM_INFO* AutoLoginPickRealm(LoginResponse* response) {
-    REALM_INFO* realm = &response->m_realmList.m_data[0];
-    const char* saved = ClientServices::GetSelectedRealmName();
-
-    for (uint32_t i = 0; i < response->m_realmList.m_count; ++i) {
-        if (saved && saved[0] && !SStrCmpI(response->m_realmList.m_data[i].m_realmName, saved, STORM_MAX_STR)) {
-            return &response->m_realmList.m_data[i];
-        }
-    }
-
-    return realm;
-}
-
-static bool AutoLoginEnsureRealmSelected() {
-    if (ClientServices::GetSelectedRealm()) {
-        return true;
-    }
-
-    if (ClientServices::SetSelectedRealmInfo(0)) {
-        return true;
-    }
-
-    LoginResponse* response = ClientServices::CreateLoginResponse();
-
-    if (!response || !response->m_realmList.m_count) {
-        return false;
-    }
-
-    if (CGlueMgr::m_idleState != IDLE_NONE) {
-        return false;
-    }
-
-    CGlueMgr::ChangeRealm(AutoLoginPickRealm(response));
-    return false;
-}
-
 static void MaybeAutoLogin() {
-    const char* spec = AutoLoginSpec();
+    const char* spec = std::getenv("WOWDECOMP_AUTOLOGIN");
 
-    if (!spec) {
-        return;
-    }
-
-    AutoLoginPrepareGlue();
-
-    if (CGlueMgr::m_idleState == IDLE_ENTER_WORLD || CGlueMgr::m_idleState == IDLE_WORLD_LOGIN) {
+    if (!spec || !spec[0]) {
         return;
     }
 
     static int32_t started = 0;
-    static int32_t realmDone = 0;
     static char wantName[64];
-    static int32_t parsedWantName = 0;
-
-    if (!parsedWantName) {
-        char user[64];
-        char pass[64];
-        char name[64];
-
-        if (AutoLoginParseCredentials(spec, user, sizeof(user), pass, sizeof(pass), name, sizeof(name))) {
-            SStrCopy(wantName, name, sizeof(wantName));
-        }
-
-        parsedWantName = 1;
-    }
 
     if (!started) {
         if (CGlueMgr::m_idleState != IDLE_NONE) {
             return;
         }
 
-        if (AutoLoginGlueScreen("charcreate") || AutoLoginGlueScreen("trialconvert")) {
+        if (CGlueMgr::m_currentScreen[0] && SStrCmpI(CGlueMgr::m_currentScreen, "login", STORM_MAX_STR)) {
             return;
         }
 
-        if (AutoLoginGlueScreen("charselect")) {
-            started = 1;
-            realmDone = 1;
-        } else {
-            char user[64];
-            char pass[64];
-            char discard[64];
+        const char* colon = strchr(spec, ':');
 
-            if (!AutoLoginParseCredentials(spec, user, sizeof(user), pass, sizeof(pass), discard, sizeof(discard))) {
+        if (!colon || colon == spec) {
+            return;
+        }
+
+        char user[64];
+        char pass[64];
+        size_t userLen = static_cast<size_t>(colon - spec);
+
+        if (userLen >= sizeof(user)) {
+            return;
+        }
+
+        memcpy(user, spec, userLen);
+        user[userLen] = '\0';
+        const char* name = strchr(colon + 1, ':');
+
+        if (name) {
+            size_t passLen = static_cast<size_t>(name - (colon + 1));
+
+            if (!passLen || passLen >= sizeof(pass)) {
                 return;
             }
 
-            CGlueMgr::LoginServerLogin(user, pass);
+            memcpy(pass, colon + 1, passLen);
+            pass[passLen] = '\0';
+            SStrCopy(wantName, name + 1, sizeof(wantName));
+        } else {
+            SStrCopy(pass, colon + 1, sizeof(pass));
+            wantName[0] = '\0';
+        }
 
-            if (CGlueMgr::m_idleState == IDLE_LOGIN_SERVER_LOGIN) {
-                started = 1;
+        // -- ʕ •ᴥ•ʔ✿ Scan.dll never finishes on Linux, so the login button's gate stays shut. ✿ ʕ •ᴥ•ʔ
+        CGlueMgr::m_scandllOkayToLogIn = 1;
+        CGlueMgr::m_acceptedTOS = 1;
+        CGlueMgr::m_acceptedEULA = 1;
+        CGlueMgr::LoginServerLogin(user, pass);
+
+        if (CGlueMgr::m_idleState == IDLE_LOGIN_SERVER_LOGIN) {
+            started = 1;
+        }
+
+        return;
+    }
+
+    static int32_t realmSent = 0;
+
+    if (!realmSent && CGlueMgr::m_idleState == IDLE_NONE && !CCharacterSelection::s_characterList.Count()) {
+        LoginResponse* response = ClientServices::CreateLoginResponse();
+
+        if (response && response->m_realmList.m_count) {
+            REALM_INFO* realm = &response->m_realmList.m_data[0];
+            const char* saved = ClientServices::GetSelectedRealmName();
+
+            for (uint32_t i = 0; i < response->m_realmList.m_count; ++i) {
+                if (saved && saved[0] && !SStrCmpI(response->m_realmList.m_data[i].m_realmName, saved, STORM_MAX_STR)) {
+                    realm = &response->m_realmList.m_data[i];
+                    break;
+                }
             }
-        }
 
-        return;
-    }
-
-    if (!realmDone) {
-        if (CGlueMgr::m_idleState != IDLE_NONE) {
+            realmSent = 1;
+            CGlueMgr::ChangeRealm(realm);
             return;
         }
-
-        if (AutoLoginGlueScreen("charselect") || ClientServices::m_selectRealmInfoValid) {
-            realmDone = 1;
-            return;
-        }
-
-        if (AutoLoginEnsureRealmSelected()) {
-            realmDone = 1;
-        }
-
-        return;
     }
 
-    if (CGlueMgr::m_idleState != IDLE_NONE) {
-        return;
-    }
-
-    if (!AutoLoginGlueScreen("charselect")) {
-        return;
-    }
-
-    if (!CCharacterSelection::s_characterList.Count()) {
-        return;
-    }
-
-    if (!ClientServices::GetSelectedRealm()) {
-        AutoLoginEnsureRealmSelected();
-        return;
-    }
-
-    if (!ClientServices::Connection()->m_connected) {
+    if (CGlueMgr::m_idleState != IDLE_NONE || !CCharacterSelection::s_characterList.Count()) {
         return;
     }
 
     // ʕ •ᴥ•ʔ✿ The first enter can bounce back to the character screen. Wait, then press it again ✿ ʕ •ᴥ•ʔ
-    static int32_t wait = 90;
+    static int32_t wait = 0;
 
     if (wait > 0) {
         wait--;
         return;
     }
 
-    wait = 120;
+    wait = 180;
 
     int32_t index = 0;
     uint32_t count = CCharacterSelection::s_characterList.Count();
 
     if (wantName[0]) {
-        bool matched = false;
-
         for (uint32_t i = 0; i < count; ++i) {
             if (!SStrCmpI(CCharacterSelection::s_characterList[i].m_characterInfo.m_name, wantName, 48)) {
                 index = static_cast<int32_t>(i);
-                matched = true;
                 break;
             }
-        }
-
-        if (!matched) {
-            return;
         }
     }
 
@@ -1373,6 +1212,7 @@ static void MaybeAutoLogin() {
 // VERIFY: 5e7db3b8 manual
 // OFFSET: 0x004DAB40
 int32_t CGlueMgr::Idle(const void* data, void* param) {
+    synastria_on_glue_idle();
     MaybeAutoLogin();
 
     if (g_theGxDevicePtr->StereoEnabled()) {

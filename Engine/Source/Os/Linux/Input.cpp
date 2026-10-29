@@ -655,7 +655,19 @@ intptr_t OsWindowProc(void* window, uint32_t message, uintptr_t wparam, intptr_t
                 case SDLK_END: sym = 0xff57; break;
                 case SDLK_PAGEUP: sym = 0xff55; break;
                 case SDLK_PAGEDOWN: sym = 0xff56; break;
-                default: break;
+                case SDLK_INSERT: sym = 0xff63; break;
+                case SDLK_LSHIFT: sym = 0xffe1; break;
+                case SDLK_RSHIFT: sym = 0xffe2; break;
+                case SDLK_LCTRL: sym = 0xffe3; break;
+                case SDLK_RCTRL: sym = 0xffe4; break;
+                case SDLK_CAPSLOCK: sym = 0xffe5; break;
+                case SDLK_LALT: sym = 0xffe9; break;
+                case SDLK_RALT: sym = 0xffea; break;
+                case SDLK_LGUI: sym = 0xffeb; break;
+                case SDLK_RGUI: sym = 0xffec; break;
+                default:
+                    if (code >= SDLK_F1 && code <= SDLK_F12) sym = 0xffbe + (int32_t)(code - SDLK_F1);
+                    break;
             }
             if (WaylandEmbedTakeKey(sym, message == SDL_EVENT_KEY_DOWN)) break;
             KEY key;
