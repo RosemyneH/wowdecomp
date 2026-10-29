@@ -21,6 +21,10 @@ or null dispatches do not join prior work. Nonempty dispatches join prior work;
 shutdown waits, signals termination, and joins all threads. Callback user data and
 all referenced inputs/outputs must survive until that join.
 
+## Lighting and draw callbacks
+
+`m_lightingCallback` is invoked from `CM2Model::SetupLighting` (`M2Model.cpp:7032`). `CM2Scene::Animate` runs that after `ParallelFor` returns (`M2Scene.cpp:2124`). `m_drawCallback` is invoked from `CM2SceneRender::DrawCallback` (`CM2SceneRender.cpp:1249`) during `CM2Scene::Draw`. Callers are world, glue, portrait, and simple-model frame code. Neither callback is a job-worker body or an async poll handler. Unit teardown stores nullptr through those fields on the caller. No poll lock was added. A second scheduler thread destroying a model during the main thread's `Draw` is not shown by these call sites.
+
 ## Sequence and event callbacks
 
 `OnSequenceInterrupted` invokes `m_sequenceCallback`. One caller is `LowPrioritySequenceLoadedCallback`, which runs on a scheduler thread inside the poll lock (`M2Shared.cpp`). The pointer is now read and the callback runs while `OnSequenceInterrupted` holds that lock. `SetSequenceCallback` writes it under the same lock, so unit and object teardown waits out an in-flight interrupt. `Release` from the interrupt re-enters the lock.

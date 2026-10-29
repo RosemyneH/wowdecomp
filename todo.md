@@ -7,12 +7,14 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-`m_lightingCallback` and `m_drawCallback` are cleared in unit teardown. Confirm
-their call sites stay on the caller thread. Client frame measurements stay
-blocked.
+Callback call sites traced in this pass are recorded. Further frame measurements
+still need a client or another machine. That work stays in the blocked list.
 
 ## Completed iterations
 
+- [x] Trace lighting and draw callbacks. Lighting runs from `SetupLighting`
+  after `ParallelFor` returns. Draw runs from `CM2SceneRender::DrawCallback`
+  during scene draw. Neither is a job worker or an async poll. No lock added.
 - [x] Hold the poll lock across `OnSequenceInterrupted` and `SetSequenceCallback`.
   A low-priority sequence load invokes the sequence callback on a scheduler
   thread. Event callbacks still run from `AdvanceTime` on the caller.
