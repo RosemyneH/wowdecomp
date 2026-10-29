@@ -1180,12 +1180,20 @@ void CM2Model::FreeExternalResources() {
 // VERIFY: 78234ce5 manual
 // OFFSET: 0x00824ED0
 int32_t CM2Model::Release() {
+    // ʕ •ᴥ•ʔ✿ UpdateLoaded can be inside a scheduler-thread poll. Wait it out before drop or delete ✿ ʕ •ᴥ•ʔ
+    AsyncFile::EnterPollLock();
+    this->m_loadedCallback = nullptr;
+    this->m_loadedArg = nullptr;
+
     if (this->m_refCount-- == 1) {
         g_modelPool->Delete(this);
+        AsyncFile::LeavePollLock();
         return 0;
     }
 
-    return this->m_refCount;
+    int32_t count = this->m_refCount;
+    AsyncFile::LeavePollLock();
+    return count;
 }
 
 // VERIFY: f4fc2dd4 manual

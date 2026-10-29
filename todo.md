@@ -7,12 +7,16 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-Other `CM2Model::SetLoadedCallback` owners: units, effects, particles, and simple
-models. Their teardown can free the callback argument while `UpdateLoaded`
-runs on a scheduler thread. Client frame measurements stay blocked.
+Sequence and event callbacks are cleared next to loaded callbacks in unit and
+object teardown. Confirm they only run on the caller thread. Client frame
+measurements stay blocked.
 
 ## Completed iterations
 
+- [x] Clear `m_loadedCallback` inside `CM2Model::Release` while holding the poll
+  lock. `UpdateLoaded` can invoke that callback from skin completion on a
+  scheduler thread. Units, effects, particles, and simple models all release
+  through this function. `M2Model.cpp` typechecks with the Linux client flags.
 - [x] Take the poll lock in `CDetailDoodad::DestroyModels` and clear the model
   loaded callback before release. `UpdateLoaded` can run that callback from
   skin-profile completion on a scheduler thread. `DetailDoodad.cpp` typechecks

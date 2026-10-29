@@ -21,6 +21,10 @@ or null dispatches do not join prior work. Nonempty dispatches join prior work;
 shutdown waits, signals termination, and joins all threads. Callback user data and
 all referenced inputs/outputs must survive until that join.
 
+## Model loaded callbacks
+
+`CM2Model::UpdateLoaded` runs `m_loadedCallback` at the end of `InitializeLoaded`, including on the scheduler thread that is finishing a skin profile. Units, effects, particles, simple models, and detail doodads all pass themselves as the argument. `CM2Model::Release` now takes the poll lock, clears that callback, and only then drops the reference or deletes the model. A release from inside the callback re-enters the lock. Teardown that already called `SetLoadedCallback(nullptr)` before `Release` is covered by the same wait.
+
 ## Detail doodad loaded callback
 
 `CDetailDoodadData::ModelLoadedCallback` is not an async-file post handler. `CM2Model::SetLoadedCallback` runs it immediately when the model is already loaded. Otherwise `CM2Model::UpdateLoaded` runs it at the end of `InitializeLoaded` (`M2Model.cpp:8424`). That function runs on a scheduler thread from `FinishLoadingSkinProfile`, which holds the poll lock. The callback writes `m_texture` on the doodad data. `CDetailDoodad::DestroyModels` frees that data. It now takes the poll lock, clears the loaded callback, then releases the model and the data.
