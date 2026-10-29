@@ -83,6 +83,7 @@ label:SetPoint("RIGHT", close, "LEFT", -2, 0)
 label:SetJustifyH("LEFT")
 label:SetText(title or "Wayland")
 local tex = frame:CreateTexture(nil, "ARTWORK")
+tex:SetBlendMode("DISABLE")
 tex:SetPoint("TOPLEFT", padX, -padTop)
 tex:SetPoint("BOTTOMRIGHT", -padX, padBottom)
 local hit = CreateFrame("Frame", nil, frame)
@@ -451,12 +452,16 @@ void WaylandFrame_Present() {
     }
     for (Live& live : g_live) {
         WaylandPixels pixels;
-        if (!WaylandEmbedPixels(live.id, &pixels) || !pixels.data || pixels.width < 1 || pixels.height < 1) continue;
+        if (!WaylandEmbedPixels(live.id, &pixels) || (!pixels.data && !pixels.dmabuf) || pixels.width < 1 || pixels.height < 1) continue;
         if (pixels.serial == live.serial && live.image) continue;
         EnsureTexture(live, pixels);
         if (!live.image) continue;
         CGxTex* gx = TextureGetGxTex(live.image, 0, nullptr);
         if (!gx) continue;
+        if (pixels.dmabuf) {
+            if (g_theGxDevicePtr->TexCopyDmabuf(gx, *pixels.dmabuf, pixels.cropX, pixels.cropY)) live.serial = pixels.serial;
+            continue;
+        }
         CiRect rect;
         rect.minY = 0;
         rect.minX = 0;

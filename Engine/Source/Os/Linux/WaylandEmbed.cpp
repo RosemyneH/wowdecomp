@@ -15,6 +15,7 @@
 #include <spawn.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <sys/wait.h>
 #include <vector>
 #include <wayland-server-core.h>
@@ -23,6 +24,9 @@
 #include <xkbcommon/xkbcommon.h>
 
 extern "C" {
+#include "protocol/linux-dmabuf-server.h"
+#include "protocol/pointer-constraints-server.h"
+#include "protocol/relative-pointer-server.h"
 #include "protocol/xdg-decoration-server.h"
 #include "protocol/xdg-shell-server.h"
 }
@@ -35,12 +39,22 @@ constexpr int32_t kMaxEdge = 2560;
 constexpr int32_t kOutputW = 2560;
 constexpr int32_t kOutputH = 1600;
 
+constexpr uint32_t kFourccArgb8888 = 0x34325241;
+constexpr uint32_t kFourccXrgb8888 = 0x34325258;
+
 struct Host;
 struct XdgRole;
+
+struct DmabufBuffer {
+    wl_resource* resource = nullptr;
+    WaylandDmabuf info;
+};
 
 struct Surface {
     wl_resource* resource = nullptr;
     wl_resource* buffer = nullptr;
+    wl_resource* held = nullptr;
+    DmabufBuffer* dmabuf = nullptr;
     wl_resource* frame = nullptr;
     int32_t x = 0;
     int32_t y = 0;
@@ -61,6 +75,7 @@ struct ClientState {
     wl_listener gone;
     wl_resource* pointer = nullptr;
     wl_resource* keyboard = nullptr;
+    wl_resource* relative = nullptr;
     wl_resource* toplevelSurface = nullptr;
     Surface* entered = nullptr;
     bool keysIn = false;
@@ -83,6 +98,12 @@ struct Host {
     int32_t stride = 0;
     int32_t cropX = 0;
     int32_t cropY = 0;
+    bool frameIsDmabuf = false;
+    WaylandDmabuf frameDmabuf;
+    std::vector<wl_resource*> pendingRelease;
+    wl_resource* lock = nullptr;
+    bool lockOneshot = false;
+    bool lockSent = false;
     uint32_t serial = 1;
     uint32_t stamp = 1;
     bool focused = false;
@@ -100,6 +121,11 @@ struct Host {
 std::vector<Host*> g_hosts;
 int32_t g_nextId = 1;
 int32_t g_focus = 0;
+uint64_t g_dmabufDevice = 0;
+std::vector<std::pair<uint32_t, uint64_t>> g_dmabufFormats;
+int g_dmabufTable = -1;
+uint64_t g_dmabufKey = 1;
+std::vector<uint64_t> g_deadDmabufs;
 
 void Note(char* error, uint32_t errorLen, const char* text) {
     if (!error || !errorLen) return;
@@ -127,6 +153,18 @@ Surface* SurfaceOf(wl_resource* resource) {
 
 void DestroySurface(wl_resource* resource) {
     Surface* surface = SurfaceOf(resource);
+    if (surface && surface->host && surface->held) surface->host->pendingRelease.push_back(surface->held);
+    if (surface && surface->frame) wl_resource_set_user_data(surface->frame, nullptr);
+    // ʕ •ᴥ•ʔ✿ Apps recreate their window (WoW does at startup). Enter, leave and motion must never name a destroyed surface ✿ ʕ •ᴥ•ʔ
+    if (surface && surface->host) {
+        for (ClientState* state : surface->host->clients) {
+            if (state->toplevelSurface == resource) {
+                state->toplevelSurface = nullptr;
+                state->keysIn = false;
+            }
+            if (state->entered == surface) state->entered = nullptr;
+        }
+    }
     if (surface && surface->host) {
         auto& list = surface->host->surfaces;
         for (auto it = list.begin(); it != list.end(); ++it) {
@@ -143,7 +181,14 @@ void SurfaceDestroy(wl_client*, wl_resource* resource) { wl_resource_destroy(res
 
 void SurfaceAttach(wl_client*, wl_resource* resource, wl_resource* buffer, int32_t, int32_t) {
     Surface* surface = SurfaceOf(resource);
-    if (surface) surface->buffer = buffer;
+    if (!surface) return;
+    surface->buffer = buffer;
+    if (!buffer) {
+        if (surface->held && surface->host) surface->host->pendingRelease.push_back(surface->held);
+        surface->held = nullptr;
+        surface->dmabuf = nullptr;
+        surface->mapped = false;
+    }
 }
 
 void SurfaceDamage(wl_client*, wl_resource*, int32_t, int32_t, int32_t, int32_t) {}
@@ -157,17 +202,29 @@ void SurfaceOffset(wl_client*, wl_resource*, int32_t, int32_t) {}
 void SurfaceGetRelease(wl_client*, wl_resource*, uint32_t) {}
 #endif
 
+void FrameGone(wl_resource* resource) {
+    auto* surface = static_cast<Surface*>(wl_resource_get_user_data(resource));
+    if (surface && surface->frame == resource) surface->frame = nullptr;
+}
+
 void SurfaceFrame(wl_client* client, wl_resource* resource, uint32_t id) {
     Surface* surface = SurfaceOf(resource);
     if (!surface) return;
-    if (surface->frame) wl_resource_destroy(surface->frame);
+    if (surface->frame) {
+        wl_callback_send_done(surface->frame, NowMs());
+        wl_resource_destroy(surface->frame);
+    }
     surface->frame = wl_resource_create(client, &wl_callback_interface, 1, id);
+    if (surface->frame) wl_resource_set_implementation(surface->frame, nullptr, surface, FrameGone);
 }
 
 void CopyBuffer(Surface* surface) {
     if (!surface || !surface->buffer) return;
     wl_shm_buffer* shm = wl_shm_buffer_get(surface->buffer);
-    if (!shm) return;
+    if (!shm) {
+        surface->buffer = nullptr;
+        return;
+    }
     int32_t width = wl_shm_buffer_get_width(shm);
     int32_t height = wl_shm_buffer_get_height(shm);
     int32_t stride = wl_shm_buffer_get_stride(shm);
@@ -195,6 +252,29 @@ Host* HostForClient(wl_client* client) {
         for (ClientState* state : host->clients) if (state->client == client) return host;
     }
     return nullptr;
+}
+
+DmabufBuffer* DmabufOf(wl_resource* buffer);
+
+// ʕ •ᴥ•ʔ✿ A dmabuf stays with the client's GPU memory. Keep it until the next one lands, then give it back a frame later ✿ ʕ •ᴥ•ʔ
+void TakeBuffer(Surface* surface) {
+    if (!surface || !surface->buffer) return;
+    Host* host = surface->host;
+    if (DmabufBuffer* dmabuf = DmabufOf(surface->buffer)) {
+        if (surface->held && surface->held != surface->buffer && host) host->pendingRelease.push_back(surface->held);
+        surface->held = surface->buffer;
+        surface->buffer = nullptr;
+        surface->dmabuf = dmabuf;
+        surface->width = dmabuf->info.width;
+        surface->height = dmabuf->info.height;
+        surface->pixels.clear();
+        surface->mapped = true;
+        return;
+    }
+    if (surface->held && host) host->pendingRelease.push_back(surface->held);
+    surface->held = nullptr;
+    surface->dmabuf = nullptr;
+    CopyBuffer(surface);
 }
 
 void Publish(Host* host) {
@@ -225,7 +305,11 @@ void Publish(Host* host) {
     host->stride = w * 4;
     host->cropX = x;
     host->cropY = y;
-    if (x == 0 && y == 0 && w == best->width && h == best->height) {
+    host->frameIsDmabuf = best->dmabuf != nullptr;
+    if (best->dmabuf) {
+        host->frameDmabuf = best->dmabuf->info;
+        host->frame.clear();
+    } else if (x == 0 && y == 0 && w == best->width && h == best->height) {
         host->frame = best->pixels;
     } else {
         host->frame.resize((size_t)w * (size_t)h * 4);
@@ -239,12 +323,7 @@ void Publish(Host* host) {
 void SurfaceCommit(wl_client*, wl_resource* resource) {
     Surface* surface = SurfaceOf(resource);
     if (!surface) return;
-    CopyBuffer(surface);
-    if (surface->frame) {
-        wl_callback_send_done(surface->frame, NowMs());
-        wl_resource_destroy(surface->frame);
-        surface->frame = nullptr;
-    }
+    TakeBuffer(surface);
     Host* host = HostForClient(wl_resource_get_client(resource));
     if (host) Publish(host);
 }
@@ -341,6 +420,24 @@ void PointerSetCursor(wl_client*, wl_resource*, uint32_t, wl_resource*, int32_t,
 void PointerRelease(wl_client*, wl_resource* resource) { wl_resource_destroy(resource); }
 const struct wl_pointer_interface kPointerImpl = { PointerSetCursor, PointerRelease };
 
+// ʕ •ᴥ•ʔ✿ A frame can take focus before its app has a keyboard or window. Enter waits until both exist, and no key goes out before it ✿ ʕ •ᴥ•ʔ
+void SyncKeyboardFocus(Host* host) {
+    if (!host) return;
+    for (ClientState* state : host->clients) {
+        if (!state->keyboard || !state->toplevelSurface) continue;
+        if (host->focused && !state->keysIn) {
+            wl_array empty;
+            wl_array_init(&empty);
+            wl_keyboard_send_enter(state->keyboard, NextSerial(host), state->toplevelSurface, &empty);
+            wl_array_release(&empty);
+            state->keysIn = true;
+        } else if (!host->focused && state->keysIn) {
+            wl_keyboard_send_leave(state->keyboard, NextSerial(host), state->toplevelSurface);
+            state->keysIn = false;
+        }
+    }
+}
+
 void SeatGetPointer(wl_client* client, wl_resource* resource, uint32_t id) {
     ClientState* state = StateFor(client);
     uint32_t version = wl_resource_get_version(resource);
@@ -358,7 +455,9 @@ void SeatGetKeyboard(wl_client* client, wl_resource* resource, uint32_t id) {
     wl_resource_set_implementation(keyboard, &kKeyboardImpl, state, nullptr);
     if (!state) return;
     state->keyboard = keyboard;
+    state->keysIn = false;
     SendKeymap(state->host, keyboard);
+    SyncKeyboardFocus(state->host);
 }
 
 void TouchRelease(wl_client*, wl_resource* resource) { wl_resource_destroy(resource); }
@@ -493,6 +592,7 @@ void XdgGetToplevel(wl_client* client, wl_resource* resource, uint32_t id) {
         }
     }
     Configure(role);
+    SyncKeyboardFocus(role->host);
 }
 
 void XdgGetPopup(wl_client*, wl_resource*, uint32_t, wl_resource*, wl_resource*) {}
@@ -570,6 +670,324 @@ const struct zxdg_decoration_manager_v1_interface kDecorationManagerImpl = { Dec
 void BindDecoration(wl_client* client, void* data, uint32_t version, uint32_t id) {
     wl_resource* manager = wl_resource_create(client, &zxdg_decoration_manager_v1_interface, version > 1 ? 1 : version, id);
     if (manager) wl_resource_set_implementation(manager, &kDecorationManagerImpl, data, nullptr);
+}
+
+void ForgetBuffer(wl_resource* buffer) {
+    for (Host* host : g_hosts) {
+        auto& pending = host->pendingRelease;
+        pending.erase(std::remove(pending.begin(), pending.end(), buffer), pending.end());
+        for (Surface* surface : host->surfaces) {
+            if (surface->buffer == buffer) surface->buffer = nullptr;
+            if (surface->held == buffer) {
+                surface->held = nullptr;
+                surface->dmabuf = nullptr;
+            }
+        }
+    }
+}
+
+void DmabufBufferDestroy(wl_client*, wl_resource* resource) { wl_resource_destroy(resource); }
+const struct wl_buffer_interface kDmabufBufferImpl = { DmabufBufferDestroy };
+
+DmabufBuffer* DmabufOf(wl_resource* buffer) {
+    if (!buffer || !wl_resource_instance_of(buffer, &wl_buffer_interface, &kDmabufBufferImpl)) return nullptr;
+    return static_cast<DmabufBuffer*>(wl_resource_get_user_data(buffer));
+}
+
+void DmabufBufferGone(wl_resource* resource) {
+    auto* buffer = static_cast<DmabufBuffer*>(wl_resource_get_user_data(resource));
+    ForgetBuffer(resource);
+    if (!buffer) return;
+    for (int32_t i = 0; i < 4; i++) {
+        if (buffer->info.fd[i] >= 0) close(buffer->info.fd[i]);
+    }
+    g_deadDmabufs.push_back(buffer->info.key);
+    delete buffer;
+}
+
+struct DmabufParams {
+    int32_t fd[4] = { -1, -1, -1, -1 };
+    uint32_t offset[4] = {};
+    uint32_t stride[4] = {};
+    uint64_t modifier = 0;
+    bool used = false;
+};
+
+void ParamsGone(wl_resource* resource) {
+    auto* params = static_cast<DmabufParams*>(wl_resource_get_user_data(resource));
+    if (!params) return;
+    for (int32_t fd : params->fd) {
+        if (fd >= 0) close(fd);
+    }
+    delete params;
+}
+
+void ParamsDestroy(wl_client*, wl_resource* resource) { wl_resource_destroy(resource); }
+
+void ParamsAdd(wl_client*, wl_resource* resource, int32_t fd, uint32_t plane, uint32_t offset, uint32_t stride, uint32_t modHi, uint32_t modLo) {
+    auto* params = static_cast<DmabufParams*>(wl_resource_get_user_data(resource));
+    if (!params || params->used) {
+        close(fd);
+        wl_resource_post_error(resource, ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_ALREADY_USED, "params already used");
+        return;
+    }
+    if (plane > 3) {
+        close(fd);
+        wl_resource_post_error(resource, ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_PLANE_IDX, "plane index out of bounds");
+        return;
+    }
+    if (params->fd[plane] >= 0) {
+        close(fd);
+        wl_resource_post_error(resource, ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_PLANE_SET, "plane already set");
+        return;
+    }
+    params->fd[plane] = fd;
+    params->offset[plane] = offset;
+    params->stride[plane] = stride;
+    params->modifier = ((uint64_t)modHi << 32) | modLo;
+}
+
+wl_resource* MakeDmabuf(wl_client* client, wl_resource* resource, uint32_t id, int32_t width, int32_t height, uint32_t format) {
+    auto* params = static_cast<DmabufParams*>(wl_resource_get_user_data(resource));
+    if (!params || params->used) {
+        wl_resource_post_error(resource, ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_ALREADY_USED, "params already used");
+        return nullptr;
+    }
+    params->used = true;
+    int32_t planes = 0;
+    while (planes < 4 && params->fd[planes] >= 0) planes++;
+    bool known = false;
+    for (const auto& entry : g_dmabufFormats) known = known || (entry.first == format && entry.second == params->modifier);
+    if (!planes || width < 1 || height < 1 || width > 8192 || height > 8192 || !known) return nullptr;
+    auto* buffer = new DmabufBuffer();
+    buffer->info.key = g_dmabufKey++;
+    buffer->info.width = width;
+    buffer->info.height = height;
+    buffer->info.format = format;
+    buffer->info.modifier = params->modifier;
+    buffer->info.planes = planes;
+    for (int32_t i = 0; i < 4; i++) {
+        buffer->info.fd[i] = params->fd[i];
+        buffer->info.offset[i] = params->offset[i];
+        buffer->info.stride[i] = params->stride[i];
+        params->fd[i] = -1;
+    }
+    buffer->resource = wl_resource_create(client, &wl_buffer_interface, 1, id);
+    if (!buffer->resource) {
+        for (int32_t fd : buffer->info.fd) {
+            if (fd >= 0) close(fd);
+        }
+        delete buffer;
+        wl_client_post_no_memory(client);
+        return nullptr;
+    }
+    wl_resource_set_implementation(buffer->resource, &kDmabufBufferImpl, buffer, DmabufBufferGone);
+    return buffer->resource;
+}
+
+void ParamsCreate(wl_client* client, wl_resource* resource, int32_t width, int32_t height, uint32_t format, uint32_t) {
+    wl_resource* buffer = MakeDmabuf(client, resource, 0, width, height, format);
+    if (buffer) zwp_linux_buffer_params_v1_send_created(resource, buffer);
+    else zwp_linux_buffer_params_v1_send_failed(resource);
+}
+
+void ParamsCreateImmed(wl_client* client, wl_resource* resource, uint32_t id, int32_t width, int32_t height, uint32_t format, uint32_t) {
+    if (!MakeDmabuf(client, resource, id, width, height, format)) {
+        wl_resource_post_error(resource, ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_INVALID_WL_BUFFER, "dmabuf import failed");
+    }
+}
+
+const struct zwp_linux_buffer_params_v1_interface kParamsImpl = { ParamsDestroy, ParamsAdd, ParamsCreate, ParamsCreateImmed };
+
+void FeedbackDestroy(wl_client*, wl_resource* resource) { wl_resource_destroy(resource); }
+const struct zwp_linux_dmabuf_feedback_v1_interface kFeedbackImpl = { FeedbackDestroy };
+
+int DmabufTable() {
+    if (g_dmabufTable >= 0) return g_dmabufTable;
+    int fd = memfd_create("wowdecomp-dmabuf-formats", MFD_CLOEXEC);
+    if (fd < 0) return -1;
+    std::vector<uint8_t> table(g_dmabufFormats.size() * 16);
+    for (size_t i = 0; i < g_dmabufFormats.size(); i++) {
+        std::memcpy(table.data() + i * 16, &g_dmabufFormats[i].first, 4);
+        std::memcpy(table.data() + i * 16 + 8, &g_dmabufFormats[i].second, 8);
+    }
+    if (write(fd, table.data(), table.size()) != (ssize_t)table.size()) {
+        close(fd);
+        return -1;
+    }
+    g_dmabufTable = fd;
+    return fd;
+}
+
+void SendFeedback(wl_resource* feedback) {
+    int fd = DmabufTable();
+    if (fd < 0) return;
+    zwp_linux_dmabuf_feedback_v1_send_format_table(feedback, fd, (uint32_t)(g_dmabufFormats.size() * 16));
+    wl_array device;
+    wl_array_init(&device);
+    if (auto* slot = static_cast<dev_t*>(wl_array_add(&device, sizeof(dev_t)))) *slot = (dev_t)g_dmabufDevice;
+    zwp_linux_dmabuf_feedback_v1_send_main_device(feedback, &device);
+    zwp_linux_dmabuf_feedback_v1_send_tranche_target_device(feedback, &device);
+    wl_array_release(&device);
+    wl_array indices;
+    wl_array_init(&indices);
+    for (size_t i = 0; i < g_dmabufFormats.size(); i++) {
+        if (auto* slot = static_cast<uint16_t*>(wl_array_add(&indices, sizeof(uint16_t)))) *slot = (uint16_t)i;
+    }
+    zwp_linux_dmabuf_feedback_v1_send_tranche_formats(feedback, &indices);
+    wl_array_release(&indices);
+    zwp_linux_dmabuf_feedback_v1_send_tranche_flags(feedback, 0);
+    zwp_linux_dmabuf_feedback_v1_send_tranche_done(feedback);
+    zwp_linux_dmabuf_feedback_v1_send_done(feedback);
+}
+
+void DmabufDestroy(wl_client*, wl_resource* resource) { wl_resource_destroy(resource); }
+
+void DmabufCreateParams(wl_client* client, wl_resource* resource, uint32_t id) {
+    wl_resource* params = wl_resource_create(client, &zwp_linux_buffer_params_v1_interface, wl_resource_get_version(resource), id);
+    if (!params) {
+        wl_client_post_no_memory(client);
+        return;
+    }
+    wl_resource_set_implementation(params, &kParamsImpl, new DmabufParams(), ParamsGone);
+}
+
+void DmabufFeedback(wl_client* client, wl_resource* resource, uint32_t id) {
+    wl_resource* feedback = wl_resource_create(client, &zwp_linux_dmabuf_feedback_v1_interface, wl_resource_get_version(resource), id);
+    if (!feedback) {
+        wl_client_post_no_memory(client);
+        return;
+    }
+    wl_resource_set_implementation(feedback, &kFeedbackImpl, nullptr, nullptr);
+    SendFeedback(feedback);
+}
+
+void DmabufSurfaceFeedback(wl_client* client, wl_resource* resource, uint32_t id, wl_resource*) { DmabufFeedback(client, resource, id); }
+
+const struct zwp_linux_dmabuf_v1_interface kDmabufImpl = { DmabufDestroy, DmabufCreateParams, DmabufFeedback, DmabufSurfaceFeedback };
+
+void BindDmabuf(wl_client* client, void*, uint32_t version, uint32_t id) {
+    if (version > 4) version = 4;
+    wl_resource* resource = wl_resource_create(client, &zwp_linux_dmabuf_v1_interface, version, id);
+    if (!resource) return;
+    wl_resource_set_implementation(resource, &kDmabufImpl, nullptr, nullptr);
+    if (version >= 4) return;
+    for (const auto& entry : g_dmabufFormats) {
+        if (version >= 3) zwp_linux_dmabuf_v1_send_modifier(resource, entry.first, (uint32_t)(entry.second >> 32), (uint32_t)entry.second);
+    }
+    if (version < 3) {
+        zwp_linux_dmabuf_v1_send_format(resource, kFourccArgb8888);
+        zwp_linux_dmabuf_v1_send_format(resource, kFourccXrgb8888);
+    }
+}
+
+Host* FocusedHost() { return g_focus ? FindHost(g_focus) : nullptr; }
+
+void RelativeGone(wl_resource* resource) {
+    auto* state = static_cast<ClientState*>(wl_resource_get_user_data(resource));
+    if (state && state->relative == resource) state->relative = nullptr;
+}
+
+void RelativeDestroy(wl_client*, wl_resource* resource) { wl_resource_destroy(resource); }
+const struct zwp_relative_pointer_v1_interface kRelativeImpl = { RelativeDestroy };
+
+void RelativeGet(wl_client* client, wl_resource* resource, uint32_t id, wl_resource*) {
+    ClientState* state = StateFor(client);
+    wl_resource* relative = wl_resource_create(client, &zwp_relative_pointer_v1_interface, wl_resource_get_version(resource), id);
+    if (!relative) return;
+    wl_resource_set_implementation(relative, &kRelativeImpl, state, RelativeGone);
+    if (state) state->relative = relative;
+}
+
+const struct zwp_relative_pointer_manager_v1_interface kRelativeManagerImpl = { RelativeDestroy, RelativeGet };
+
+void BindRelative(wl_client* client, void*, uint32_t version, uint32_t id) {
+    wl_resource* resource = wl_resource_create(client, &zwp_relative_pointer_manager_v1_interface, version > 1 ? 1 : version, id);
+    if (resource) wl_resource_set_implementation(resource, &kRelativeManagerImpl, nullptr, nullptr);
+}
+
+// ʕ •ᴥ•ʔ✿ A lock only holds while its frame has the keyboard. Losing focus unlocks, and a oneshot lock is spent ✿ ʕ •ᴥ•ʔ
+void SyncLock(Host* host) {
+    if (!host || !host->lock) return;
+    if (host->focused && !host->lockSent) {
+        zwp_locked_pointer_v1_send_locked(host->lock);
+        host->lockSent = true;
+    } else if (!host->focused && host->lockSent) {
+        zwp_locked_pointer_v1_send_unlocked(host->lock);
+        host->lockSent = false;
+        if (host->lockOneshot) host->lock = nullptr;
+    }
+}
+
+void LockGone(wl_resource* resource) {
+    auto* host = static_cast<Host*>(wl_resource_get_user_data(resource));
+    for (Host* live : g_hosts) {
+        if (live == host && host->lock == resource) {
+            host->lock = nullptr;
+            host->lockSent = false;
+        }
+    }
+}
+
+void ConstraintDestroy(wl_client*, wl_resource* resource) { wl_resource_destroy(resource); }
+void LockHint(wl_client*, wl_resource*, wl_fixed_t, wl_fixed_t) {}
+void ConstraintRegion(wl_client*, wl_resource*, wl_resource*) {}
+
+const struct zwp_locked_pointer_v1_interface kLockedImpl = { ConstraintDestroy, LockHint, ConstraintRegion };
+const struct zwp_confined_pointer_v1_interface kConfinedImpl = { ConstraintDestroy, ConstraintRegion };
+
+void ConstraintsLock(wl_client* client, wl_resource* resource, uint32_t id, wl_resource*, wl_resource*, wl_resource*, uint32_t lifetime) {
+    Host* host = HostForClient(client);
+    wl_resource* lock = wl_resource_create(client, &zwp_locked_pointer_v1_interface, wl_resource_get_version(resource), id);
+    if (!lock) return;
+    wl_resource_set_implementation(lock, &kLockedImpl, host, LockGone);
+    if (!host) return;
+    host->lock = lock;
+    host->lockOneshot = lifetime == ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_ONESHOT;
+    host->lockSent = false;
+    SyncLock(host);
+}
+
+void ConstraintsConfine(wl_client* client, wl_resource* resource, uint32_t id, wl_resource*, wl_resource*, wl_resource*, uint32_t) {
+    wl_resource* confine = wl_resource_create(client, &zwp_confined_pointer_v1_interface, wl_resource_get_version(resource), id);
+    if (!confine) return;
+    wl_resource_set_implementation(confine, &kConfinedImpl, nullptr, nullptr);
+    zwp_confined_pointer_v1_send_confined(confine);
+}
+
+const struct zwp_pointer_constraints_v1_interface kConstraintsImpl = { ConstraintDestroy, ConstraintsLock, ConstraintsConfine };
+
+void BindConstraints(wl_client* client, void*, uint32_t version, uint32_t id) {
+    wl_resource* resource = wl_resource_create(client, &zwp_pointer_constraints_v1_interface, version > 1 ? 1 : version, id);
+    if (resource) wl_resource_set_implementation(resource, &kConstraintsImpl, nullptr, nullptr);
+}
+
+// ʕ •ᴥ•ʔ✿ No clipboard is shared yet, but SDL and GTK expect a data device. SDL's keyboard leave reads seat->data_device without a null check ✿ ʕ •ᴥ•ʔ
+void DataSourceOffer(wl_client*, wl_resource*, const char*) {}
+void DataSourceDestroy(wl_client*, wl_resource* resource) { wl_resource_destroy(resource); }
+void DataSourceActions(wl_client*, wl_resource*, uint32_t) {}
+const struct wl_data_source_interface kDataSourceImpl = { DataSourceOffer, DataSourceDestroy, DataSourceActions };
+
+void DataDeviceDrag(wl_client*, wl_resource*, wl_resource*, wl_resource*, wl_resource*, uint32_t) {}
+void DataDeviceSelection(wl_client*, wl_resource*, wl_resource*, uint32_t) {}
+void DataDeviceRelease(wl_client*, wl_resource* resource) { wl_resource_destroy(resource); }
+const struct wl_data_device_interface kDataDeviceImpl = { DataDeviceDrag, DataDeviceSelection, DataDeviceRelease };
+
+void DataManagerSource(wl_client* client, wl_resource* resource, uint32_t id) {
+    wl_resource* source = wl_resource_create(client, &wl_data_source_interface, wl_resource_get_version(resource), id);
+    if (source) wl_resource_set_implementation(source, &kDataSourceImpl, nullptr, nullptr);
+}
+
+void DataManagerDevice(wl_client* client, wl_resource* resource, uint32_t id, wl_resource*) {
+    wl_resource* device = wl_resource_create(client, &wl_data_device_interface, wl_resource_get_version(resource), id);
+    if (device) wl_resource_set_implementation(device, &kDataDeviceImpl, nullptr, nullptr);
+}
+
+const struct wl_data_device_manager_interface kDataManagerImpl = { DataManagerSource, DataManagerDevice };
+
+void BindDataManager(wl_client* client, void*, uint32_t version, uint32_t id) {
+    wl_resource* resource = wl_resource_create(client, &wl_data_device_manager_interface, version > 3 ? 3 : version, id);
+    if (resource) wl_resource_set_implementation(resource, &kDataManagerImpl, nullptr, nullptr);
 }
 
 void ClientGone(wl_listener* listener, void*) {
@@ -718,40 +1136,79 @@ bool SplitApp(const std::string& text, std::vector<std::string>& args) {
     return !args.empty();
 }
 
-bool Spawn(Host* host, const std::vector<std::string>& args, char* error, uint32_t errorLen, bool waylandOnly) {
-    std::vector<std::string> storage;
-    std::vector<char*> argv;
-    for (const std::string& arg : args) {
-        storage.push_back(arg);
-        argv.push_back(storage.back().data());
+pid_t DesktopSteam() {
+    const char* home = getenv("HOME");
+    if (!home) return 0;
+    std::string pidPath = std::string(home) + "/.steam/steam.pid";
+    FILE* file = std::fopen(pidPath.c_str(), "r");
+    if (!file) return 0;
+    long pid = 0;
+    if (std::fscanf(file, "%ld", &pid) != 1) pid = 0;
+    std::fclose(file);
+    if (pid <= 0 || kill((pid_t)pid, 0) != 0) return 0;
+    char comm[64] = {};
+    std::string commPath = "/proc/" + std::to_string(pid) + "/comm";
+    if (FILE* in = std::fopen(commPath.c_str(), "r")) {
+        if (!std::fgets(comm, sizeof(comm), in)) comm[0] = '\0';
+        std::fclose(in);
     }
+    return std::strstr(comm, "steam") ? (pid_t)pid : 0;
+}
+
+void BindIfPresent(std::vector<std::string>& wrap, const std::string& path) {
+    if (access(path.c_str(), F_OK) != 0) return;
+    wrap.insert(wrap.end(), { "--bind", path, path });
+}
+
+// ʕ •ᴥ•ʔ✿ The sandbox keeps home, network, GPU and audio, but hides the desktop's display sockets. Only our socket is put back.
+// /dev/shm is private too, so a nested client cannot resize the profiler segment this process has mapped ✿ ʕ •ᴥ•ʔ
+std::vector<std::string> SandboxPrefix(Host* host) {
+    const char* off = getenv("WOWDECOMP_NO_SANDBOX");
+    std::string bwrap = FindOnPath("bwrap");
+    const char* runtime = getenv("XDG_RUNTIME_DIR");
+    if ((off && off[0] == '1') || bwrap == "bwrap" || !runtime) return {};
+    std::string dir = runtime;
+    std::vector<std::string> wrap = { bwrap, "--die-with-parent", "--unshare-pid", "--dev-bind", "/", "/", "--proc", "/proc",
+        "--tmpfs", dir, "--chmod", "0700", dir, "--tmpfs", "/tmp/.X11-unix", "--tmpfs", "/dev/shm" };
+    BindIfPresent(wrap, dir + "/" + host->socket);
+    BindIfPresent(wrap, dir + "/bus");
+    BindIfPresent(wrap, dir + "/pipewire-0");
+    BindIfPresent(wrap, dir + "/pulse");
+    wrap.push_back("--");
+    return wrap;
+}
+
+bool Spawn(Host* host, std::vector<std::string> args, char* error, uint32_t errorLen, pid_t waitFor) {
+    std::vector<std::string> prefix = SandboxPrefix(host);
+    args.insert(args.begin(), prefix.begin(), prefix.end());
+    // ʕ •ᴥ•ʔ✿ Steam is one instance per home. Shut the desktop copy down first or the game opens out there ✿ ʕ •ᴥ•ʔ
+    if (waitFor > 0) {
+        std::string script = "steam -shutdown >/dev/null 2>&1; i=0; while kill -0 " + std::to_string(waitFor) + " 2>/dev/null && [ $i -lt 80 ]; do sleep 0.25; i=$((i+1)); done; exec \"$@\"";
+        args.insert(args.begin(), { "/bin/sh", "-c", script, "sh" });
+    }
+    std::vector<char*> argv;
+    for (std::string& arg : args) argv.push_back(arg.data());
     argv.push_back(nullptr);
     std::vector<std::string> envStore;
-    bool replaced = false;
     std::string display = "WAYLAND_DISPLAY=" + host->socket;
     for (char** env = environ; env && *env; env++) {
-        if (std::strncmp(*env, "WAYLAND_DISPLAY=", 16) == 0) {
-            envStore.push_back(display);
-            replaced = true;
-        } else if (std::strncmp(*env, "WAYLAND_SOCKET=", 15) == 0) {
-            continue;
-        } else if (waylandOnly && std::strncmp(*env, "DISPLAY=", 8) == 0) {
-            continue;
-        } else {
-            envStore.push_back(*env);
-        }
+        if (std::strncmp(*env, "WAYLAND_DISPLAY=", 16) == 0 || std::strncmp(*env, "WAYLAND_SOCKET=", 15) == 0 || std::strncmp(*env, "DISPLAY=", 8) == 0) continue;
+        envStore.push_back(*env);
     }
-    if (!replaced) envStore.push_back(display);
-    // ʕ •ᴥ•ʔ✿ This compositor only takes wl_shm. Mesa wants dmabuf unless told to copy, and RADV refuses to import the shm pages ✿ ʕ •ᴥ•ʔ
-    bool wsi = false;
-    for (std::string& entry : envStore) {
-        if (entry.rfind("MESA_VK_WSI_DEBUG=", 0) == 0) {
-            if (entry.find("sw") == std::string::npos) entry += entry.size() > 18 ? ",sw" : "sw";
-            if (entry.find("noshm") == std::string::npos) entry += ",noshm";
-            wsi = true;
+    envStore.push_back(display);
+    envStore.push_back("XDG_SESSION_TYPE=wayland");
+    // ʕ •ᴥ•ʔ✿ Without dmabuf this compositor only takes wl_shm. Mesa then has to copy, and RADV refuses to import the shm pages ✿ ʕ •ᴥ•ʔ
+    if (g_dmabufFormats.empty()) {
+        bool wsi = false;
+        for (std::string& entry : envStore) {
+            if (entry.rfind("MESA_VK_WSI_DEBUG=", 0) == 0) {
+                if (entry.find("sw") == std::string::npos) entry += entry.size() > 18 ? ",sw" : "sw";
+                if (entry.find("noshm") == std::string::npos) entry += ",noshm";
+                wsi = true;
+            }
         }
+        if (!wsi) envStore.push_back("MESA_VK_WSI_DEBUG=sw,noshm");
     }
-    if (!wsi) envStore.push_back("MESA_VK_WSI_DEBUG=sw,noshm");
     std::vector<char*> envp;
     for (std::string& entry : envStore) envp.push_back(entry.data());
     envp.push_back(nullptr);
@@ -810,7 +1267,7 @@ bool Launch(Host* host, const char* spec, char* error, uint32_t errorLen) {
             "--no-first-run", "--no-default-browser-check", data, size, app };
         std::snprintf(host->title, sizeof(host->title), "%s", url.c_str());
     } else {
-        std::string command = text.rfind("app:", 0) == 0 ? text.substr(4) : text;
+        std::string command = text.rfind("app:", 0) == 0 ? text.substr(4) : text.rfind("game:", 0) == 0 ? text.substr(5) : text;
         if (!SplitApp(command, args)) {
             Note(error, errorLen, "missing application");
             return false;
@@ -821,25 +1278,44 @@ bool Launch(Host* host, const char* spec, char* error, uint32_t errorLen) {
             return false;
         }
         std::snprintf(host->title, sizeof(host->title), "%s", args[0].c_str());
+        // ʕ •ᴥ•ʔ✿ Steam and most games are X11. gamescope brings its own Xwayland and window manager and shows up here as one Wayland window ✿ ʕ •ᴥ•ʔ
+        size_t slash = args[0].rfind('/');
+        bool steam = args[0].compare(slash == std::string::npos ? 0 : slash + 1, std::string::npos, "steam") == 0;
+        if (steam || text.rfind("game:", 0) == 0) {
+            std::string gamescope = FindOnPath("gamescope");
+            if (gamescope == "gamescope") {
+                Note(error, errorLen, "gamescope is not installed");
+                return false;
+            }
+            std::vector<std::string> wrapped = { gamescope, "--backend", "sdl", "-W", std::to_string(host->reqW), "-H", std::to_string(host->reqH), "--" };
+            wrapped.insert(wrapped.end(), args.begin(), args.end());
+            args.swap(wrapped);
+        }
+        return Spawn(host, args, error, errorLen, steam ? DesktopSteam() : 0);
     }
-    bool web = text.rfind("https://", 0) == 0 || text.rfind("http://", 0) == 0 || text.rfind("html:", 0) == 0;
-    return Spawn(host, args, error, errorLen, web);
+    return Spawn(host, args, error, errorLen, 0);
 }
 
 void SendPointerFrame(ClientState* state) {
     if (state->pointer && wl_resource_get_version(state->pointer) >= 5) wl_pointer_send_frame(state->pointer);
 }
 
+void KeyCodeToClients(Host* host, int32_t code, int32_t down);
+
 void KeyToClients(Host* host, uint32_t keysym, int32_t down) {
     int32_t code = EvdevForSym(host, keysym);
-    if (!code || !host->xkbState) return;
+    if (code) KeyCodeToClients(host, code, down);
+}
+
+void KeyCodeToClients(Host* host, int32_t code, int32_t down) {
+    if (code < 8 || !host->xkbState) return;
     xkb_state_update_key(host->xkbState, (uint32_t)code, down ? XKB_KEY_DOWN : XKB_KEY_UP);
     uint32_t depressed = xkb_state_serialize_mods(host->xkbState, XKB_STATE_MODS_DEPRESSED);
     uint32_t latched = xkb_state_serialize_mods(host->xkbState, XKB_STATE_MODS_LATCHED);
     uint32_t locked = xkb_state_serialize_mods(host->xkbState, XKB_STATE_MODS_LOCKED);
     uint32_t group = xkb_state_serialize_layout(host->xkbState, XKB_STATE_LAYOUT_EFFECTIVE);
     for (ClientState* state : host->clients) {
-        if (!state->keyboard) continue;
+        if (!state->keyboard || !state->keysIn) continue;
         uint32_t serial = NextSerial(host);
         wl_keyboard_send_modifiers(state->keyboard, serial, depressed, latched, locked, group);
         // ʕ •ᴥ•ʔ✿ wl_keyboard.key takes the evdev code, which sits 8 below the XKB keycode ✿ ʕ •ᴥ•ʔ
@@ -922,6 +1398,10 @@ int32_t WaylandEmbedOpen(const char* spec, int32_t width, int32_t height, char* 
     wl_global_create(host->display, &wl_subcompositor_interface, 1, host, BindSubcompositor);
     wl_global_create(host->display, &xdg_wm_base_interface, 3, host, BindWm);
     wl_global_create(host->display, &zxdg_decoration_manager_v1_interface, 1, host, BindDecoration);
+    wl_global_create(host->display, &wl_data_device_manager_interface, 3, host, BindDataManager);
+    wl_global_create(host->display, &zwp_relative_pointer_manager_v1_interface, 1, host, BindRelative);
+    wl_global_create(host->display, &zwp_pointer_constraints_v1_interface, 1, host, BindConstraints);
+    if (!g_dmabufFormats.empty()) wl_global_create(host->display, &zwp_linux_dmabuf_v1_interface, 4, host, BindDmabuf);
     host->created.self = host;
     host->created.listener.notify = ClientCreated;
     wl_display_add_client_created_listener(host->display, &host->created.listener);
@@ -963,8 +1443,21 @@ void WaylandEmbedClose(int32_t id) {
 
 void WaylandEmbedService() {
     for (Host* host : g_hosts) {
+        // ʕ •ᴥ•ʔ✿ Buffers queued last frame were last drawn from on a frame that has since been submitted ✿ ʕ •ᴥ•ʔ
+        std::vector<wl_resource*> release;
+        release.swap(host->pendingRelease);
+        for (wl_resource* buffer : release) wl_buffer_send_release(buffer);
         wl_event_loop* loop = wl_display_get_event_loop(host->display);
         wl_event_loop_dispatch(loop, 0);
+        // ʕ •ᴥ•ʔ✿ One frame callback per game frame, so clients draw at our rate instead of spinning ✿ ʕ •ᴥ•ʔ
+        uint32_t now = NowMs();
+        for (Surface* surface : host->surfaces) {
+            if (!surface->frame) continue;
+            wl_resource* frame = surface->frame;
+            surface->frame = nullptr;
+            wl_callback_send_done(frame, now);
+            wl_resource_destroy(frame);
+        }
         wl_display_flush_clients(host->display);
         if (host->pid > 0) {
             int status = 0;
@@ -976,8 +1469,11 @@ void WaylandEmbedService() {
 
 int32_t WaylandEmbedPixels(int32_t id, WaylandPixels* out) {
     Host* host = FindHost(id);
-    if (!host || !out || host->frame.empty()) return 0;
-    out->data = host->frame.data();
+    if (!host || !out || (host->frame.empty() && !host->frameIsDmabuf)) return 0;
+    out->data = host->frameIsDmabuf ? nullptr : host->frame.data();
+    out->dmabuf = host->frameIsDmabuf ? &host->frameDmabuf : nullptr;
+    out->cropX = host->frameIsDmabuf ? host->cropX : 0;
+    out->cropY = host->frameIsDmabuf ? host->cropY : 0;
     out->width = host->width;
     out->height = host->height;
     out->stride = host->stride;
@@ -986,7 +1482,7 @@ int32_t WaylandEmbedPixels(int32_t id, WaylandPixels* out) {
 }
 
 void WaylandEmbedScroll(int32_t id, int32_t delta) {
-    Host* host = FindHost(id);
+    Host* host = id ? FindHost(id) : FocusedHost();
     if (!host || !delta) return;
     for (ClientState* state : host->clients) {
         if (!state->pointer || !state->toplevelSurface) continue;
@@ -1041,22 +1537,17 @@ void WaylandEmbedClearFocus() {
 void WaylandEmbedFocus(int32_t id, int32_t focused) {
     Host* host = FindHost(id);
     if (!host) return;
+    if (focused && g_focus && g_focus != id) WaylandEmbedFocus(g_focus, 0);
     host->focused = focused != 0;
+    // ʕ •ᴥ•ʔ✿ Keys still held when focus leaves never see their release, so start the next visit clean ✿ ʕ •ᴥ•ʔ
+    if (!host->focused && host->keymap) {
+        if (host->xkbState) xkb_state_unref(host->xkbState);
+        host->xkbState = xkb_state_new(host->keymap);
+    }
+    SyncLock(host);
     if (host->focused) g_focus = id;
     else if (g_focus == id) g_focus = 0;
-    for (ClientState* state : host->clients) {
-        if (!state->keyboard || !state->toplevelSurface) continue;
-        if (host->focused && !state->keysIn) {
-            wl_array empty;
-            wl_array_init(&empty);
-            wl_keyboard_send_enter(state->keyboard, NextSerial(host), state->toplevelSurface, &empty);
-            wl_array_release(&empty);
-            state->keysIn = true;
-        } else if (!host->focused && state->keysIn) {
-            wl_keyboard_send_leave(state->keyboard, NextSerial(host), state->toplevelSurface);
-            state->keysIn = false;
-        }
-    }
+    SyncKeyboardFocus(host);
 }
 
 void WaylandEmbedKeySym(int32_t id, uint32_t keysym, int32_t down) {
@@ -1065,8 +1556,13 @@ void WaylandEmbedKeySym(int32_t id, uint32_t keysym, int32_t down) {
     KeyToClients(host, keysym, down);
 }
 
-int32_t WaylandEmbedTakeKey(int32_t sdlSym, int32_t down) {
+int32_t WaylandEmbedTakeKey(int32_t sdlSym, int32_t evdev, int32_t down) {
     if (!g_focus) return 0;
+    if (evdev > 0) {
+        Host* host = FindHost(g_focus);
+        if (host && host->focused) KeyCodeToClients(host, evdev + 8, down);
+        return 1;
+    }
     uint32_t sym = (uint32_t)sdlSym;
     if (sdlSym == 13) sym = 0xff0d;
     else if (sdlSym == 27) sym = 0xff1b;
@@ -1074,6 +1570,57 @@ int32_t WaylandEmbedTakeKey(int32_t sdlSym, int32_t down) {
     else if (sdlSym == 9) sym = 0xff09;
     else if (sdlSym == 127) sym = 0xffff;
     WaylandEmbedKeySym(g_focus, sym, down);
+    return 1;
+}
+
+int32_t WaylandEmbedHasFocus() { return FocusedHost() != nullptr; }
+
+int32_t WaylandEmbedRelativeActive() {
+    Host* host = FocusedHost();
+    return host && host->lock && host->lockSent;
+}
+
+void WaylandEmbedRelativeMotion(double dx, double dy) {
+    Host* host = FocusedHost();
+    if (!host) return;
+    uint64_t us = (uint64_t)NowMs() * 1000;
+    for (ClientState* state : host->clients) {
+        if (!state->relative) continue;
+        wl_fixed_t fx = wl_fixed_from_double(dx);
+        wl_fixed_t fy = wl_fixed_from_double(dy);
+        zwp_relative_pointer_v1_send_relative_motion(state->relative, (uint32_t)(us >> 32), (uint32_t)us, fx, fy, fx, fy);
+        SendPointerFrame(state);
+    }
+}
+
+void WaylandEmbedPointerButton(int32_t button, int32_t down) {
+    Host* host = FocusedHost();
+    if (!host || button < 1) return;
+    for (ClientState* state : host->clients) {
+        if (!state->pointer || !state->toplevelSurface) continue;
+        if (state->entered != SurfaceOf(state->toplevelSurface)) {
+            wl_pointer_send_enter(state->pointer, NextSerial(host), state->toplevelSurface, 0, 0);
+            state->entered = SurfaceOf(state->toplevelSurface);
+        }
+        wl_pointer_send_button(state->pointer, NextSerial(host), NowMs(), 0x110 + (uint32_t)(button - 1), down ? WL_POINTER_BUTTON_STATE_PRESSED : WL_POINTER_BUTTON_STATE_RELEASED);
+        SendPointerFrame(state);
+    }
+}
+
+void WaylandEmbedSetDmabufFormats(uint64_t device, const uint32_t* formats, const uint64_t* modifiers, uint32_t count) {
+    g_dmabufDevice = device;
+    g_dmabufFormats.clear();
+    for (uint32_t i = 0; i < count; i++) g_dmabufFormats.emplace_back(formats[i], modifiers[i]);
+    if (g_dmabufTable >= 0) {
+        close(g_dmabufTable);
+        g_dmabufTable = -1;
+    }
+}
+
+int32_t WaylandEmbedTakeDeadDmabuf(uint64_t* key) {
+    if (g_deadDmabufs.empty()) return 0;
+    *key = g_deadDmabufs.back();
+    g_deadDmabufs.pop_back();
     return 1;
 }
 

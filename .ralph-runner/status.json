@@ -1,0 +1,21 @@
+{
+  "loopToken": "2980838f-57bb-4e59-a833-e0cee0e9d6f5",
+  "ralphPath": "/home/emma/Repos/wowdecomp/RALPH.md",
+  "taskDir": "/home/emma/Repos/wowdecomp",
+  "cwd": "/home/emma/Repos/wowdecomp",
+  "status": "running",
+  "currentIteration": 5,
+  "maxIterations": 50,
+  "timeout": 300,
+  "completionPromise": "DONE",
+  "startedAt": "2026-10-28T09:29:29.067Z",
+  "guardrails": {
+    "blockCommands": [
+      "git\\s+push\\s+.*--force",
+      "git\\s+reset\\s+--hard"
+    ],
+    "protectedFiles": [
+      "policy:secret-bearing-paths"
+    ]
+  }
+}

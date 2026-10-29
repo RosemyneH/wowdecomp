@@ -35,6 +35,7 @@ class CGxQuery;
 class CGxStateBom;
 class CGxTex;
 class CImVector;
+struct WaylandDmabuf;
 
 class ShadowConstants {
     public:
@@ -252,6 +253,7 @@ class CGxDevice {
     virtual int32_t TexCopy(CGxTex* dest, const C2iVector& destPos, const C2iVector& sourcePos, const C2iVector& size, uint32_t level, uint32_t plane) = 0;
     virtual int32_t TexStretch(CGxTex* dest, const CiRect* destRect, const CiRect* sourceRect, uint32_t level, uint32_t face) = 0;
     virtual void TexSetCacheSize(uint32_t size);
+    virtual int32_t TexCopyDmabuf(CGxTex* dest, const WaylandDmabuf& source, int32_t x, int32_t y);
     virtual void QueryCreate(CGxQuery*& query, EGxQueryType type);
     virtual void QueryDestroy(CGxQuery*& query);
     virtual bool QueryBegin(CGxQuery* query) = 0;

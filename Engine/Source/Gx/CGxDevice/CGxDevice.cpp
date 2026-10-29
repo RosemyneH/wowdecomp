@@ -208,6 +208,10 @@ void CGxDevice::PrimLineWidth(float width) {
 void CGxDevice::TexSetCacheSize(uint32_t size) {
 }
 
+int32_t CGxDevice::TexCopyDmabuf(CGxTex* dest, const WaylandDmabuf& source, int32_t x, int32_t y) {
+    return 0;
+}
+
 // VERIFY: c758af65 manual
 // OFFSET: 0x00682CB0
 int32_t CGxDevice::DeviceCreate(GxWindowProc windowProc, const CGxFormat& format) {

@@ -197,6 +197,7 @@ class VkContext {
     std::vector<ResidentCopy> m_residentUploads;
     uint32_t m_frameIndex = 0;
     int32_t m_bindless = 0;
+    int32_t m_dmabuf = 0;
     uint32_t m_imageIndex = 0;
 
     int32_t CreateInstance(const char* const* extensions, uint32_t extensionCount);

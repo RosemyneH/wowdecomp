@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <new>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
@@ -119,7 +120,9 @@ void OpenShm() {
         return;
     }
 
-    if (ftruncate(fd, sizeof(SharedProfile)) != 0) {
+    // ʕ •ᴥ•ʔ✿ Only grow the segment. Shrinking it under another client's mapping turns that client's next write into SIGBUS ✿ ʕ •ᴥ•ʔ
+    struct stat info = {};
+    if (fstat(fd, &info) != 0 || (info.st_size < static_cast<off_t>(sizeof(SharedProfile)) && ftruncate(fd, sizeof(SharedProfile)) != 0)) {
         close(fd);
         return;
     }

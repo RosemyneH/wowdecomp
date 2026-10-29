@@ -1,4 +1,9 @@
 #include <cmath>
+#if defined(WOWDECOMP_LINUX)
+#include <sys/sysmacros.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 #include <cstdio>
 #include <cstring>
 #include <thread>
@@ -12,6 +17,7 @@
 #include "Engine/Source/Base/Profiler.h"
 #include "Engine/Source/BlizzardCore/SFile2-Core.h"
 #include "Engine/Source/Gx/WowDecompVk.h"
+#include "Engine/Source/Os/WaylandEmbed.h"
 #include "Engine/Source/Storm/H/storm.h"
 
 static const uint32_t s_ffpVertexCode[] =
@@ -249,6 +255,7 @@ int32_t CGxDeviceVulkan::ICreateVulkan(const CGxFormat& format) {
         }
 
         CGxDevice::Log("CGxDeviceVulkan: using %s", this->m_vk.m_properties.deviceName);
+        this->IPublishDmabufFormats();
 
         if (!this->ICreateDeviceObjects()) {
             this->IDestroyVulkan();
@@ -419,6 +426,7 @@ void CGxDeviceVulkan::IDestroyVulkan() {
         this->ISceneAbort();
         vkDeviceWaitIdle(device);
         this->IDestroyPost();
+        this->IDropDmabufImages(1);
 
         for (uint32_t i = 0; i < 2; i++) {
             if (CGxDevice::s_uiVertexShader[i]) {
@@ -3084,6 +3092,253 @@ int32_t CGxDeviceVulkan::ITexUpload(CGxTex* texId) {
     texId->m_userFunc(GxTex_Unlock, texId->m_width, texId->m_height, 0, 0, texId->m_userArg, texelStrideInBytes, texels);
 
     return copied;
+}
+
+void CGxDeviceVulkan::IPublishDmabufFormats() {
+#if defined(WOWDECOMP_LINUX)
+    if (!this->m_vk.m_dmabuf) {
+        return;
+    }
+
+    VkPhysicalDevice physical = this->m_vk.m_physicalDevice;
+    VkDrmFormatModifierPropertiesListEXT list = { VK_STRUCTURE_TYPE_DRM_FORMAT_MODIFIER_PROPERTIES_LIST_EXT };
+    VkFormatProperties2 properties = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2, &list };
+    vkGetPhysicalDeviceFormatProperties2(physical, VK_FORMAT_B8G8R8A8_UNORM, &properties);
+    std::vector<VkDrmFormatModifierPropertiesEXT> modifierList(list.drmFormatModifierCount);
+    list.pDrmFormatModifierProperties = modifierList.data();
+    vkGetPhysicalDeviceFormatProperties2(physical, VK_FORMAT_B8G8R8A8_UNORM, &properties);
+
+    std::vector<uint32_t> formats;
+    std::vector<uint64_t> modifiers;
+
+    // ʕ •ᴥ•ʔ✿ Single-plane layouts only. DCC and other compressed layouts carry metadata planes this copy does not read ✿ ʕ •ᴥ•ʔ
+    for (uint32_t i = 0; i < list.drmFormatModifierCount; i++) {
+        const VkDrmFormatModifierPropertiesEXT& modifier = modifierList[i];
+
+        if (modifier.drmFormatModifierPlaneCount != 1 || !(modifier.drmFormatModifierTilingFeatures & VK_FORMAT_FEATURE_TRANSFER_SRC_BIT)) {
+            continue;
+        }
+
+        VkPhysicalDeviceImageDrmFormatModifierInfoEXT modifierInfo = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_DRM_FORMAT_MODIFIER_INFO_EXT };
+        modifierInfo.drmFormatModifier = modifier.drmFormatModifier;
+        modifierInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        VkPhysicalDeviceExternalImageFormatInfo externalInfo = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO, &modifierInfo };
+        externalInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+        VkPhysicalDeviceImageFormatInfo2 info = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2, &externalInfo };
+        info.format = VK_FORMAT_B8G8R8A8_UNORM;
+        info.type = VK_IMAGE_TYPE_2D;
+        info.tiling = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT;
+        info.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        VkExternalImageFormatProperties externalProperties = { VK_STRUCTURE_TYPE_EXTERNAL_IMAGE_FORMAT_PROPERTIES };
+        VkImageFormatProperties2 imageProperties = { VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2, &externalProperties };
+
+        if (vkGetPhysicalDeviceImageFormatProperties2(physical, &info, &imageProperties) != VK_SUCCESS || !(externalProperties.externalMemoryProperties.externalMemoryFeatures & VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT)) {
+            continue;
+        }
+
+        formats.push_back(0x34325241);
+        modifiers.push_back(modifier.drmFormatModifier);
+        formats.push_back(0x34325258);
+        modifiers.push_back(modifier.drmFormatModifier);
+    }
+
+    uint64_t device = 0;
+    uint32_t extensionCount = 0;
+    vkEnumerateDeviceExtensionProperties(physical, nullptr, &extensionCount, nullptr);
+    std::vector<VkExtensionProperties> extensions(extensionCount);
+    vkEnumerateDeviceExtensionProperties(physical, nullptr, &extensionCount, extensions.data());
+
+    for (const VkExtensionProperties& extension : extensions) {
+        if (!strcmp(extension.extensionName, VK_EXT_PHYSICAL_DEVICE_DRM_EXTENSION_NAME)) {
+            VkPhysicalDeviceDrmPropertiesEXT drm = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRM_PROPERTIES_EXT };
+            VkPhysicalDeviceProperties2 deviceProperties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, &drm };
+            vkGetPhysicalDeviceProperties2(physical, &deviceProperties);
+
+            if (drm.hasRender) {
+                device = makedev(static_cast<uint32_t>(drm.renderMajor), static_cast<uint32_t>(drm.renderMinor));
+            }
+        }
+    }
+
+    if (!device) {
+        struct stat node = {};
+
+        if (stat("/dev/dri/renderD128", &node) == 0) {
+            device = node.st_rdev;
+        }
+    }
+
+    if (formats.empty() || !device) {
+        return;
+    }
+
+    WaylandEmbedSetDmabufFormats(device, formats.data(), modifiers.data(), static_cast<uint32_t>(formats.size()));
+    std::fprintf(stderr, "vulkan dmabuf: %zu layouts on %u:%u\n", modifiers.size() / 2, major(device), minor(device));
+#endif
+}
+
+void CGxDeviceVulkan::IDropDmabufImages(int32_t all) {
+    uint64_t key = 0;
+
+    while (WaylandEmbedTakeDeadDmabuf(&key)) {
+        auto found = this->m_dmabufImages.find(key);
+
+        if (found != this->m_dmabufImages.end()) {
+            this->m_vk.Retire(found->second);
+            this->m_dmabufImages.erase(found);
+        }
+    }
+
+    if (!all) {
+        return;
+    }
+
+    for (auto& entry : this->m_dmabufImages) {
+        if (entry.second.image) {
+            vkDestroyImage(this->m_vk.m_device, entry.second.image, nullptr);
+        }
+
+        if (entry.second.memory) {
+            vkFreeMemory(this->m_vk.m_device, entry.second.memory, nullptr);
+        }
+    }
+
+    this->m_dmabufImages.clear();
+}
+
+int32_t CGxDeviceVulkan::TexCopyDmabuf(CGxTex* dest, const WaylandDmabuf& source, int32_t x, int32_t y) {
+#if defined(WOWDECOMP_LINUX)
+    if (!this->m_vk.m_dmabuf || !this->m_vk.m_device || !this->m_context || !dest || source.planes != 1 || source.fd[0] < 0) {
+        return 0;
+    }
+
+    this->IDropDmabufImages(0);
+    VkDevice device = this->m_vk.m_device;
+    auto found = this->m_dmabufImages.find(source.key);
+
+    if (found == this->m_dmabufImages.end()) {
+        VkGarbage imported = {};
+        VkExternalMemoryImageCreateInfo external = { VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO };
+        external.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+        VkSubresourceLayout plane = {};
+        plane.offset = source.offset[0];
+        plane.rowPitch = source.stride[0];
+        VkImageDrmFormatModifierExplicitCreateInfoEXT layout = { VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT, &external };
+        layout.drmFormatModifier = source.modifier;
+        layout.drmFormatModifierPlaneCount = 1;
+        layout.pPlaneLayouts = &plane;
+        VkImageCreateInfo info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, &layout };
+        info.imageType = VK_IMAGE_TYPE_2D;
+        info.format = VK_FORMAT_B8G8R8A8_UNORM;
+        info.extent = { static_cast<uint32_t>(source.width), static_cast<uint32_t>(source.height), 1 };
+        info.mipLevels = 1;
+        info.arrayLayers = 1;
+        info.samples = VK_SAMPLE_COUNT_1_BIT;
+        info.tiling = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT;
+        info.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+        if (vkCreateImage(device, &info, nullptr, &imported.image) != VK_SUCCESS) {
+            this->m_dmabufImages[source.key] = imported;
+            return 0;
+        }
+
+        int fd = dup(source.fd[0]);
+        VkMemoryFdPropertiesKHR fdProperties = { VK_STRUCTURE_TYPE_MEMORY_FD_PROPERTIES_KHR };
+        VkMemoryRequirements requirements = {};
+        vkGetImageMemoryRequirements(device, imported.image, &requirements);
+        uint32_t typeBits = fd >= 0 && vkGetMemoryFdPropertiesKHR(device, VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT, fd, &fdProperties) == VK_SUCCESS ? requirements.memoryTypeBits & fdProperties.memoryTypeBits : 0;
+        uint32_t type = 0;
+
+        while (type < 32 && !(typeBits & (1u << type))) {
+            type++;
+        }
+
+        off_t size = fd >= 0 ? lseek(fd, 0, SEEK_END) : 0;
+        VkMemoryDedicatedAllocateInfo dedicated = { VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO };
+        dedicated.image = imported.image;
+        VkImportMemoryFdInfoKHR import = { VK_STRUCTURE_TYPE_IMPORT_MEMORY_FD_INFO_KHR, &dedicated };
+        import.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+        import.fd = fd;
+        VkMemoryAllocateInfo allocate = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, &import };
+        allocate.allocationSize = std::max<VkDeviceSize>(requirements.size, size > 0 ? static_cast<VkDeviceSize>(size) : 0);
+        allocate.memoryTypeIndex = type;
+
+        // ʕ •ᴥ•ʔ✿ A successful import owns the fd. Every failure path still has to close it ✿ ʕ •ᴥ•ʔ
+        if (type >= 32 || vkAllocateMemory(device, &allocate, nullptr, &imported.memory) != VK_SUCCESS || vkBindImageMemory(device, imported.image, imported.memory, 0) != VK_SUCCESS) {
+            if (!imported.memory && fd >= 0) {
+                close(fd);
+            }
+
+            std::fprintf(stderr, "vulkan dmabuf: import of %dx%d modifier 0x%llx failed\n", source.width, source.height, static_cast<unsigned long long>(source.modifier));
+            this->m_vk.Retire(imported);
+            this->m_dmabufImages[source.key] = {};
+            return 0;
+        }
+
+        found = this->m_dmabufImages.emplace(source.key, imported).first;
+    }
+
+    if (!found->second.image) {
+        return 0;
+    }
+
+    VkTexture* texture = this->ITexReady(dest);
+    VkCommandBuffer cmd = texture ? this->m_vk.UploadCmd() : VK_NULL_HANDLE;
+
+    if (!cmd) {
+        return 0;
+    }
+
+    uint32_t width = std::min<uint32_t>(dest->m_width, static_cast<uint32_t>(std::max(source.width - x, 0)));
+    uint32_t height = std::min<uint32_t>(dest->m_height, static_cast<uint32_t>(std::max(source.height - y, 0)));
+
+    if (!width || !height) {
+        return 0;
+    }
+
+    // ʕ •ᴥ•ʔ✿ The client's GPU owns the buffer between frames. Take it from the foreign queue, copy, then hand it back ✿ ʕ •ᴥ•ʔ
+    VkImageMemoryBarrier acquire = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+    acquire.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    acquire.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+    acquire.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    acquire.srcQueueFamilyIndex = VK_QUEUE_FAMILY_FOREIGN_EXT;
+    acquire.dstQueueFamilyIndex = this->m_vk.m_queueFamily;
+    acquire.image = found->second.image;
+    acquire.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &acquire);
+
+    VkContext::Barrier(cmd, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, texture->layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+    VkImageCopy region = {};
+    region.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+    region.srcOffset = { x, y, 0 };
+    region.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+    region.extent = { width, height, 1 };
+    vkCmdCopyImage(cmd, found->second.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, texture->image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+    VkImageMemoryBarrier release = acquire;
+    release.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    release.dstAccessMask = 0;
+    release.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    release.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+    release.srcQueueFamilyIndex = this->m_vk.m_queueFamily;
+    release.dstQueueFamilyIndex = VK_QUEUE_FAMILY_FOREIGN_EXT;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &release);
+
+    VkContext::Barrier(cmd, texture->image.image, VK_IMAGE_ASPECT_COLOR_BIT, texture->levels, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    texture->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    texture->initialized = 1;
+
+    if (dest->m_needsUpdate) {
+        CGxDevice::ITexMarkAsUpdated(dest);
+    }
+
+    return 1;
+#else
+    return 0;
+#endif
 }
 
 void CGxDeviceVulkan::ITexMarkAsUpdated(CGxTex* texId) {

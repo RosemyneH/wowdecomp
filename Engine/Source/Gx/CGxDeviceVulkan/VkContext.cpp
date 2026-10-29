@@ -246,6 +246,25 @@ int32_t VkContext::FinishCreateDevice() {
         }
     }
 
+    // ʕ •ᴥ•ʔ✿ Embedded Wayland clients hand over GPU buffers. Importing them needs dma-buf memory and explicit modifiers ✿ ʕ •ᴥ•ʔ
+    const char* dmabufExtensions[] = { "VK_KHR_external_memory_fd", "VK_EXT_external_memory_dma_buf", "VK_EXT_image_drm_format_modifier", "VK_EXT_queue_family_foreign" };
+    uint32_t dmabufFound = 0;
+
+    for (const char* wanted : dmabufExtensions) {
+        for (const VkExtensionProperties& extension : available) {
+            if (!strcmp(extension.extensionName, wanted)) {
+                dmabufFound++;
+                break;
+            }
+        }
+    }
+
+    this->m_dmabuf = dmabufFound == sizeof(dmabufExtensions) / sizeof(dmabufExtensions[0]) && this->m_properties.apiVersion >= VK_API_VERSION_1_2;
+
+    if (this->m_dmabuf) {
+        extensions.insert(extensions.end(), std::begin(dmabufExtensions), std::end(dmabufExtensions));
+    }
+
     VkPhysicalDeviceDescriptorIndexingFeatures indexing = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES };
 
     if (this->m_bindless) {

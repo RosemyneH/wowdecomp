@@ -54,6 +54,42 @@ static SDL_Window* GxWindow() {
     return static_cast<SDL_Window*>(OsGuiGetWindow(0));
 }
 
+static bool s_embedLocked;
+
+// ʕ •ᴥ•ʔ✿ An embedded app that locks the pointer gets raw motion until it lets go or Ctrl+Alt+Esc takes focus back ✿ ʕ •ᴥ•ʔ
+static void SyncEmbedLock() {
+    bool want = WaylandEmbedRelativeActive() != 0;
+
+    if (want == s_embedLocked) {
+        return;
+    }
+
+    s_embedLocked = want;
+
+    if (s_osMouseMode != OS_MOUSE_MODE_RELATIVE) {
+        SDL_SetWindowRelativeMouseMode(GxWindow(), want);
+    }
+}
+
+// ʕ •ᴥ•ʔ✿ SDL's raw code is the evdev key on Wayland and the X keycode (evdev + 8) on X11 ✿ ʕ •ᴥ•ʔ
+static int32_t EvdevKey(const SDL_KeyboardEvent& key) {
+    const char* driver = SDL_GetCurrentVideoDriver();
+
+    if (!driver || !key.raw) {
+        return 0;
+    }
+
+    if (!SDL_strcmp(driver, "wayland")) {
+        return key.raw;
+    }
+
+    if (!SDL_strcmp(driver, "x11")) {
+        return key.raw > 8 ? key.raw - 8 : 0;
+    }
+
+    return 0;
+}
+
 static void GetPixelSize(SDL_Window* window, int32_t* width, int32_t* height);
 
 static int32_t ScaleAxis(int32_t value, int32_t from, int32_t to, int32_t* residue) {
@@ -669,7 +705,21 @@ intptr_t OsWindowProc(void* window, uint32_t message, uintptr_t wparam, intptr_t
                     if (code >= SDLK_F1 && code <= SDLK_F12) sym = 0xffbe + (int32_t)(code - SDLK_F1);
                     break;
             }
-            if (WaylandEmbedTakeKey(sym, message == SDL_EVENT_KEY_DOWN)) break;
+            if (WaylandEmbedHasFocus()) {
+                if (message == SDL_EVENT_KEY_DOWN && code == SDLK_ESCAPE && (event.key.mod & SDL_KMOD_CTRL) && (event.key.mod & SDL_KMOD_ALT)) {
+                    WaylandEmbedClearFocus();
+                    SyncEmbedLock();
+                    break;
+                }
+
+                int32_t evdev = EvdevKey(event.key);
+
+                if (!(evdev && event.key.repeat)) {
+                    WaylandEmbedTakeKey(sym, evdev, message == SDL_EVENT_KEY_DOWN);
+                }
+
+                break;
+            }
             KEY key;
             if (ConvertKeyCode(code, &key)) {
                 OsQueuePut(message == SDL_EVENT_KEY_DOWN ? OS_INPUT_KEY_DOWN : OS_INPUT_KEY_UP, key, event.key.repeat ? 1 : 0, 0, 0);
@@ -684,6 +734,13 @@ intptr_t OsWindowProc(void* window, uint32_t message, uintptr_t wparam, intptr_t
         }
 
         case SDL_EVENT_MOUSE_MOTION: {
+            SyncEmbedLock();
+
+            if (s_embedLocked) {
+                WaylandEmbedRelativeMotion(event.motion.xrel, event.motion.yrel);
+                break;
+            }
+
             int32_t x = static_cast<int32_t>(event.motion.x);
             int32_t y = static_cast<int32_t>(event.motion.y);
 
@@ -704,13 +761,23 @@ intptr_t OsWindowProc(void* window, uint32_t message, uintptr_t wparam, intptr_t
         }
 
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
-            WaylandEmbedClearFocus();
-            HandleMouseButton(event.button, OS_INPUT_MOUSE_DOWN);
-            break;
+        case SDL_EVENT_MOUSE_BUTTON_UP: {
+            SyncEmbedLock();
+            int32_t down = message == SDL_EVENT_MOUSE_BUTTON_DOWN;
 
-        case SDL_EVENT_MOUSE_BUTTON_UP:
-            HandleMouseButton(event.button, OS_INPUT_MOUSE_UP);
+            if (s_embedLocked) {
+                int32_t button = event.button.button == SDL_BUTTON_RIGHT ? 2 : event.button.button == SDL_BUTTON_MIDDLE ? 3 : event.button.button;
+                WaylandEmbedPointerButton(button, down);
+                break;
+            }
+
+            if (down) {
+                WaylandEmbedClearFocus();
+            }
+
+            HandleMouseButton(event.button, down ? OS_INPUT_MOUSE_DOWN : OS_INPUT_MOUSE_UP);
             break;
+        }
 
         case SDL_EVENT_MOUSE_WHEEL: {
             // ʕ •ᴥ•ʔ✿ A hi-res notch is several events whose tick is still 0; the UI reads 0 as scroll-up ✿ ʕ •ᴥ•ʔ
@@ -724,6 +791,11 @@ intptr_t OsWindowProc(void* window, uint32_t message, uintptr_t wparam, intptr_t
             }
             if (event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED) {
                 delta = -delta;
+            }
+
+            if (s_embedLocked) {
+                WaylandEmbedScroll(0, delta);
+                break;
             }
 
             int32_t x;

@@ -85,6 +85,16 @@ SlashCmdList["WOWAPP"] = function(msg)
     openSurface("app:" .. spec, w, h)
 end
 
+SLASH_WOWGAME1 = "/game"
+SlashCmdList["WOWGAME"] = function(msg)
+    msg = msg and msg:gsub("^%s+", ""):gsub("%s+$", "") or ""
+    if msg == "" then
+        say("/game <program>    runs an X11 program or game inside gamescope in a frame")
+        return
+    end
+    openSurface("game:" .. msg, 1280, 720)
+end
+
 SLASH_WOWPING1 = "/ping"
 SlashCmdList["WOWPING"] = function()
     if frame:IsShown() then frame:Hide() else frame:Show() end
@@ -180,6 +190,8 @@ local function launch(entry)
         if not WaylandFrame_Raise(entry.id) then say("that window is gone") end
     elseif entry.kind == "url" then
         openSurface(entry.target, 960, 540)
+    elseif entry.kind == "game" then
+        openSurface("game:" .. entry.target, 1280, 720)
     else
         openSurface("app:" .. entry.target, 960, 540)
     end
@@ -224,6 +236,7 @@ local function refresh()
     local raw = query:match("^>%s*(.+)$")
     if raw then
         tinsert(results, { kind = "app", label = raw, detail = "run command", target = raw, rank = 4500 })
+        tinsert(results, { kind = "game", label = raw, detail = "run in gamescope", target = raw, rank = 4400 })
     end
 
     if WaylandFrame_List then
@@ -244,7 +257,9 @@ local function refresh()
             if s then
                 local key = "app:" .. app.id
                 local used = counts[key] or 0
-                tinsert(results, { kind = "app", key = key, label = app.name, detail = app.comment, target = app.exec, rank = s + math.min(used, 50) * 20 })
+                local steam = app.exec:match("^steam%s") or app.exec:match("/steam%s")
+                local detail = steam and "Steam, in gamescope" or app.comment
+                tinsert(results, { kind = "app", key = key, label = app.name, detail = detail, target = app.exec, rank = s + math.min(used, 50) * 20 })
             end
         end
     end
@@ -318,5 +333,5 @@ SlashCmdList["WOWLAUNCH"] = toggleLauncher
 
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:SetScript("OnEvent", function()
-    say("/launch finds apps and open windows. /chrome [url] opens a page. /app <program> runs a Wayland client. /ping toggles this readout.")
+    say("/launch finds apps and open windows. /chrome [url] opens a page. /app <program> runs a Wayland client. /game <program> runs X11 or Steam in gamescope. Ctrl+Alt+Esc releases a captured mouse.")
 end)

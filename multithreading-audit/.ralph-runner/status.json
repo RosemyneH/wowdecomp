@@ -1,0 +1,22 @@
+{
+  "loopToken": "ae534f3e-241a-4798-80a5-9e1f6aa4b939",
+  "ralphPath": "/home/emma/Repos/wowdecomp/multithreading-audit/RALPH.md",
+  "taskDir": "/home/emma/Repos/wowdecomp/multithreading-audit",
+  "cwd": "/home/emma/Repos/wowdecomp",
+  "status": "max-iterations",
+  "currentIteration": 50,
+  "maxIterations": 50,
+  "timeout": 300,
+  "completionPromise": "DONE",
+  "startedAt": "2026-10-28T07:14:53.259Z",
+  "guardrails": {
+    "blockCommands": [
+      "git\\s+push\\s+.*--force",
+      "git\\s+reset\\s+--hard"
+    ],
+    "protectedFiles": [
+      "policy:secret-bearing-paths"
+    ]
+  },
+  "completedAt": "2026-10-28T07:57:21.956Z"
+}

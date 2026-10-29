@@ -115,6 +115,7 @@ class CGxDeviceVulkan : public CGxDevice {
     VkPipelineKey m_lastPipelineKey = {};
     VkPipeline m_lastPipeline = VK_NULL_HANDLE;
     std::unordered_map<uint32_t, VkSampler> m_samplers;
+    std::unordered_map<uint64_t, VkGarbage> m_dmabufImages;
     VkBufferAlloc m_dummyVertices = {};
     VkImageAlloc m_offscreenDepth = {};
     VkExtent2D m_offscreenDepthExtent = {};
@@ -230,6 +231,7 @@ class CGxDeviceVulkan : public CGxDevice {
     virtual int32_t BufUnlock(CGxBuf* buf, uint32_t size);
     virtual void BufData(CGxBuf* buf, const void* data, uint32_t size, uint32_t offset);
     virtual void TexDestroy(CGxTex* texId);
+    virtual int32_t TexCopyDmabuf(CGxTex* dest, const WaylandDmabuf& source, int32_t x, int32_t y);
     virtual int32_t TexCopy(CGxTex* dest, const C2iVector& destPos, const C2iVector& sourcePos, const C2iVector& size, uint32_t level, uint32_t plane);
     virtual int32_t TexStretch(CGxTex* dest, const CiRect* destRect, const CiRect* sourceRect, uint32_t level, uint32_t face);
     virtual bool QueryBegin(CGxQuery* query);
@@ -283,6 +285,8 @@ class CGxDeviceVulkan : public CGxDevice {
     void IBufUnlock(CGxBuf* buf);
     void ITexCreate(CGxTex* texId);
     int32_t ITexUpload(CGxTex* texId);
+    void IPublishDmabufFormats();
+    void IDropDmabufImages(int32_t all);
     void ITexRelease(CGxTex* texId);
     void ITexForceRecreation(int32_t all);
     VkTexture* ITexReady(CGxTex* texId);

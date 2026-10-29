@@ -43,7 +43,7 @@ elseif(WOWDECOMP_UNIX)
         find_package(PkgConfig REQUIRED)
         pkg_check_modules(WAYLAND_SERVER REQUIRED IMPORTED_TARGET wayland-server)
         pkg_check_modules(XKBCOMMON REQUIRED IMPORTED_TARGET xkbcommon)
-        target_sources(Os PRIVATE Linux/protocol/xdg-shell-protocol.c Linux/protocol/xdg-decoration-protocol.c)
+        target_sources(Os PRIVATE Linux/protocol/xdg-shell-protocol.c Linux/protocol/xdg-decoration-protocol.c Linux/protocol/linux-dmabuf-protocol.c Linux/protocol/relative-pointer-protocol.c Linux/protocol/pointer-constraints-protocol.c)
         target_link_libraries(Os PUBLIC PkgConfig::WAYLAND_SERVER PkgConfig::XKBCOMMON)
     endif ()
 
