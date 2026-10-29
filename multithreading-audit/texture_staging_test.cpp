@@ -23,5 +23,19 @@ int main() {
         return 4;
     }
 
+    const uint32_t budget = 0x400000u;
+
+    if (TextureStagingRemaining(budget - 10u, budget) != 10u) {
+        return 5;
+    }
+
+    if (TextureStagingRemaining(budget, budget) != 0) {
+        return 6;
+    }
+
+    if (TextureStagingRemaining(budget + 50u, budget) != 0) {
+        return 7;
+    }
+
     return 0;
 }

@@ -7,12 +7,17 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-`AsyncTextureWait` submits a texture with a null buffer without checking the 4 MiB
-staging budget. Confirm that the blocking `TextureGetGxTex` callers need that
-bypass. Client frame measurements stay blocked.
+`TextureIncreasePriority` moves an object with a null buffer onto `s_asyncLoadList`
+without the queue lock. Confirm every caller is on the thread that owns that
+list. Client frame measurements stay blocked.
 
 ## Completed iterations
 
+- [x] Keep a staging counter past 4 MiB from looking like free budget. Blocking
+  `TextureGetGxTex` waits still submit a deferred texture, because draw callers
+  use the result immediately. `TextureStagingRemaining` returns zero once the
+  counter reaches the cap. `texture_staging_test` covers the cap and a counter
+  past it. `Texture.cpp` typechecks with the Linux client flags.
 - [x] Poll once at the start of `AsyncFileReadWaitAll`. Non-streaming map and
   game-UI load barriers were returning while deferred textures that fit the
   budget were still queued. Objects that still do not fit stay deferred.

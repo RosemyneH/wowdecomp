@@ -21,6 +21,12 @@ or null dispatches do not join prior work. Nonempty dispatches join prior work;
 shutdown waits, signals termination, and joins all threads. Callback user data and
 all referenced inputs/outputs must survive until that join.
 
+## Blocking texture wait
+
+`TextureGetGxTex` with `wait == 1` calls `AsyncTextureWait` (`Texture.cpp`). Terrain draws, fonts, shadows, and render-target updates use that texture in the same call. A deferred object has a null buffer, so the wait submits it immediately and blocks. Refusing that submit would leave those callers without a GPU texture. The staging counter can therefore pass 4 MiB.
+
+`0x400000 - s_asyncLoadBufferUsed` used to wrap once the counter passed the cap. `AsyncTextureHandler` and `CreateBlpAsync` then treated the wrap as free space and admitted more reads. `TextureStagingRemaining` returns zero in that case. The urgent submit stays. `texture_staging_test` covers a counter at the cap and past it.
+
 ## Wait-all and the texture budget
 
 `AsyncFileReadWaitAll` is the non-streaming load barrier. `CMap::PrepareUpdate` and `CMap::Preload` call it between prepare phases (`Map.cpp:2329`, `Map.cpp:2549`). `CGGameUI` calls it after cinematic and teleport preloads when the client is not streaming (`GameUI.cpp:5593`). The only poll handler is `AsyncTextureHandler`, which submits deferred textures that fit in the 4 MiB staging budget.
