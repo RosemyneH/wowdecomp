@@ -109,6 +109,14 @@ void AsyncFile::LeaveQueueLock() {
     s_queueLocked = 0;
 }
 
+void AsyncFile::EnterPollLock() {
+    s_pollLock.Enter();
+}
+
+void AsyncFile::LeavePollLock() {
+    s_pollLock.Leave();
+}
+
 // VERIFY: ca9687a9 manual
 // OFFSET: 0x004B9AB0
 void AsyncFileReadUnloadPostList() {

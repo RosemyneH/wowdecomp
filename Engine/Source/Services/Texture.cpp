@@ -98,6 +98,11 @@ static int32_t s_gxTexCacheMaxSize;
 // STATIC: 0x00B49CA0
 static uint32_t s_asyncLoadBufferUsed;
 
+struct StagingLock {
+    StagingLock() { AsyncFile::EnterPollLock(); }
+    ~StagingLock() { AsyncFile::LeavePollLock(); }
+};
+
 // STATIC: 0x00B49CA4
 static TSHashTableReuse<CTexture, HASHKEY_TEXTUREFILE> s_textureCache;
 
@@ -152,6 +157,7 @@ void CTextureAtlas::Update(CTexture* texture) {
 // VERIFY: 89c9895e manual
 // OFFSET: 0x004B5130
 void AsyncTextureDestroyedCallback(CAsyncObject* object) {
+    StagingLock lock;
     void* buffer = object->m_buffer;
     uint32_t size = object->m_size;
     s_asyncLoadBufferUsed = TextureStagingUsed(s_asyncLoadBufferUsed, buffer, size, 1);
@@ -231,6 +237,7 @@ MipBits* GetDefaultTexture(uint32_t width, uint32_t height) {
 // VERIFY: ec360367 manual
 // OFFSET: 0x004B5300
 void AsyncTextureFailureCallback(CTexture* texture) {
+    StagingLock lock;
     CAsyncObject* object = texture->m_asyncObject;
     void* buffer = object->m_buffer;
     uint32_t size = object->m_size;
@@ -1028,6 +1035,7 @@ void CTextureAtlas::Reload() {
 // VERIFY: 7f5ee904 manual
 // OFFSET: 0x004B64E0
 void AsyncTextureProcess(CAsyncObject* object, int32_t immediate) {
+    StagingLock lock;
     object->m_link.Unlink();
     object->m_buffer = SMemAlloc(object->m_size, __FILE__, __LINE__, 0);
     s_asyncLoadBufferUsed = TextureStagingUsed(s_asyncLoadBufferUsed, object->m_buffer, object->m_size, 0);
@@ -1040,10 +1048,14 @@ void AsyncTextureWait(CTexture* texture) {
     CAsyncObject* object = texture->m_asyncObject;
 
     if (object) {
+        StagingLock lock;
+
         if (!object->m_buffer) {
             AsyncTextureProcess(object, 1);
         }
+    }
 
+    if (texture->m_asyncObject) {
         AsyncFileReadWait(texture->m_asyncObject);
     }
 }
@@ -1210,6 +1222,7 @@ void FillInSolidTexture(const CImVector& color, CTexture* texture) {
 // VERIFY: f77dd4dd manual
 // OFFSET: 0x004B69E0
 void AsyncTextureHandler() {
+    StagingLock lock;
     uint32_t available = TextureStagingRemaining(s_asyncLoadBufferUsed, 0x400000);
 
     for (CAsyncObject* object = s_asyncLoadList.Head(); !s_asyncLoadList.IsEnd(object); ) {
@@ -1277,6 +1290,8 @@ void TextureCacheUpdate() {
 // VERIFY: 04d8356e auto
 // OFFSET: 0x004B6C50
 void TextureIncreasePriority(CTexture* texture) {
+    StagingLock lock;
+
     if (!SFile::IsStreamingMode()) {
         return;
     }
@@ -1865,6 +1880,8 @@ int32_t PumpBlpTextureAsync(CTexture* texture, void* data) {
 // VERIFY: 85a7ce70 manual
 // OFFSET: 0x004B7E80
 void AsyncTextureSuccessCallback(CTexture* texture) {
+    StagingLock lock;
+
     if (!PumpBlpTextureAsync(texture, texture->m_asyncObject->m_buffer)) {
         if (!texture->m_status.IsEmpty()) {
             SysMsgAdd(&texture->m_status);
@@ -1886,6 +1903,7 @@ void AsyncTextureSuccessCallback(CTexture* texture) {
 // VERIFY: f4bfd60d manual
 // OFFSET: 0x004B7F10
 int32_t AsyncTextureStatus() {
+    StagingLock lock;
     int32_t count = 0;
 
     for (CAsyncObject* object = s_asyncLoadList.Head(); !s_asyncLoadList.IsEnd(object); object = s_asyncLoadList.RawNext(object)) {
@@ -2122,6 +2140,8 @@ CTexture::~CTexture() {
     }
 
     if (this->m_asyncObject) {
+        StagingLock lock;
+
         if (this->m_flags & 0x20) {
             this->m_asyncObject->m_userArg = this->m_asyncObject;
             this->m_asyncObject->m_userPostUnloadCallback = reinterpret_cast<void*>(AsyncTextureDestroyedCallback);
@@ -2255,6 +2275,7 @@ CTexture* CreateBlpAsync(char* extension, const char* fileName, uint32_t flags, 
     }
 
     CAsyncObject* object = texture->m_asyncObject;
+    StagingLock lock;
 
     if (TextureStagingRemaining(s_asyncLoadBufferUsed, 0x400000) < object->m_size) {
         s_asyncTextureList.LinkNode(object, 2, nullptr);

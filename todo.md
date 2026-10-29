@@ -7,12 +7,17 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-The texture staging counter and deferred lists are updated from draw code while
-a scheduler thread may be inside a poll callback. Client frame measurements
-stay blocked.
+`CMapArea::AsyncCallback` runs on the scheduler thread that is inside the poll
+lock. `CMap::PreUpdateAreas` can purge that area from another thread and does
+not take the poll lock. Client frame measurements stay blocked.
 
 ## Completed iterations
 
+- [x] Take the poll lock around texture staging and the deferred lists. Draw
+  code and a scheduler-thread poll callback were both updating
+  `s_asyncLoadBufferUsed`. The lock is acquired before the queue lock.
+  `AsyncTextureWait` drops it before the file wait. `Texture.cpp` and
+  `AsyncFile.cpp` typecheck with the Linux client flags.
 - [x] Serialize `AsyncFileReadPollHandler` with a recursive section. Every
   scheduler thread synthesizes `EVENT_ID_POLL`, and map load calls the handler
   directly. `s_progressCount` stays a plain integer because those calls no

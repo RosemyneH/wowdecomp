@@ -28,6 +28,8 @@ class AsyncFile {
     static int32_t Cancel(CAsyncObject* object, void (*callback)(CAsyncObject*));
     static void EnterQueueLock();
     static void LeaveQueueLock();
+    static void EnterPollLock();
+    static void LeavePollLock();
 };
 
 void AsyncFileReadAddPollHandler(void (*handler)());

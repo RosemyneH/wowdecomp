@@ -25,7 +25,7 @@ all referenced inputs/outputs must survive until that join.
 
 `SchedulerThreadProcProcess` calls `SynthesizePoll` for whichever context that scheduler thread is running (`EvtSched.cpp:631`). `AsyncFileReadPollHandler` is the global `EVENT_ID_POLL` handler, and map loading calls it directly too. Two of those calls can overlap. `s_progressCount` was a plain integer decremented after the queue lock was released.
 
-The handler now takes a recursive `s_pollLock` for the whole call, including the callback. A callback on that same thread may poll again. A second thread waits. The counter stays a plain integer because only one thread is inside the handler. The queue lock is still dropped before the callback so an I/O worker can post. The texture staging counter is still touched from draw code outside this lock.
+The handler now takes a recursive `s_pollLock` for the whole call, including the callback. A callback on that same thread may poll again. A second thread waits. The counter stays a plain integer because only one thread is inside the handler. The queue lock is still dropped before the callback so an I/O worker can post. Draw code that changes the staging counter or the deferred texture lists takes that same poll lock first, and only then the queue lock. `AsyncTextureWait` releases it before sleeping in `AsyncFileReadWait`.
 
 ## Post list and free list
 
