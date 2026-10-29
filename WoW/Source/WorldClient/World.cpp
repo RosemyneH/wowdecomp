@@ -2713,6 +2713,12 @@ struct HorizonCache {
 
 HorizonCache s_horizon;
 
+int32_t s_lastHeld = 0;
+
+int32_t LastViewHeld() {
+    return s_lastHeld;
+}
+
 int32_t ViewHeld() {
     const C3Vector pos = CWorldScene::s_activeWorldView;
     const C3Vector dir = CWorldScene::camPlane.n;
@@ -2728,6 +2734,7 @@ int32_t ViewHeld() {
 
         // ʕ •ᴥ•ʔ✿ Idle bob stays inside two yards. A real turn or step reculls ✿ ʕ •ᴥ•ʔ
         if (dx * dx + dy * dy + dz * dz < 4.0f && dot > 0.999f) {
+            s_lastHeld = 1;
             return 1;
         }
     }
@@ -2735,6 +2742,7 @@ int32_t ViewHeld() {
     heldPos = pos;
     heldDir = dir;
     held = 1;
+    s_lastHeld = 0;
     return 0;
 }
 
@@ -3896,6 +3904,14 @@ void CWorldScene::CullDoodads(CSortEntry* entry, uint16_t fadeLevel, int32_t reu
 // OFFSET: 0x007989C0
 void CWorldScene::RenderChunksSinglePass() {
     TSExplicitList<CMapRenderChunk, offsetof(CMapRenderChunk, m_renderChunkLink)> singlePassList;
+    static uint32_t s_stillFrames = 0;
+    int32_t held = LastViewHeld();
+    s_stillFrames = held ? s_stillFrames + 1 : 0;
+    // ʕ •ᴥ•ʔ✿ A still camera already kept the cull. Rebuilding every chunk's terrain batch was the frame. ✿ ʕ •ᴥ•ʔ
+    int32_t replay = held && s_stillFrames > 1 && (s_stillFrames % 30) != 0 && CMapRenderChunk::ReplayTerrain();
+    if (!replay) {
+        CMapRenderChunk::ArmTerrainReplay(1);
+    }
     CMapRenderChunk::BeginQueuedTerrain();
     int32_t deferFlush = 0;
 
@@ -3918,7 +3934,7 @@ void CWorldScene::RenderChunksSinglePass() {
                 break;
         }
 
-        deferFlush = g_theGxDevicePtr->TerrainBindless()
+        deferFlush = !replay && g_theGxDevicePtr->TerrainBindless()
             && CMapRenderChunk::s_renderLayersFunc == CMapRenderChunk::RenderMultiPassAlpha;
 
         for (uint32_t layers = 1; layers <= 4; layers++) {
@@ -3931,6 +3947,8 @@ void CWorldScene::RenderChunksSinglePass() {
 
             while (!list.IsEnd(renderChunk)) {
                 CMapRenderChunk* next = list.RawNext(renderChunk);
+
+                if (!replay || CMapRenderChunk::TerrainImmediate(renderChunk)) {
                 renderChunk->RenderSetup(1);
 
                 if (CWorld::enables & Enable_Chunks) {
@@ -3946,6 +3964,7 @@ void CWorldScene::RenderChunksSinglePass() {
                         CMapRenderChunk::s_renderLayersFunc(renderChunk);
                     }
                 }
+                }
 
                 renderChunk->m_renderChunkLink.Unlink();
 
@@ -3958,7 +3977,7 @@ void CWorldScene::RenderChunksSinglePass() {
                 renderChunk = next;
             }
 
-            if (!deferFlush) {
+            if (!replay && !deferFlush) {
                 CMapRenderChunk::FlushMultiPass();
             }
         }

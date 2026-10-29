@@ -2601,6 +2601,108 @@ TerrainGroupKey MakeTerrainGroupKey(const TerrainCapture& cap, uint32_t layer, i
 
 std::vector<GxTerrainDraw> s_terrainDraws;
 std::vector<GxTerrainDraw> s_shadowDraws;
+
+struct TerrainReplayGroup {
+    CGxBuf* vertex = nullptr;
+    CGxBuf* index = nullptr;
+    CGxTex* color = nullptr;
+    CGxTex* alpha = nullptr;
+    float fogStart = 0.0f;
+    float fogEnd = 0.0f;
+    uint32_t fogColor = 0;
+    int32_t fog = 0;
+    int32_t mode = 2;
+    std::vector<GxTerrainDraw> draws;
+};
+
+std::vector<TerrainReplayGroup> s_replay;
+int32_t s_replayValid = 0;
+int32_t s_recordReplay = 0;
+
+void RecordReplay(CGxBuf* vertex, CGxBuf* index, CGxTex* color, CGxTex* alpha, const TerrainCapture& cap, const GxTerrainDraw* draws, uint32_t count, int32_t mode) {
+    if (!s_recordReplay || !draws || !count || !vertex || !index) {
+        return;
+    }
+
+    TerrainReplayGroup group;
+    group.vertex = vertex;
+    group.index = index;
+    group.color = color;
+    group.alpha = alpha;
+    group.fogStart = cap.fogStart;
+    group.fogEnd = cap.fogEnd;
+    group.fogColor = cap.fogColor;
+    group.fog = cap.fog;
+    group.mode = mode;
+    group.draws.assign(draws, draws + count);
+    s_replay.push_back(std::move(group));
+}
+
+}
+
+void CMapRenderChunk::ArmTerrainReplay(int32_t record) {
+    s_recordReplay = record;
+
+    if (record) {
+        s_replay.clear();
+        s_replayValid = 0;
+    }
+}
+
+int32_t CMapRenderChunk::ReplayTerrain() {
+    if (!s_replayValid) {
+        return 0;
+    }
+
+    for (const TerrainReplayGroup& group : s_replay) {
+        if (group.mode == 3) {
+            GxRsSet(GxRs_BlendingMode, GxBlend_Alpha);
+        } else {
+            g_theGxDevicePtr->RsSet(GxRs_Texture0, group.color);
+            g_theGxDevicePtr->RsSet(GxRs_Texture1, group.alpha ? group.alpha : group.color);
+            GxRsSet(GxRs_BlendingMode, GxBlend_Opaque);
+        }
+
+        GxUpdateAlphaRef(GxRs_AlphaRef);
+        GxRsSet(GxRs_FogStart, group.fogStart);
+        GxRsSet(GxRs_FogEnd, group.fogEnd);
+        GxRsSet(GxRs_FogColor, static_cast<int32_t>(group.fogColor));
+        GxRsSet(GxRs_Fog, group.fog);
+        GxPrimVertexPtr(group.vertex, CMapRenderChunk::s_gxBufVertexFormat);
+        g_theGxDevicePtr->PrimIndexPtr(group.index);
+        g_theGxDevicePtr->DrawTerrainBatch(group.draws.data(), static_cast<uint32_t>(group.draws.size()), group.mode);
+    }
+
+    return 1;
+}
+
+int32_t CMapRenderChunk::TerrainImmediate(CMapRenderChunk* chunk) {
+    if (!chunk) {
+        return 0;
+    }
+
+    if (chunk->m_renderFlags & 0x4) {
+        return 1;
+    }
+
+    for (uint32_t i = 0; i < chunk->m_layersCount; ++i) {
+        if (chunk->m_layers[i].m_flags & (0x40 | 0x80)) {
+            return 1;
+        }
+    }
+
+    CGxBuf* vertex = chunk->m_chunkBuf ? chunk->m_chunkBuf->m_vertexBuf : nullptr;
+    CGxBuf* index = chunk->m_chunkBuf ? chunk->m_chunkBuf->m_indexBuf : nullptr;
+
+    if (!vertex || !index || !IsVertexSlab(vertex->m_pool) || !IsIndexSlab(index->m_pool) || !vertex->m_itemSize || (vertex->m_index % vertex->m_itemSize) || index->m_itemSize != 2) {
+        return 1;
+    }
+
+    return 0;
+}
+
+namespace {
+
 std::vector<size_t> s_shadowQueued;
 std::vector<uint8_t> s_meshTaken;
 std::vector<size_t> s_terrainQueued;
@@ -3017,8 +3119,11 @@ static void FlushTerrainComposite(const C44Matrix* eye0, const C44Matrix* eye1) 
             GxRsSet(GxRs_BlendingMode, GxBlend_Opaque);
             GxUpdateAlphaRef(GxRs_AlphaRef);
             ApplyChunkFog(*bound);
-            GxPrimVertexPtr(bound->chunk->m_chunkBuf->m_vertexBuf, CMapRenderChunk::s_gxBufVertexFormat);
-            g_theGxDevicePtr->PrimIndexPtr(bound->chunk->m_chunkBuf->m_indexBuf);
+            CGxBuf* vertexBuf = bound->chunk->m_chunkBuf->m_vertexBuf;
+            CGxBuf* indexBuf = bound->chunk->m_chunkBuf->m_indexBuf;
+            GxPrimVertexPtr(vertexBuf, CMapRenderChunk::s_gxBufVertexFormat);
+            g_theGxDevicePtr->PrimIndexPtr(indexBuf);
+            RecordReplay(vertexBuf, indexBuf, color, alpha ? alpha : color, *bound, s_terrainDraws.data(), static_cast<uint32_t>(s_terrainDraws.size()), 2);
 
             for (uint32_t offset = 0; offset < s_terrainDraws.size();) {
                 uint32_t n = static_cast<uint32_t>(s_terrainDraws.size() - offset);
@@ -3035,6 +3140,7 @@ static void FlushTerrainComposite(const C44Matrix* eye0, const C44Matrix* eye1) 
                     }
                 } else {
                     DrawShadowGroup(s_terrainDraws.data() + offset, offset, n);
+                    RecordReplay(vertexBuf, indexBuf, nullptr, nullptr, *bound, s_shadowDraws.data(), static_cast<uint32_t>(s_shadowDraws.size()), 3);
                 }
 
                 offset += n;
@@ -3268,6 +3374,10 @@ void CMapRenderChunk::FlushMultiPass() {
     s_terrainBatch.clear();
     s_terrainDraws.clear();
     s_terrainOwnShadow.clear();
+
+    if (s_recordReplay && !s_replay.empty()) {
+        s_replayValid = 1;
+    }
 }
 
 // VERIFY: 18189b69 manual
