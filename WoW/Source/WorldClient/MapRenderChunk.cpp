@@ -1000,10 +1000,19 @@ void CMapRenderChunk::UseStreamingBufs() {
 
 // VERIFY: fdc9dc29 manual
 // OFFSET: 0x007D04A0
+static int32_t s_plainSun = 0;
+
+void CMapRenderChunk::BeginQueuedTerrain() {
+    s_plainSun = 0;
+}
+
 void CMapRenderChunk::RenderSetup(int32_t a2) {
     FlushOwnedFills();
     this->m_lastUpdateTime = 0.0f;
     this->AllocLayerTextures();
+
+    int32_t queued = a2 && g_theGxDevicePtr->TerrainBindless() && !CMap::enableTerrainShaderVertex
+        && CMapRenderChunk::s_renderLayersFunc == CMapRenderChunk::RenderMultiPassAlpha;
 
     if (!a2 || !CMap::enableTerrainShaderVertex) {
         C44Matrix world;
@@ -1014,10 +1023,20 @@ void CMapRenderChunk::RenderSetup(int32_t a2) {
         GxXformSet(GxXform_World, world);
 
         CM2Lighting lighting(this->m_sphere);
-        World::s_m2Scene->SelectLights(&lighting);
+        if (World::s_m2Scene) {
+            World::s_m2Scene->SelectLights(&lighting);
+        }
         this->SelectLights(&lighting);
-        lighting.SetupGxLights(&CWorldScene::s_activeWorldView);
-        lighting.SetupGxFog();
+        // ʕ •ᴥ•ʔ✿ A chunk with only the sun already matches the lights pushed for the previous one ✿ ʕ •ᴥ•ʔ
+        if (!(queued && s_plainSun && lighting.m_lightCount == 0)) {
+            lighting.SetupGxLights(&CWorldScene::s_activeWorldView);
+            lighting.SetupGxFog();
+            s_plainSun = lighting.m_lightCount == 0;
+        }
+    }
+
+    if (queued) {
+        return;
     }
 
     if (this->m_chunkBuf) {

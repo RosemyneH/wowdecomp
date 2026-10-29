@@ -3896,6 +3896,8 @@ void CWorldScene::CullDoodads(CSortEntry* entry, uint16_t fadeLevel, int32_t reu
 // OFFSET: 0x007989C0
 void CWorldScene::RenderChunksSinglePass() {
     TSExplicitList<CMapRenderChunk, offsetof(CMapRenderChunk, m_renderChunkLink)> singlePassList;
+    CMapRenderChunk::BeginQueuedTerrain();
+    int32_t deferFlush = 0;
 
     for (uint32_t pass = 0; pass < 4; pass++) {
         switch (pass) {
@@ -3915,6 +3917,9 @@ void CWorldScene::RenderChunksSinglePass() {
                 CMapRenderChunk::SetShaders(1, 1);
                 break;
         }
+
+        deferFlush = g_theGxDevicePtr->TerrainBindless()
+            && CMapRenderChunk::s_renderLayersFunc == CMapRenderChunk::RenderMultiPassAlpha;
 
         for (uint32_t layers = 1; layers <= 4; layers++) {
             if (CMapRenderChunk::s_currentShaderX[layers - 1]) {
@@ -3953,8 +3958,14 @@ void CWorldScene::RenderChunksSinglePass() {
                 renderChunk = next;
             }
 
-            CMapRenderChunk::FlushMultiPass();
+            if (!deferFlush) {
+                CMapRenderChunk::FlushMultiPass();
+            }
         }
+    }
+
+    if (deferFlush) {
+        CMapRenderChunk::FlushMultiPass();
     }
 
     g_theGxDevicePtr->RsSet(GxRs_VertexShader, static_cast<void*>(nullptr));
