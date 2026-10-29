@@ -203,8 +203,12 @@ Linux ARM64 and MinGW Windows x64 isolated lifecycle binaries cross-compiled;
 ARM64 passed once under qemu-aarch64-static using `/usr/aarch64-linux-gnu`.
 No native ARM scheduling claim follows from emulation. `OBJECT_TYPE` now
 aliases `TYPEMASK_PLAYER` to `TYPE_PLAYER`, the value `ClntObjMgrObjectPtr`
-already takes in `World.cpp`. `sideload.cpp` compiles with the current WowClient
-flags. The full client link and a live run were not repeated. Android SDK here
+already takes in `World.cpp`. `cmake --build build/linux-clean --target WowClient`
+linked `bin/Linux/WowClient64`. `-help` then exited 2, the missing-archive
+`StormExit` path. Before `Pool` joined leftover workers, that same path aborted
+in the pool destructor because a joinable `std::thread` calls `std::terminate`
+during `exit`. One `job_lifecycle_test` run passed after that destructor
+change. This is not a world frame. Android SDK here
 contains platform-tools but no NDK; Windows ARM64/MSVC and native target
 runtimes remain unverified.
 

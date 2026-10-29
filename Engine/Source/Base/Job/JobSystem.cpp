@@ -36,6 +36,8 @@ struct Pool {
     std::atomic<uint32_t> next{0};
     std::atomic<uint32_t> remaining{0};
     bool active = false;
+
+    ~Pool();
 };
 
 Pool g_pool;
@@ -164,6 +166,20 @@ void JoinSpawned(std::unique_lock<std::mutex>& lock) {
     g_pool.released = 0;
     g_pool.wakeCursor = 0;
     g_pool.shutdown = false;
+}
+
+// ʕ •ᴥ•ʔ✿ exit() runs this after a failed init. A joinable std::thread would terminate ✿ ʕ •ᴥ•ʔ
+Pool::~Pool() {
+    std::unique_lock<std::mutex> lock(mu);
+    if (workers.empty()) {
+        return;
+    }
+
+    shutdown = true;
+    for (std::unique_ptr<WorkerSlot>& slot : workers) {
+        slot->cv.notify_one();
+    }
+    JoinSpawned(lock);
 }
 
 }

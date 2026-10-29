@@ -7,11 +7,15 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-`sideload.cpp` compiles. The full WowClient link and a live frame run are still
-open. Hardware targets stay in the blocked list.
+WowClient links and `-help` exits 2 on this machine because the data archives are
+missing. A world frame still needs that data. Hardware targets stay blocked.
 
 ## Completed iterations
 
+- [x] Join leftover job workers from `Pool::~Pool`. `-help` reached `StormExit`
+  from archive open failure and `exit` destroyed a pool whose `std::thread`
+  objects were still joinable, which called `std::terminate`. After the join,
+  `-help` exits 2 and `job_lifecycle_test` passes. Not a world frame.
 - [x] Alias `TYPEMASK_PLAYER` to `TYPE_PLAYER`. The sibling sideload calls
   `ClntObjMgrObjectPtr` with that name, and the client already passes
   `TYPE_PLAYER` at the same call. `sideload.cpp` compiles with the WowClient
@@ -188,10 +192,9 @@ open. Hardware targets stay in the blocked list.
 
 - [ ] Live asynchronous skin input/model lifetimes, teardown reentrancy, animation
   attachment/particle ownership, and actual mapped-buffer backend tests require a
-  working integrated client and representative model/map workloads. The previous
-  `TYPEMASK_PLAYER` compile error in the sibling sideload is cleared and that
-  file compiles. The full WowClient link and a live run are still open. Affected
-  engine libraries do build.
+  working integrated client and representative model/map workloads. WowClient now
+  links. `-help` exits 2 because the MPQ archives are not available, so there is
+  still no world frame.
 - [ ] Actual startup-fatal/active-resource teardown and production exception
   reachability remain unverified. Isolated exit reproductions do not establish safe
   client resource ordering; do not add a late exit join without that evidence.
