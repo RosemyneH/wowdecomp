@@ -21,6 +21,12 @@ or null dispatches do not join prior work. Nonempty dispatches join prior work;
 shutdown waits, signals termination, and joins all threads. Callback user data and
 all referenced inputs/outputs must survive until that join.
 
+## Post list and free list
+
+`AsyncFileReadPollHandler` and the I/O worker already edit `s_asyncFileReadPostList` under `g_queueLock`. `AsyncFileReadDestroyObject`, `AsyncFile::Cancel`, and `AsyncFileReadAllocObject` edit the free list under that lock. `AllocObject` initializes the object's fields after releasing the lock, once the node is unlinked and no other allocator can see it.
+
+`AsyncFileReadDestroy` joins every worker before `AsyncFileReadUnloadPostList` and the free-list `Clear`. The drain now unlinks and copies the unload callback under the lock, then calls it after releasing the lock, matching the poll handler. The free-list `Clear` stays after that join.
+
 ## File queue list edits
 
 Every `m_readList` write in the tree is in `AsyncFile.cpp`. `NetQueuePromoteLocalFiles`, `AsyncFileReadWait`, `AsyncFileReadObject`, and the I/O worker already hold `g_queueLock` around those writes. `AsyncFileReadIsReading` only reads the list, under the same lock. `AsyncFileReadLinkObject` takes the lock itself.

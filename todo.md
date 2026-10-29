@@ -7,11 +7,16 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-Post-list and free-list edits that run outside `g_queueLock`. Client frame
+`s_progressCount` is decremented in the poll handler after the queue lock is
+released. Confirm a second poll cannot run at the same time. Client frame
 measurements stay blocked.
 
 ## Completed iterations
 
+- [x] Unlink and copy the shutdown post callback under `g_queueLock`.
+  `AsyncFileReadDestroy` joins the workers before that drain. Free-list
+  alloc, cancel, and destroy already hold the lock. The free-list clear stays
+  after the join. `AsyncFile.cpp` typechecks with the Linux client flags.
 - [x] Take `g_queueLock` inside `AsyncFileReadLinkStaleObject`. Its two callers,
   the I/O worker and `AsyncFileReadObject`, already held the lock. The other
   `m_readList` writes already sit under that lock, and no other file writes

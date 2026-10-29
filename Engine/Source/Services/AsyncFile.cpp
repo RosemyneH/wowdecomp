@@ -109,13 +109,23 @@ void AsyncFile::LeaveQueueLock() {
 // VERIFY: ca9687a9 manual
 // OFFSET: 0x004B9AB0
 void AsyncFileReadUnloadPostList() {
-    CAsyncObject* object;
+    while (true) {
+        g_queueLock.Enter();
+        CAsyncObject* object = s_asyncFileReadPostList.Head();
 
-    while ((object = s_asyncFileReadPostList.Head()) != nullptr) {
+        if (!object) {
+            g_queueLock.Leave();
+            break;
+        }
+
         object->m_link.Unlink();
+        // ʕ •ᴥ•ʔ✿ Same snapshot as the poll handler. Shutdown joins the workers first ✿ ʕ •ᴥ•ʔ
+        void* callback = object->m_userPostUnloadCallback;
+        void* arg = object->m_userArg;
+        g_queueLock.Leave();
 
-        if (object->m_userPostUnloadCallback) {
-            reinterpret_cast<void (*)(void*)>(object->m_userPostUnloadCallback)(object->m_userArg);
+        if (callback) {
+            reinterpret_cast<void (*)(void*)>(callback)(arg);
         }
     }
 }
