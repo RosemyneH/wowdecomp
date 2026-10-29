@@ -14,6 +14,7 @@
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
 #include "Engine/Source/Gx/CGxTexFlags.h"
 #include "Engine/Source/Gx/Gx.h"
+#include "Engine/Source/Services/AsyncFile.h"
 #include "Engine/Source/Services/Texture.h"
 #include "Engine/Source/ShaderEffect/ShaderEffect.h"
 #include "Engine/Source/ShaderEffect/ShadowCache.h"
@@ -429,6 +430,9 @@ void CDetailDoodadInstBatch::FillVertices(CGxVertexPNCT* vertex) {
 // VERIFY: a2c3ec0e manual
 // OFFSET: 0x007B1380
 void CDetailDoodad::DestroyModels() {
+    // ʕ •ᴥ•ʔ✿ UpdateLoaded can run this callback on the scheduler thread that holds the poll lock ✿ ʕ •ᴥ•ʔ
+    AsyncFile::EnterPollLock();
+
     for (uint32_t i = 0; i < CDetailDoodad::s_doodadList.Count(); i++) {
         if (CDetailDoodad::s_doodadList[i]) {
             CDetailDoodadData* data = CDetailDoodad::s_doodadList[i];
@@ -440,6 +444,7 @@ void CDetailDoodad::DestroyModels() {
                 }
 
                 if (data->m_model) {
+                    data->m_model->SetLoadedCallback(nullptr, nullptr);
                     data->m_model->Release();
                     data->m_model = nullptr;
                 }
@@ -451,6 +456,8 @@ void CDetailDoodad::DestroyModels() {
 
         CDetailDoodad::s_doodadList[i] = nullptr;
     }
+
+    AsyncFile::LeavePollLock();
 }
 
 // VERIFY: 9944e10b manual

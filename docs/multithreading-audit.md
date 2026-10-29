@@ -21,6 +21,10 @@ or null dispatches do not join prior work. Nonempty dispatches join prior work;
 shutdown waits, signals termination, and joins all threads. Callback user data and
 all referenced inputs/outputs must survive until that join.
 
+## Detail doodad loaded callback
+
+`CDetailDoodadData::ModelLoadedCallback` is not an async-file post handler. `CM2Model::SetLoadedCallback` runs it immediately when the model is already loaded. Otherwise `CM2Model::UpdateLoaded` runs it at the end of `InitializeLoaded` (`M2Model.cpp:8424`). That function runs on a scheduler thread from `FinishLoadingSkinProfile`, which holds the poll lock. The callback writes `m_texture` on the doodad data. `CDetailDoodad::DestroyModels` frees that data. It now takes the poll lock, clears the loaded callback, then releases the model and the data.
+
 ## Map object load callbacks
 
 `CMapObj::PostloadCallback` and `CMapObjGroup::AsyncPostloadCallback` run inside the poll lock. Each clears its async pointer and then calls `Load` or `Create` on the object. `CMapObj::Clear` and `CMapObjGroup::Clear` are the main-thread teardown paths. Both now take the poll lock before `Cancel` and hold it until the file buffer is released, so teardown waits until that callback returns. Group clear is also reached from map-object clear, and the lock is recursive.

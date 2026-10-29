@@ -7,12 +7,16 @@ docs/multithreading-benchmarks.md. Hypotheses are not confirmed production defec
 
 ## Active
 
-Detail doodad `ModelLoadedCallback` is a model callback, not an async-file post
-handler. Client frame measurements stay blocked. The async-file post callbacks
-found in this pass are covered.
+Other `CM2Model::SetLoadedCallback` owners: units, effects, particles, and simple
+models. Their teardown can free the callback argument while `UpdateLoaded`
+runs on a scheduler thread. Client frame measurements stay blocked.
 
 ## Completed iterations
 
+- [x] Take the poll lock in `CDetailDoodad::DestroyModels` and clear the model
+  loaded callback before release. `UpdateLoaded` can run that callback from
+  skin-profile completion on a scheduler thread. `DetailDoodad.cpp` typechecks
+  with the Linux client flags.
 - [x] Take the poll lock in `CMapObj::Clear` and `CMapObjGroup::Clear`. Their
   post callbacks call `Load` and `Create` on a scheduler thread. Teardown now
   waits for that call before releasing the file buffer. `MapObj.cpp` and
